@@ -1,4 +1,4 @@
-using Plots, Distances
+using Plots, Distances, DelimitedFiles
 
 function generate()
     BU_coords = rand(10:500, (20,2))
@@ -9,4 +9,20 @@ function generate()
     return BU_coords, S_coords
 end
 
-generate()
+function distanceM(B,S)
+    metrica = Euclidean()
+    mat = zeros(8,20)
+    for i in 1:8
+        for j in 1:20
+	   distancia = metrica(B[j,:], S[i,:])
+	   mat[i,j] = distancia
+	end
+    end
+    open("distance_mat.txt", "w") do io
+        writedlm(io, mat)
+    end
+    return mat
+end
+
+B, S = generate()
+matriz = distanceM(B,S)
