@@ -4,5 +4,5 @@ Pendientes:
  - [ ] Mover el formato de las instancias a HDF5 (intercambiar accesibilidad por robustez)
  - [ ] Refactorear el generador de instancias para tomar en cuenta factibilidad entre los parámetros
  - [ ] Leer de stdin datos para el generador
- - [ ] Mover a Julia 1.8 cuando salga para crear sysimages rápidas [https://github.com/JuliaLang/julia/pull/41936](#41936)
+ - [ ] Mover a Julia 1.8 cuando salga para crear sysimages rápidas [#41936](https://github.com/JuliaLang/julia/pull/41936)
  
