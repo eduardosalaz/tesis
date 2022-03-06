@@ -1,11 +1,31 @@
 using Plots, Distances, DelimitedFiles
 
-function generate()
-    BU_coords = rand(10:500, (20, 2))
-    S_coords = rand(10:500, (8, 2))
-    plot(scatter(BU_coords[:, 1], BU_coords[:, 2], lab = "BU", marker = ([:hex :d], 5, 0.8, Plots.stroke(3, :gray))))
-    ploteado = scatter!(S_coords[:, 1], S_coords[:, 2], lab = "S", c = :black, markersize = :6)
-    png("plot_instance.png")
+function generate(num_BU, num_Suc)
+    BU_coords = rand(10:500, (num_BU, 2))
+    S_coords = rand(10:500, (num_Suc, 2))
+
+
+    Plots.scatter(
+    BU_coords[:,1],
+    BU_coords[:,2],
+    label = "BUs",
+    markershape = :circle,
+    markercolor = :blue,
+)
+Plots.scatter!(
+    S_coords[:,1],
+    S_coords[:,2],
+    label = "Branches",
+    markershape = :square,
+    markercolor = :white,
+    markersize = 6,
+    markerstrokecolor = :red,
+    markerstrokewidth = 2,
+)
+
+    # plot(scatter(BU_coords[:, 1], BU_coords[:, 2], lab = "BU", marker = ([:hex :d], 5, 0.8, Plots.stroke(3, :gray))))
+    # ploteado = scatter!(S_coords[:, 1], S_coords[:, 2], lab = "S", c = :black, markersize = :6)
+    png("plot_instance_bu$num_BU"*"_suc" *"$num_Suc" *".png")
     return BU_coords, S_coords
 end
 
@@ -23,11 +43,11 @@ function distanceM(B, S)
 end
 
 
-function write_file(mat, B, S)
-    open("instancia1.txt", "w") do io
+function write_file(mat, B, S, num_BU, num_Suc)
+    open("instance_numBu$num_BU"*"_num_Suc"*"$num_Suc"*".txt", "w") do io
         write(io, "BU\n")
         writedlm(io, B, ' ')
-        write(io, "S\n")
+        write(io, "Suc\n")
         writedlm(io, S, ' ')
         write(io, "D\n")
         writedlm(io, mat, ' ')
@@ -53,7 +73,7 @@ function write_file(mat, B, S)
         write(io, "0\n") # l5 rango de 0 ≤ 1 = 0 o 1
 
         write(io, "P\n")
-        write(io, "6\n") # solo 6 centros
+        write(io, "8\n") # solo 8 centros
 
     end
 end
@@ -62,8 +82,12 @@ end
 
 
 function main()
-    B, S = generate()
+    num_BU = parse(Int, ARGS[1])
+    num_Suc = parse(Int, ARGS[2])
+    B, S = generate(num_BU, num_Suc)
     M = distanceM(B, S)
-    write_file(M,B,S)
+    write_file(M,B,S, num_BU, num_Suc)
     @info "Done"
 end
+
+main()
