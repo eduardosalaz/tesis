@@ -30,7 +30,7 @@ function read_file(path::String)
 
     # as for now the k param is hardcoded to 5
     k = 5
-    Sk = [Set{Int64}(1) for _ in 1:k] # terrible workaround
+    Sk = [Array{Int64}(undef,5) for _ in 1:k] # terrible workaround
     Sk_line = endl+2
     j = 1
     for i in Sk_line:length(content)
@@ -38,7 +38,7 @@ function read_file(path::String)
             endl = i
             break
         end
-        Sk[j] = Set([parse(Int, elem) for elem in split(content[i])])
+        Sk[j] = [parse(Int, elem) for elem in split(content[i])]
         j = j +1
     end
     Uk = Array{Int64}(undef, k) # gotta move this to a function so DRY
@@ -103,14 +103,15 @@ function read_file(path::String)
     end
     endl = endl + 1
     α = [parse(Int, thresh) for thresh in split(content[endl])]
-    return distance_matrix, Sk, Uk, Lk, P, R, V, μ, T, α
-    # falta agregar asserts para comprobar dimensiones
+    return distance_matrix, Sk, Uk, Lk, P, R, V, μ, T, α, num_BU, num_Suc
+    # asserts for dims
 end
 
 function build_model(data)
 
     D = data[1] # matrix float 32
-    Sk = data[2] # vector of sets of int
+    D = transpose(D) # SO ROWS, COLS NOT COLS, ROWS
+    Sk = data[2] # vector of vectors of int
     Uk = data[3] # vector of int
     Lk = data[4] # vector of int
     P = data[5] # int
@@ -119,38 +120,65 @@ function build_model(data)
     μ = data[8] # vector of vectors of int
     T = data[9] # vector of floats
     α = data[10] # vector of int
+    num_BU = data[11] # int
+    num_Suc = data[12] # int
+    m = 3
+    k = 5
 
     model = Model(CPLEX.Optimizer) # THIS IS WHERE THE FUN BEGINS
 
-    @variable(model, x[1:20, 1:8], Bin) # num suc and num bu, Xᵢⱼ
-    @variable(model, y[1:8], Bin) # Yᵢ
+    @variable(model, x[1:num_Suc, 1:num_BU], Bin) # num suc and num bu, Xᵢⱼ
+    @variable(model, y[1:num_Suc], Bin) # Yᵢ
 
     @objective(model, Min, sum(D .* x)) # Xᵢⱼ * Dᵢⱼ
 
-    @constraint(model, bu_service[i in 1:20], sum(x[i,j] for j in 1:8) == 1)
+    @constraint(model, bu_service[j in 1:num_BU], sum(x[i,j] for i in 1:num_Suc) == 1)
 
     # ∑ᵢ∈S Xᵢⱼ = 1, ∀ j ∈ B
 
-    @constraint(model, use_branch[i in 1:20, j in 1:8], x[i, j] <= y[j])
+    @constraint(model, use_branch[i in 1:num_Suc, j in 1:num_BU], x[i, j] <= y[i])
 
     # Xᵢⱼ ≤ Yᵢ , ∀ i ∈ S, j ∈ B
 
+    @constraint(model, sum(y) == P)
+
+    # ∑ i ∈ S Yᵢ = p
+
+    @constraint(model, risk[i in 1:num_Suc, j in 1:num_BU], x[i,j]*R[j] <= α[i])
+
+    # ∑ j ∈ B Xᵢⱼ Rⱼ ≤ αᵢ, ∀ i ∈ S
+
+    #= Constraints below are infeasible
+
+    # infeasibility row bu_service[1] : 0 == 1
     @constraint(
         model,
         tolerance_lower[i in 1:20, m in 1:3, j in 1:8],
-        sum((y[i]*μ[m][j]) * (1-T[m])) <= sum((x[i,j]*V[m][i])),
+        sum((y[j]*μ[m][j]) * (1-T[m])) <= sum((x[i,j]*V[m][i])),
     )
 
     @constraint(
         model,
         tolerance_upper[i in 1:20, m in 1:3, j in 1:8],
-        sum((x[i,j]*V[m][i])) <= sum((y[i]*μ[m][j]) * (1+T[m])),
+        sum((x[i,j]*V[m][i])) <= sum((y[j]*μ[m][j]) * (1+T[m])),
     )
 
     # Yᵢμₘʲ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vᵢᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
 
 
+    I have no idea how to do this
+    #=
+    @constraint(
+        lower_k[k in 1:5, i in 1:8],
+        Lk[k] <= length(Y)
+    )
+    =#
     # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 5
+    =#
+
+
+
+    return model
 
 
 
@@ -162,7 +190,10 @@ function main()
     path = "../instancias/instancia.txt"
     #ARGS[1]
     data = read_file(path)
-    build_model(data)
+    model = build_model(data)
+    optimize!(model)
+    println(objective_value(model))
+    return model
 end
 
 main()
