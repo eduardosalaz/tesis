@@ -5,9 +5,10 @@ function read_file(path::String)
     buffer = open(path)
     content = readlines(buffer)
     close(buffer)
+
     dist_ph = [] # distance placeholder
     distance_matrix = Vector{Vector{Float32}} # matrix placeholder
-    startl = 0 # line in which distance matrix starts
+    startl = 0 # line in which content starts
     endl = 0 # line in which it ends
     for (index, line) in enumerate(content)
         if line == "D"
@@ -148,25 +149,27 @@ function build_model(data)
 
     # ∑ j ∈ B Xᵢⱼ Rⱼ ≤ αᵢ, ∀ i ∈ S
 
-    #= Constraints below are infeasible
+    # Constraints below are infeasible
 
+    #=
     # infeasibility row bu_service[1] : 0 == 1
+    # this breaks the bu_service constraint
     @constraint(
         model,
-        tolerance_lower[i in 1:20, m in 1:3, j in 1:8],
-        sum((y[j]*μ[m][j]) * (1-T[m])) <= sum((x[i,j]*V[m][i])),
+        tolerance_lower[i in 1:num_Suc, M in 1:m, j in 1:num_BU],
+        (sum((y[i]*μ[M][i]) * (1-T[M]))) <= sum((x[i,j]*V[m][j])),
     )
 
     @constraint(
         model,
-        tolerance_upper[i in 1:20, m in 1:3, j in 1:8],
-        sum((x[i,j]*V[m][i])) <= sum((y[j]*μ[m][j]) * (1+T[m])),
+        tolerance_upper[i in 1:num_Suc, M in 1:m, j in 1:num_BU],
+        sum((x[i,j]*V[m][j])) <= (sum((y[i]*μ[m][i]) * (1+T[m]))),
     )
 
     # Yᵢμₘʲ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vᵢᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
 
 
-    I have no idea how to do this
+    # I have no idea how to do this
     #=
     @constraint(
         lower_k[k in 1:5, i in 1:8],
@@ -174,8 +177,8 @@ function build_model(data)
     )
     =#
     # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 5
-    =#
 
+    =#
 
 
     return model
@@ -187,8 +190,8 @@ end
 
 
 function main()
-    path = "../instancias/instancia.txt"
-    #ARGS[1]
+    #    path = "../instancias/instancia.txt"
+    path = ARGS[1]
     data = read_file(path)
     model = build_model(data)
     optimize!(model)
