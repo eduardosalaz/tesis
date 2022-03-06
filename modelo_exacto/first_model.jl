@@ -107,18 +107,52 @@ function read_file(path::String)
     # falta agregar asserts para comprobar dimensiones
 end
 
-function model(data)
+function build_model(data)
 
     D = data[1] # matrix float 32
-    Sk = data[2] # vector any
-    Uk = data[3] #
-    Lk = data[4]
-    P = data[5]
-    R = data[6]
-    V = data[7]
-    μ = data[8]
-    T = data[9]
-    α = data[10]
+    Sk = data[2] # vector of sets of int
+    Uk = data[3] # vector of int
+    Lk = data[4] # vector of int
+    P = data[5] # int
+    R = data[6] # vector of int
+    V = data[7] # vector of vectors of int
+    μ = data[8] # vector of vectors of int
+    T = data[9] # vector of floats
+    α = data[10] # vector of int
+
+    model = Model(CPLEX.Optimizer) # THIS IS WHERE THE FUN BEGINS
+
+    @variable(model, x[1:20, 1:8], Bin) # num suc and num bu, Xᵢⱼ
+    @variable(model, y[1:8], Bin) # Yᵢ
+
+    @objective(model, Min, sum(D .* x)) # Xᵢⱼ * Dᵢⱼ
+
+    @constraint(model, bu_service[i in 1:20], sum(x[i,j] for j in 1:8) == 1)
+
+    # ∑ᵢ∈S Xᵢⱼ = 1, ∀ j ∈ B
+
+    @constraint(model, use_branch[i in 1:20, j in 1:8], x[i, j] <= y[j])
+
+    # Xᵢⱼ ≤ Yᵢ , ∀ i ∈ S, j ∈ B
+
+    @constraint(
+        model,
+        tolerance_lower[i in 1:20, m in 1:3, j in 1:8],
+        sum((y[i]*μ[m][j]) * (1-T[m])) <= sum((x[i,j]*V[m][i])),
+    )
+
+    @constraint(
+        model,
+        tolerance_upper[i in 1:20, m in 1:3, j in 1:8],
+        sum((x[i,j]*V[m][i])) <= sum((y[i]*μ[m][j]) * (1+T[m])),
+    )
+
+    # Yᵢμₘʲ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vᵢᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
+
+
+    # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 5
+
+
 
 
 end
@@ -128,7 +162,7 @@ function main()
     path = "../instancias/instancia.txt"
     #ARGS[1]
     data = read_file(path)
-    model(data)
+    build_model(data)
 end
 
 main()
