@@ -123,13 +123,14 @@ function build_model(data)
     α = data[10] # vector of int
     num_BU = data[11] # int
     num_Suc = data[12] # int
-    m = 3
-    k = 5
+    m = 3 # activities
+    k = 5 # types of branches
 
     model = Model(CPLEX.Optimizer) # THIS IS WHERE THE FUN BEGINS
 
     @variable(model, x[1:num_Suc, 1:num_BU], Bin) # num suc and num bu, Xᵢⱼ
     @variable(model, y[1:num_Suc], Bin) # Yᵢ
+
 
     @objective(model, Min, sum(D .* x)) # Xᵢⱼ * Dᵢⱼ
 
@@ -137,55 +138,55 @@ function build_model(data)
 
     # ∑ᵢ∈S Xᵢⱼ = 1, ∀ j ∈ B
 
-    @constraint(model, use_branch[i in 1:num_Suc, j in 1:num_BU], x[i, j] <= y[i])
+    @constraint(model, use_branch[j in 1:num_BU, i in 1:num_Suc], x[i, j] <= y[i])
 
     # Xᵢⱼ ≤ Yᵢ , ∀ i ∈ S, j ∈ B
 
-    @constraint(model, sum(y) == P)
+    @constraint(model, cardinality,sum(y) == P)
 
     # ∑ i ∈ S Yᵢ = p
 
-    @constraint(model, risk[i in 1:num_Suc, j in 1:num_BU], x[i,j]*R[j] <= α[i])
+    @constraint(model, risk[j in 1:num_BU,i in 1:num_Suc, ], x[i,j]*R[j] <= α[i])
 
     # ∑ j ∈ B Xᵢⱼ Rⱼ ≤ αᵢ, ∀ i ∈ S
 
-    # Constraints below are infeasible
-
-    #=
-    # infeasibility row bu_service[1] : 0 == 1
-    # this breaks the bu_service constraint
     @constraint(
         model,
-        tolerance_lower[i in 1:num_Suc, M in 1:m, j in 1:num_BU],
-        (sum((y[i]*μ[M][i]) * (1-T[M]))) <= sum((x[i,j]*V[m][j])),
+        tol_l[i in 1:num_Suc, M in 1:m],
+        y[i]*μ[M][i] * (1-T[M]) <= sum(x[i,j]*V[m][j] for j in 1:num_BU),
     )
 
     @constraint(
         model,
-        tolerance_upper[i in 1:num_Suc, M in 1:m, j in 1:num_BU],
-        sum((x[i,j]*V[m][j])) <= (sum((y[i]*μ[m][i]) * (1+T[m]))),
+        tol_u[i in 1:num_Suc, M in 1:m],
+        sum(x[i,j]*V[m][j] for j in 1:num_BU) <= y[i]*μ[M][i] * (1+T[M]),
     )
 
-    # Yᵢμₘʲ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vᵢᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
+     # Yᵢμₘⁱ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vⱼᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
 
-
-    # I have no idea how to do this
-    #=
     @constraint(
-        lower_k[k in 1:5, i in 1:8],
-        Lk[k] <= length(Y)
+        model,
+        low_k[k in 1:k, i in 1:num_Suc],
+        Lk[k] <= length(Sk[k] * y[i]),
     )
-    =#
+
+    @constraint(
+        model,
+        upp_k[k in 1:k, i in 1:num_Suc],
+        length(Sk[k] * y[i]) <= Uk[k],
+    )
+
     # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 5
 
-    =#
+    write_to_file(model, "modelo.lp")
 
+    optimize!(model)
+    println(model)
+    println(value.(x))
+    println(value.(y))
+    println(objective_value(model))
 
     return model
-
-
-
-
 end
 
 
@@ -194,8 +195,7 @@ function main()
     path = ARGS[1]
     data = read_file(path)
     model = build_model(data)
-    optimize!(model)
-    println(objective_value(model))
+
     return model
 end
 
