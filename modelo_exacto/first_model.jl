@@ -31,8 +31,8 @@ function read_file(path::String)
 
     # as for now the k param is hardcoded to 5
     k = 5
-    Sk = [Array{Int64}(undef,5) for _ in 1:k] # terrible workaround
-    Sk_line = endl+2
+    Sk = [Array{Int64}(undef, 5) for _ in 1:k] # terrible workaround
+    Sk_line = endl + 2
     j = 1
     for i in Sk_line:length(content)
         if content[i] == "U"
@@ -40,7 +40,7 @@ function read_file(path::String)
             break
         end
         Sk[j] = [parse(Int, elem) for elem in split(content[i])]
-        j = j +1
+        j = j + 1
     end
     Uk = Array{Int64}(undef, k) # gotta move this to a function so DRY
     Uk_line = endl + 1
@@ -51,7 +51,7 @@ function read_file(path::String)
             break
         end
         Uk[j] = parse(Int, content[i])
-        j = j +1
+        j = j + 1
     end
     Lk = Array{Int64}(undef, k)
     Lk_line = endl + 1
@@ -62,7 +62,7 @@ function read_file(path::String)
             break
         end
         Lk[j] = parse(Int, content[i])
-        j = j +1
+        j = j + 1
     end
     endl = endl + 1
     P = parse(Int, content[endl])
@@ -70,7 +70,7 @@ function read_file(path::String)
     R = [parse(Int, elem) for elem in split(content[endl])]
     endl = endl + 2
     m = 3 # activities
-    V = [Array{Int64}(undef,5) for _ in 1:m]
+    V = [Array{Int64}(undef, 5) for _ in 1:m]
     j = 1
     for i in endl:length(content)
         if content[i] == "μ"
@@ -78,10 +78,10 @@ function read_file(path::String)
             break
         end
         V[j] = [parse(Int, value) for value in split(content[i])]
-        j = j +1
+        j = j + 1
     end
     endl = endl + 1
-    μ = [Array{Int64}(undef,5) for _ in 1:m]
+    μ = [Array{Int64}(undef, 5) for _ in 1:m]
     j = 1
     for i in endl:length(content)
         if content[i] == "T"
@@ -89,7 +89,7 @@ function read_file(path::String)
             break
         end
         μ[j] = [parse(Int, value) for value in split(content[i])]
-        j = j +1
+        j = j + 1
     end
     endl = endl + 1
     T = Array{Float64}(undef, m)
@@ -100,7 +100,7 @@ function read_file(path::String)
             break
         end
         T[j] = parse(Float32, content[i]) # consider truncing
-        j = j +1
+        j = j + 1
     end
     endl = endl + 1
     α = [parse(Int, thresh) for thresh in split(content[endl])]
@@ -128,13 +128,15 @@ function build_model(data)
 
     model = Model(CPLEX.Optimizer) # THIS IS WHERE THE FUN BEGINS
 
-    @variable(model, x[1:num_Suc, 1:num_BU], Bin) # num suc and num bu, Xᵢⱼ
-    @variable(model, y[1:num_Suc], Bin) # Yᵢ
+    @variable(model, x[1:num_Suc, 1:num_BU], Bin)
+    # num suc and num bu, Xᵢⱼ
+    @variable(model, y[1:num_Suc], Bin)
+    # Yᵢ
 
+    @objective(model, Min, sum(D .* x))
+    # Xᵢⱼ * Dᵢⱼ
 
-    @objective(model, Min, sum(D .* x)) # Xᵢⱼ * Dᵢⱼ
-
-    @constraint(model, bu_service[j in 1:num_BU], sum(x[i,j] for i in 1:num_Suc) == 1)
+    @constraint(model, bu_service[j in 1:num_BU], sum(x[i, j] for i in 1:num_Suc) == 1)
 
     # ∑ᵢ∈S Xᵢⱼ = 1, ∀ j ∈ B
 
@@ -142,27 +144,27 @@ function build_model(data)
 
     # Xᵢⱼ ≤ Yᵢ , ∀ i ∈ S, j ∈ B
 
-    @constraint(model, cardinality,sum(y) == P)
+    @constraint(model, cardinality, sum(y) == P)
 
     # ∑ i ∈ S Yᵢ = p
 
-    @constraint(model, risk[j in 1:num_BU,i in 1:num_Suc, ], x[i,j]*R[j] <= α[i])
+    @constraint(model, risk[j in 1:num_BU, i in 1:num_Suc], x[i, j] * R[j] <= α[i])
 
     # ∑ j ∈ B Xᵢⱼ Rⱼ ≤ αᵢ, ∀ i ∈ S
 
     @constraint(
         model,
         tol_l[i in 1:num_Suc, M in 1:m],
-        y[i]*μ[M][i] * (1-T[M]) <= sum(x[i,j]*V[m][j] for j in 1:num_BU),
+        y[i] * μ[M][i] * (1 - T[M]) <= sum(x[i, j] * V[m][j] for j in 1:num_BU),
     )
 
     @constraint(
         model,
         tol_u[i in 1:num_Suc, M in 1:m],
-        sum(x[i,j]*V[m][j] for j in 1:num_BU) <= y[i]*μ[M][i] * (1+T[M]),
+        sum(x[i, j] * V[m][j] for j in 1:num_BU) <= y[i] * μ[M][i] * (1 + T[M]),
     )
 
-     # Yᵢμₘⁱ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vⱼᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
+    # Yᵢμₘⁱ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vⱼᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
 
     @constraint(
         model,

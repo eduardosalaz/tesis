@@ -6,26 +6,26 @@ function generate(num_BU, num_Suc)
 
 
     Plots.scatter(
-    BU_coords[:,1],
-    BU_coords[:,2],
-    label = "BUs",
-    markershape = :circle,
-    markercolor = :blue,
-)
-Plots.scatter!(
-    S_coords[:,1],
-    S_coords[:,2],
-    label = "Branches",
-    markershape = :square,
-    markercolor = :white,
-    markersize = 6,
-    markerstrokecolor = :red,
-    markerstrokewidth = 2,
-)
+        BU_coords[:, 1],
+        BU_coords[:, 2],
+        label = "BUs",
+        markershape = :circle,
+        markercolor = :blue,
+    )
+    Plots.scatter!(
+        S_coords[:, 1],
+        S_coords[:, 2],
+        label = "Branches",
+        markershape = :square,
+        markercolor = :white,
+        markersize = 6,
+        markerstrokecolor = :red,
+        markerstrokewidth = 2,
+    )
 
     # plot(scatter(BU_coords[:, 1], BU_coords[:, 2], lab = "BU", marker = ([:hex :d], 5, 0.8, Plots.stroke(3, :gray))))
     # ploteado = scatter!(S_coords[:, 1], S_coords[:, 2], lab = "S", c = :black, markersize = :6)
-    png("plot_instance_bu$num_BU"*"_suc" *"$num_Suc" *".png")
+    png("plot_instance_bu$num_BU" * "_suc" * "$num_Suc" * ".png")
     return BU_coords, S_coords
 end
 
@@ -45,7 +45,7 @@ end
 
 
 function write_file(mat, B, S, num_BU, num_Suc)
-    open("instance_numBu$num_BU"*"_num_Suc"*"$num_Suc"*".txt", "w") do io
+    open("instance_numBu$num_BU" * "_num_Suc" * "$num_Suc" * ".txt", "w") do io
         write(io, "BU\n")
         writedlm(io, B, ' ')
         write(io, "Suc\n")
@@ -87,7 +87,7 @@ function main()
     num_Suc = parse(Int, ARGS[2])
     B, S = generate(num_BU, num_Suc)
     M = distanceM(B, S, num_BU, num_Suc)
-    write_file(M,B,S, num_BU, num_Suc)
+    write_file(M, B, S, num_BU, num_Suc)
     @info "Done"
 end
 
