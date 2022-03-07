@@ -1,6 +1,6 @@
 Pendientes:
  - [x] Terminar el generador de instancias (por mientras kinda done)
- - [x] Programar el modelo exacto usando JuMP o otra API de CPLEX (Renovar licencia de Gurobi) (en proceso, a lo mejor lo programe mal o tengo una instancia infactible)
+ - [x] Programar el modelo exacto usando JuMP o otra API de CPLEX (Renovar licencia de Gurobi)
  - [ ] Visualizar resultado del modelo
  - [ ] Mover el formato de las instancias a HDF5 (intercambiar accesibilidad por robustez)
  - [ ] Refactorear el generador de instancias para tomar en cuenta factibilidad entre los parámetros
