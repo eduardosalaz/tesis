@@ -29,11 +29,12 @@ Plots.scatter!(
     return BU_coords, S_coords
 end
 
-function distanceM(B, S)
+function distanceM(B, S, num_BU, num_Suc)
+
     metrica = Euclidean()
-    mat = zeros(8, 20)
-    for i in 1:8
-        for j in 1:20
+    mat = zeros(num_Suc, num_BU)
+    for i in 1:num_Suc
+        for j in 1:num_BU
             distancia = metrica(B[j, :], S[i, :])
             mat[i, j] = distancia
         end
@@ -85,7 +86,7 @@ function main()
     num_BU = parse(Int, ARGS[1])
     num_Suc = parse(Int, ARGS[2])
     B, S = generate(num_BU, num_Suc)
-    M = distanceM(B, S)
+    M = distanceM(B, S, num_BU, num_Suc)
     write_file(M,B,S, num_BU, num_Suc)
     @info "Done"
 end
