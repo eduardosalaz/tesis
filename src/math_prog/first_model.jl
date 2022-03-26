@@ -1,6 +1,10 @@
-using CPLEX, JuMP
 include("../types/types.jl")
-using .Types
+using CPLEX, JuMP, JLD2, .Types
+
+function read_jld2(path::String)
+
+end
+
 
 function read_file(path::String)
     buffer = open(path)

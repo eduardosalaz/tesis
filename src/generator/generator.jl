@@ -1,6 +1,11 @@
 include("../types/types.jl")
 using Distances, JLD2, Plots, .Types
 
+function write_jld2()
+
+end
+
+
 function generate(num_BU, num_Suc)
     BU_coords = rand(10:500, (num_BU, 2))
     S_coords = rand(10:500, (num_Suc, 2))
