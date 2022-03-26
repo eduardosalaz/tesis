@@ -1,14 +1,34 @@
 include("../types/types.jl")
 using Distances, JLD2, Plots, .Types
 
-function write_jld2()
+function write_jld2(size::String)
+    B, S = 0
+    if size == "S"
+        B = 15
+        S = 5
+        BU_coords, S_coords = generate_coords(B, S)
+        dist_mat = distanceM(BU_coords, S_coords, B, S)
+        parameters = generate_params(size)
+
+
+
+    elseif size == "M"
+
+    elseif size == "L"
+
+    elseif size == "XL"
+
+    else
+        @error "Size not recognized"
+        exit(1)
+    end
 
 end
 
 
-function generate(num_BU, num_Suc)
-    BU_coords = rand(10:500, (num_BU, 2))
-    S_coords = rand(10:500, (num_Suc, 2))
+function generate_coords(B, S)
+    BU_coords = rand(10:500, (B, 2))
+    S_coords = rand(10:500, (S, 2))
 
     Plots.scatter(
         BU_coords[:, 1],
@@ -27,17 +47,17 @@ function generate(num_BU, num_Suc)
         markerstrokecolor = :red,
         markerstrokewidth = 2,
     )
-    png("plot_instance_bu$num_BU" * "_suc" * "$num_Suc" * ".png")
+    png("../out/plot_instance_bu$B" * "_suc" * "$S" * ".png")
     return BU_coords, S_coords
 end
 
-function distanceM(B, S, num_BU, num_Suc)
+function distanceM(BU_coords, S_coords, B, S)
 
     metrica = Euclidean()
-    mat = zeros(num_Suc, num_BU)
-    for i in 1:num_Suc
-        for j in 1:num_BU
-            distancia = metrica(B[j, :], S[i, :])
+    mat = zeros(S, B)
+    for i in 1:S
+        for j in 1:B
+            distancia = metrica(BU_coords[j, :], S_coords[i, :])
             mat[i, j] = distancia
         end
     end
@@ -45,15 +65,27 @@ function distanceM(B, S, num_BU, num_Suc)
     return trunc.(Int, mat)
 end
 
+function generate_params(size::String)
+    M = 3
+    K = 5
+    params = nothing
+    if size == "S"
+
+
+    elseif size == "M"
+
+    elseif size == "L"
+
+    elseif size == "XL"
+
+    end
+
+
+end
+
 
 function write_file(mat, B, S, num_BU, num_Suc)
     open("instance_numBu$num_BU" * "_num_Suc" * "$num_Suc" * ".txt", "w") do io
-        write(io, "BU\n")
-        writedlm(io, B, ' ')
-        write(io, "Suc\n")
-        writedlm(io, S, ' ')
-        write(io, "D\n")
-        writedlm(io, mat, ' ')
         write(io, "S\n")
         write(io, "1 3\n") # s1
         write(io, "2 5\n") # s2
@@ -85,11 +117,8 @@ end
 
 
 function main()
-    num_BU = parse(Int, ARGS[1])
-    num_Suc = parse(Int, ARGS[2])
-    B, S = generate(num_BU, num_Suc)
-    M = distanceM(B, S, num_BU, num_Suc)
-    write_file(M, B, S, num_BU, num_Suc)
+    size = ARGS[1]
+    write_jld2(size)
     @info "Done"
 end
 
