@@ -1,9 +1,9 @@
-using Plots, Distances, DelimitedFiles
+include("../types/types.jl")
+using Distances, JLD2, Plots, .Types
 
 function generate(num_BU, num_Suc)
     BU_coords = rand(10:500, (num_BU, 2))
     S_coords = rand(10:500, (num_Suc, 2))
-
 
     Plots.scatter(
         BU_coords[:, 1],
@@ -22,9 +22,6 @@ function generate(num_BU, num_Suc)
         markerstrokecolor = :red,
         markerstrokewidth = 2,
     )
-
-    # plot(scatter(BU_coords[:, 1], BU_coords[:, 2], lab = "BU", marker = ([:hex :d], 5, 0.8, Plots.stroke(3, :gray))))
-    # ploteado = scatter!(S_coords[:, 1], S_coords[:, 2], lab = "S", c = :black, markersize = :6)
     png("plot_instance_bu$num_BU" * "_suc" * "$num_Suc" * ".png")
     return BU_coords, S_coords
 end
@@ -40,7 +37,7 @@ function distanceM(B, S, num_BU, num_Suc)
         end
     end
 
-    return mat
+    return trunc.(Int, mat)
 end
 
 

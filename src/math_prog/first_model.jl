@@ -1,5 +1,6 @@
 using CPLEX, JuMP
-
+include("../types/types.jl")
+using .Types
 
 function read_file(path::String)
     buffer = open(path)
@@ -27,6 +28,7 @@ function read_file(path::String)
     end
 
     distance_matrix = hcat(dist_ph...) # https://stackoverflow.com/a/52257481
+    distance_matrix = trunc.(Int, distance_matrix) # remove later
     num_BU, num_Suc = size(distance_matrix)
 
     # as for now the k param is hardcoded to 5
@@ -184,9 +186,14 @@ function build_model(data)
 
     optimize!(model)
     println(model)
+
+    instance = Instance(num_BU, num_Suc, k, m, P, D, D, D, R, Sk, Uk, Lk, V, μ, T, α)
+
+    solucion = Solution(instance, value.(model[:x]), value.(model[:y]), objective_value(model))
     println(value.(x))
     println(value.(y))
     println(objective_value(model))
+
 
     return model
 end
