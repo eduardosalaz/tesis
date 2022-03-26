@@ -7,4 +7,4 @@ Pendientes:
  - [ ] Leer de stdin datos para el generador (por el momento solo tengo numero de sucursales y BUs)
  - [ ] Crear un tipo específico para las instancias
  - [ ] Mover a Julia 1.8 cuando salga para crear sysimages rápidas [#41936](https://github.com/JuliaLang/julia/pull/41936)
- 
+ - [ ] Docstrings y tipos
