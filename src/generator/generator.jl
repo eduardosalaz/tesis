@@ -102,25 +102,33 @@ end
 function generate_params(size::String, B::Int64, S::Int64)
     if size == "S"
         Sk, Lk, Uk = generate_k(size, B, S)
+        @info "Wrote k"
         V, μ, T = generate_activities(size, B, S)
+        @info "Wrote activities"
         R, β = generate_risk(size, B, S)
-
+        @info "Wrote risk"
         return Sk, Lk, Uk, V, μ, T, R, β
     elseif size == "M"
         Sk, Lk, Uk = generate_k(size, B, S)
+        @info "Wrote k"
         V, μ, T = generate_activities(size, B, S)
+        @info "Wrote activities"
         R, β = generate_risk(size, B, S)
-        return Sk, Lk, Uk, V, μ, T, R, β
+        @info "Wrote risk"
     elseif size == "L"
         Sk, Lk, Uk = generate_k(size, B, S)
+        @info "Wrote k"
         V, μ, T = generate_activities(size, B, S)
+        @info "Wrote activities"
         R, β = generate_risk(size, B, S)
-        return Sk, Lk, Uk, V, μ, T, R, β
+        @info "Wrote risk"
     elseif size == "XL"
         Sk, Lk, Uk = generate_k(size, B, S)
+        @info "Wrote k"
         V, μ, T = generate_activities(size, B, S)
+        @info "Wrote activities"
         R, β = generate_risk(size, B, S)
-        return Sk, Lk, Uk, V, μ, T, R, β
+        @info "Wrote risk"
     end
 end
 
@@ -129,94 +137,63 @@ chunk(arr, n) = [arr[i:min(i + n - 1, end)] for i in 1:n:length(arr)]
 function generate_k(size::String, B::Int64, S::Int64)
     if size == "S"
         K = 5
-        size_sk = S / K |> Int
-        shuffled_s = shuffle(collect(1:S))
-        Sk = chunk(shuffled_s, size_sk)
-        tope_Uk = length(Sk[1]) - 1
-        Uk = rand(1:tope_Uk, K)
-        Lk = rand(0:1, K)
-        @info "Wrote k"
+        Ks = rand(1:K, S)
+        Sk = []
+        for i in 1:K
+            Si = findall(x->x==i, Ks)
+            push!(Sk, Si)
+        end
+        Sk = convert(Vector{Vector{Int64}}, Sk)
+        counts_k = [length(s) for s in Sk]
+        Lk_flt = [k - 0.4k for k in counts_k]
+        Uk_flt = [k + 0.4k for k in counts_k]
+        Lk = trunc.(Int, Lk_flt)
+        Uk = trunc.(Int, Uk_flt)
         return Sk, Lk, Uk
     elseif size == "M"
-        P = 25
         K = 5
-        size_sk = S / K |> Int
-        shuffled_s = shuffle(collect(1:S))
-        Sk = chunk(shuffled_s, size_sk)
-        tope_Uk = length(Sk[1]) - 1
-        Uk = rand(6:tope_Uk, K)
-        Lk = rand(2:4, K)
-        sum_uk = true
-        while sum_uk
-            if sum(Uk) < S
-                Uk = rand(6:tope_Uk, K)
-            else
-                break
-            end
+        Ks = rand(1:K, S)
+        Sk = []
+        for i in 1:K
+            Si = findall(x->x==i, Ks)
+            push!(Sk, Si)
         end
-        sum_lk = true
-        while sum_lk
-            if sum(Lk) > S
-                Lk = rand(2:4, K)
-            else
-                break
-            end
-        end
-        @info "Wrote k"
+        Sk = convert(Vector{Vector{Int64}}, Sk)
+        counts_k = [length(s) for s in Sk]
+        Lk_flt = [k - 0.4k for k in counts_k]
+        Uk_flt = [k + 0.4k for k in counts_k]
+        Lk = trunc.(Int, Lk_flt)
+        Uk = trunc.(Int, Uk_flt)
         return Sk, Lk, Uk
     elseif size == "L"
-        P = 50
         K = 5
-        size_sk = S / K |> Int
-        shuffled_s = shuffle(collect(1:S))
-        Sk = chunk(shuffled_s, size_sk)
-        tope_Uk = length(Sk[1]) - 1
-        Uk = rand(10:tope_Uk, K)
-        Lk = rand(4:6, K)
-        sum_uk = true
-        while sum_uk
-            if sum(Uk) < S
-                Uk = rand(10:tope_Uk, K)
-            else
-                break
-            end
+        Ks = rand(1:K, S)
+        Sk = []
+        for i in 1:K
+            Si = findall(x->x==i, Ks)
+            push!(Sk, Si)
         end
-        sum_lk = true
-        while sum_lk
-            if sum(Lk) > S
-                Lk = rand(4:6, K)
-            else
-                break
-            end
-        end
-        @info "Wrote k"
+        Sk = convert(Vector{Vector{Int64}}, Sk)
+        counts_k = [length(s) for s in Sk]
+        Lk_flt = [k - 0.4k for k in counts_k]
+        Uk_flt = [k + 0.4k for k in counts_k]
+        Lk = trunc.(Int, Lk_flt)
+        Uk = trunc.(Int, Uk_flt)
         return Sk, Lk, Uk
     elseif size == "XL"
-        P = 70
         K = 5
-        size_sk = S / K |> Int
-        shuffled_s = shuffle(collect(1:S))
-        Sk = chunk(shuffled_s, size_sk)
-        tope_Uk = length(Sk[1]) - 1
-        Uk = rand(15:tope_Uk, K)
-        Lk = rand(7:9, K)
-        sum_uk = true
-        while sum_uk
-            if sum(Uk) < S
-                Uk = rand(15:tope_Uk, K)
-            else
-                break
-            end
+        Ks = rand(1:K, S)
+        Sk = []
+        for i in 1:K
+            Si = findall(x->x==i, Ks)
+            push!(Sk, Si)
         end
-        sum_lk = true
-        while sum_lk
-            if sum(Lk) > S
-                Lk = rand(7:9, K)
-            else
-                break
-            end
-        end
-        @info "Wrote k"
+        Sk = convert(Vector{Vector{Int64}}, Sk)
+        counts_k = [length(s) for s in Sk]
+        Lk_flt = [k - 0.4k for k in counts_k]
+        Uk_flt = [k + 0.4k for k in counts_k]
+        Lk = trunc.(Int, Lk_flt)
+        Uk = trunc.(Int, Uk_flt)
         return Sk, Lk, Uk
     end
 end
@@ -237,7 +214,6 @@ function generate_activities(size::String, B::Int64, S::Int64)
             μ[i] = rand(lower:upper, S)
         end
         T = fill(0.4, M)
-        @info "Wrote activities"
         return V, μ, T
     elseif size == "M"
         P = 25
@@ -254,7 +230,6 @@ function generate_activities(size::String, B::Int64, S::Int64)
             μₘ = rand(lower:upper, S)
         end
         T = fill(0.1, M)
-        @info "Wrote activities"
         return V, μ, T
     elseif size == "L"
         P = 50
@@ -271,7 +246,6 @@ function generate_activities(size::String, B::Int64, S::Int64)
             μₘ = rand(lower:upper, S)
         end
         T = fill(0.1, M)
-        @info "Wrote activities"
         return V, μ, T
     elseif size == "XL"
         P = 70
@@ -288,7 +262,6 @@ function generate_activities(size::String, B::Int64, S::Int64)
             μₘ = rand(lower:upper, S)
         end
         T = fill(0.1, M)
-        @info "Wrote activities"
         return V, μ, T
     end
 end
@@ -301,7 +274,6 @@ function generate_risk(size::String, B::Int64, S::Int64)
         lower = trunc(sum_R/S) - deviation
         upper = trunc(sum_R/S) + deviation
         β = rand(lower:upper, S)
-        @info "Wrote risk"
         return R, β
     elseif size == "M"
         R = rand(10:20, B)
@@ -310,7 +282,6 @@ function generate_risk(size::String, B::Int64, S::Int64)
         lower = trunc(sum_R/S) - deviation
         upper = trunc(sum_R/S) + deviation
         β = rand(lower:upper, S)
-        @info "Wrote risk"
         return R, β
     elseif size == "L"
         R = rand(15:25, B)
@@ -319,7 +290,6 @@ function generate_risk(size::String, B::Int64, S::Int64)
         lower = trunc(sum_R/S) - deviation
         upper = trunc(sum_R/S) + deviation
         β = rand(lower:upper, S)
-        @info "Wrote risk"
         return R, β
     elseif size == "XL"
         R = rand(20:35, B)
@@ -328,7 +298,6 @@ function generate_risk(size::String, B::Int64, S::Int64)
         lower = trunc(sum_R/S) - deviation
         upper = trunc(sum_R/S) + deviation
         β = rand(lower:upper, S)
-        @info "Wrote risk"
         return R, β
     end
 end
