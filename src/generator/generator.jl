@@ -5,9 +5,9 @@ function write_jld2(size::String)
     K = 5
     M = 3
     if size == "S"
-        B = 25
-        S = 15
-        P = 10
+        B = 8
+        S = 5
+        P = 3
         BU_coords, S_coords = generate_coords(B, S)
         dist_mat = generate_dist(BU_coords, S_coords, B, S)
         parameters = generate_params(size, B, S)
@@ -82,7 +82,7 @@ function generate_coords(B, S)
         markerstrokewidth = 2,
     )
     png("out/plot_instance_bu$B" * "_suc" * "$S" * ".png")
-    @info "Wrote plot and coords"
+    #@info "Wrote plot and coords"
     return BU_coords, S_coords
 end
 
@@ -102,11 +102,11 @@ end
 function generate_params(size::String, B::Int64, S::Int64)
     if size == "S"
         Sk, Lk, Uk = generate_k(size, B, S)
-        @info "Wrote k"
+        #@info "Wrote k"
         V, μ, T = generate_activities(size, B, S)
-        @info "Wrote activities"
+        #@info "Wrote activities"
         R, β = generate_risk(size, B, S)
-        @info "Wrote risk"
+        #@info "Wrote risk"
         return Sk, Lk, Uk, V, μ, T, R, β
     elseif size == "M"
         Sk, Lk, Uk = generate_k(size, B, S)
@@ -115,6 +115,7 @@ function generate_params(size::String, B::Int64, S::Int64)
         @info "Wrote activities"
         R, β = generate_risk(size, B, S)
         @info "Wrote risk"
+        return Sk, Lk, Uk, V, μ, T, R, β
     elseif size == "L"
         Sk, Lk, Uk = generate_k(size, B, S)
         @info "Wrote k"
@@ -122,6 +123,7 @@ function generate_params(size::String, B::Int64, S::Int64)
         @info "Wrote activities"
         R, β = generate_risk(size, B, S)
         @info "Wrote risk"
+        return Sk, Lk, Uk, V, μ, T, R, β
     elseif size == "XL"
         Sk, Lk, Uk = generate_k(size, B, S)
         @info "Wrote k"
@@ -129,10 +131,9 @@ function generate_params(size::String, B::Int64, S::Int64)
         @info "Wrote activities"
         R, β = generate_risk(size, B, S)
         @info "Wrote risk"
+        return Sk, Lk, Uk, V, μ, T, R, β
     end
 end
-
-chunk(arr, n) = [arr[i:min(i + n - 1, end)] for i in 1:n:length(arr)]
 
 function generate_k(size::String, B::Int64, S::Int64)
     if size == "S"
@@ -203,17 +204,14 @@ function generate_activities(size::String, B::Int64, S::Int64)
     if size == "S"
         V = [zeros(Int64, B) for _ in 1:M]
         for i in 1:length(V)
-            V[i] = rand(10:20, B)
+            V[i] = rand(10:30, B)
         end
         μ = [zeros(Int64, S) for _ in 1:M]
         for i in 1:length(μ)
             sum_vals = sum(V[i])
-            deviation = trunc(Int, sum_vals/100)
-            lower = trunc(sum_vals/S) - deviation
-            upper = trunc(sum_vals/S) + deviation
-            μ[i] = rand(lower:upper, S)
+            μ[i] = fill(trunc(Int, sum_vals/S), S)
         end
-        T = fill(0.4, M)
+        T = fill(0.3, M)
         return V, μ, T
     elseif size == "M"
         P = 25
@@ -268,11 +266,10 @@ end
 
 function generate_risk(size::String, B::Int64, S::Int64)
     if size == "S"
-        R = rand(5:10, B)
+        R = rand(2:10, B)
         sum_R = sum(R)
-        deviation = trunc(Int, sum_R/80)
-        lower = trunc(sum_R/S) - deviation
-        upper = trunc(sum_R/S) + deviation
+        lower = trunc(Int, trunc(sum_R/S) - 0.01sum_R)
+        upper = trunc(Int, trunc(sum_R/S) + 0.01sum_R)
         β = rand(lower:upper, S)
         return R, β
     elseif size == "M"
@@ -302,39 +299,10 @@ function generate_risk(size::String, B::Int64, S::Int64)
     end
 end
 
-function write_file(mat, B, S, num_BU, num_Suc)
-    open("instance_numBu$num_BU" * "_num_Suc" * "$num_Suc" * ".txt", "w") do io
-        write(io, "S\n")
-        write(io, "1 3\n") # s1
-        write(io, "2 5\n") # s2
-        write(io, "4\n") # s3
-        write(io, "6 7\n") #s4
-        write(io, "8\n") # s5
-
-        write(io, "U\n")
-        write(io, "2\n") #u1
-        write(io, "2\n")
-        write(io, "1\n")
-        write(io, "2\n")
-        write(io, "1\n")
-
-        write(io, "L\n")
-        write(io, "1\n") # l1  rango de 1 ≤ 2 = 1 o 2
-        write(io, "1\n") # l2 rango de 1 ≤ 2 = 1 o 2
-        write(io, "1\n") # l3 rango de 1 ≤ 1 = 1
-        write(io, "1\n") # l4 rango de 1 ≤ 2 = 1 o 2
-        write(io, "0\n") # l5 rango de 0 ≤ 1 = 0 o 1
-
-        write(io, "P\n")
-        write(io, "8\n") # solo 8 centros
-
-    end
-end
-
 function main()
     size = ARGS[1]
     write_jld2(size)
     @info "Done"
 end
 
-main()
+# main()

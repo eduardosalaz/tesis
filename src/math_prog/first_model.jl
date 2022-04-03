@@ -1,5 +1,6 @@
 include("../types/types.jl")
-using CPLEX, JuMP, JLD2, .Types
+using CPLEX, JuMP, JLD2
+using .Types: Instance as inst
 
 function read_jld2(path::String)
     instancia = jldopen(path)
@@ -116,7 +117,7 @@ function read_file(path::String)
     # asserts for dims
 end
 
-function build_model(instance::Instance)
+function build_model(instance::inst, i::Int64)
 
     # D = data[1] # matrix float 32
     # D = transpose(D) # SO ROWS, COLS NOT COLS, ROWS
@@ -143,9 +144,6 @@ function build_model(instance::Instance)
     T = instance.T
     R = instance.R
     β = instance.β
-
-
-
 
     m = 3 # activities
     k = 5 # types of branches
@@ -205,7 +203,7 @@ function build_model(instance::Instance)
 
     # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 5
 
-    write_to_file(model, "modelo7.lp")
+    write_to_file(model, "modelo8.lp")
 
     optimize!(model)
     #println(model)
@@ -215,26 +213,26 @@ function build_model(instance::Instance)
 
     X = value.(model[:x])
 
-    X = Int.(X)
+    X = trunc.(Int, X)
 
     #println(X)
     println(typeof(X))
 
     Y = value.(model[:y])
-    Y = Int.(Y)
+    Y = trunc.(Int, Y)
     #println(Y)
 
     println(typeof(Y))
 
-    obj_value = Int(objective_value(model))
+    obj_value = trunc(Int, objective_value(model))
 
     println(obj_value)
 
-    solucion = Solution(instance, X, Y, obj_value)
+    solucion = Types.Solution(instance, X, Y, obj_value)
     # println(value.(model[:x]))
 #    println(value.(y))
 
-    jldsave("out6.jld2"; solucion)
+    jldsave("out/" * "solution_$i" * ".jld2"; solucion)
     return model
 end
 
@@ -248,4 +246,4 @@ function main()
     return model
 end
 
-main()
+# main()
