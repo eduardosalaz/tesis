@@ -2,7 +2,9 @@ include("../types/types.jl")
 using CPLEX, JuMP, JLD2, .Types
 
 function read_jld2(path::String)
-
+    instancia = jldopen(path)
+    instance = instancia["instance"]
+    build_model(instance)
 end
 
 
@@ -75,7 +77,7 @@ function read_file(path::String)
     endl = endl + 2
     R = [parse(Int, elem) for elem in split(content[endl])]
     endl = endl + 2
-    m = 3 # activities
+    m = 2 # activities
     V = [Array{Int64}(undef, 5) for _ in 1:m]
     j = 1
     for i in endl:length(content)
@@ -114,39 +116,55 @@ function read_file(path::String)
     # asserts for dims
 end
 
-function build_model(data)
+function build_model(instance::Instance)
 
-    D = data[1] # matrix float 32
-    D = transpose(D) # SO ROWS, COLS NOT COLS, ROWS
-    Sk = data[2] # vector of vectors of int
-    Uk = data[3] # vector of int
-    Lk = data[4] # vector of int
-    P = data[5] # int
-    R = data[6] # vector of int
-    V = data[7] # vector of vectors of int
-    μ = data[8] # vector of vectors of int
-    T = data[9] # vector of floats
-    α = data[10] # vector of int
-    num_BU = data[11] # int
-    num_Suc = data[12] # int
+    # D = data[1] # matrix float 32
+    # D = transpose(D) # SO ROWS, COLS NOT COLS, ROWS
+    # Sk = data[2] # vector of vectors of int
+    # Uk = data[3] # vector of int
+    # Lk = data[4] # vector of int
+    # P = data[5] # int
+    # R = data[6] # vector of int
+    # V = data[7] # vector of vectors of int
+    # μ = data[8] # vector of vectors of int
+    # T = data[9] # vector of floats
+    # α = data[10] # vector of int
+    # num_BU = data[11] # int
+    # num_Suc = data[12] # int
+    B = instance.B
+    S = instance.S
+    D = instance.D
+    Sk = instance.Sk
+    Lk = instance.Lk
+    Uk = instance.Uk
+    P = instance.P
+    V = instance.V
+    μ = instance.μ
+    T = instance.T
+    R = instance.R
+    β = instance.β
+
+
+
+
     m = 3 # activities
     k = 5 # types of branches
 
     model = Model(CPLEX.Optimizer) # THIS IS WHERE THE FUN BEGINS
 
-    @variable(model, x[1:num_Suc, 1:num_BU], Bin)
+    @variable(model, x[1:S, 1:B], Bin)
     # num suc and num bu, Xᵢⱼ
-    @variable(model, y[1:num_Suc], Bin)
+    @variable(model, y[1:S], Bin)
     # Yᵢ
 
     @objective(model, Min, sum(D .* x))
     # Xᵢⱼ * Dᵢⱼ
 
-    @constraint(model, bu_service[j in 1:num_BU], sum(x[i, j] for i in 1:num_Suc) == 1)
+    @constraint(model, bu_service[j in 1:B], sum(x[i, j] for i in 1:S) == 1)
 
     # ∑ᵢ∈S Xᵢⱼ = 1, ∀ j ∈ B
 
-    @constraint(model, use_branch[j in 1:num_BU, i in 1:num_Suc], x[i, j] <= y[i])
+    @constraint(model, use_branch[j in 1:B, i in 1:S], x[i, j] <= y[i])
 
     # Xᵢⱼ ≤ Yᵢ , ∀ i ∈ S, j ∈ B
 
@@ -154,51 +172,69 @@ function build_model(data)
 
     # ∑ i ∈ S Yᵢ = p
 
-    @constraint(model, risk[j in 1:num_BU, i in 1:num_Suc], x[i, j] * R[j] <= α[i])
+    @constraint(model, risk[j in 1:B, i in 1:S], x[i, j] * R[j] <= β[i])
 
-    # ∑ j ∈ B Xᵢⱼ Rⱼ ≤ αᵢ, ∀ i ∈ S
+    # ∑ j ∈ B Xᵢⱼ Rⱼ ≤ βᵢ, ∀ i ∈ S
 
     @constraint(
         model,
-        tol_l[i in 1:num_Suc, M in 1:m],
-        y[i] * μ[M][i] * (1 - T[M]) <= sum(x[i, j] * V[m][j] for j in 1:num_BU),
+        tol_l[i in 1:S, M in 1:m],
+        y[i] * μ[M][i] * (1 - T[M]) <= sum(x[i, j] * V[m][j] for j in 1:B),
     )
 
     @constraint(
         model,
-        tol_u[i in 1:num_Suc, M in 1:m],
-        sum(x[i, j] * V[m][j] for j in 1:num_BU) <= y[i] * μ[M][i] * (1 + T[M]),
+        tol_u[i in 1:S, M in 1:m],
+        sum(x[i, j] * V[m][j] for j in 1:B) <= y[i] * μ[M][i] * (1 + T[M]),
     )
 
     # Yᵢμₘⁱ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vⱼᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
 
     @constraint(
         model,
-        low_k[k in 1:k, i in 1:num_Suc],
-        Lk[k] <= length(Sk[k] * y[i]),
+        low_k_types[K in 1:k],
+        Lk[K] <= sum(y[i] for i in Sk[K]),
     )
+
 
     @constraint(
         model,
-        upp_k[k in 1:k, i in 1:num_Suc],
-        length(Sk[k] * y[i]) <= Uk[k],
+        upp_k_types[K in 1:k],
+        sum(y[i] for i in Sk[K]) <= Uk[K],
     )
 
     # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 5
 
-    write_to_file(model, "modelo.lp")
+    write_to_file(model, "modelo7.lp")
 
     optimize!(model)
-    println(model)
+    #println(model)
 
-    instance = Instance(num_BU, num_Suc, k, m, P, D, D, D, R, Sk, Uk, Lk, V, μ, T, α)
-
-    solucion = Solution(instance, value.(model[:x]), value.(model[:y]), objective_value(model))
-    println(value.(x))
-    println(value.(y))
-    println(objective_value(model))
+    # instance = Instance(B, S, k, m, P, D, D, D, R, Sk, Uk, Lk, V, μ, T, α)
 
 
+    X = value.(model[:x])
+
+    X = Int.(X)
+
+    #println(X)
+    println(typeof(X))
+
+    Y = value.(model[:y])
+    Y = Int.(Y)
+    #println(Y)
+
+    println(typeof(Y))
+
+    obj_value = Int(objective_value(model))
+
+    println(obj_value)
+
+    solucion = Solution(instance, X, Y, obj_value)
+    # println(value.(model[:x]))
+#    println(value.(y))
+
+    jldsave("out6.jld2"; solucion)
     return model
 end
 
@@ -206,8 +242,8 @@ end
 function main()
     #    path = "../instancias/instancia.txt"
     path = ARGS[1]
-    data = read_file(path)
-    model = build_model(data)
+#    data = read_file(path)
+    model = read_jld2(path)
 
     return model
 end

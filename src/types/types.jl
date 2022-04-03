@@ -8,13 +8,13 @@ struct Instance
     BU_coords::Matrix{Int64}
     S_coords::Matrix{Int64}
     D::Matrix{Int64}
-    R::Vector{Int64}
     Sk::Vector{Vector{Int64}}
-    Uk::Vector{Int64}
     Lk::Vector{Int64}
+    Uk::Vector{Int64}
     V::Vector{Vector{Int64}}
     μ::Vector{Vector{Int64}}
     T::Vector{Float32}
+    R::Vector{Int64}
     β::Vector{Int64}
 end
 
