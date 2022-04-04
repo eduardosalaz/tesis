@@ -28,5 +28,5 @@ if __name__ == '__main__':
     print(bu_coords)
     print("S coordinates: ")
     print(s_coords)
-    # and so on and so far
+    # and so on and so forth
     f.close()
