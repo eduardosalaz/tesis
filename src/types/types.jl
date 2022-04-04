@@ -13,7 +13,7 @@ struct Instance
     Uk::Vector{Int64}
     V::Vector{Vector{Int64}}
     μ::Vector{Vector{Int64}}
-    T::Vector{Float32}
+    T::Vector{Float64}
     R::Vector{Int64}
     β::Vector{Int64}
 end

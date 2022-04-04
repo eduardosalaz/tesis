@@ -149,6 +149,7 @@ function build_model(instance::inst, i::Int64)
     k = 5 # types of branches
 
     model = Model(CPLEX.Optimizer) # THIS IS WHERE THE FUN BEGINS
+    # set_silent(model)
 
     @variable(model, x[1:S, 1:B], Bin)
     # num suc and num bu, Xᵢⱼ
@@ -203,7 +204,7 @@ function build_model(instance::inst, i::Int64)
 
     # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 5
 
-    write_to_file(model, "modelo8.lp")
+    # write_to_file(model, "modelo8.lp")
 
     optimize!(model)
     #println(model)
@@ -216,23 +217,22 @@ function build_model(instance::inst, i::Int64)
     X = trunc.(Int, X)
 
     #println(X)
-    println(typeof(X))
 
     Y = value.(model[:y])
     Y = trunc.(Int, Y)
     #println(Y)
 
-    println(typeof(Y))
 
     obj_value = trunc(Int, objective_value(model))
 
     println(obj_value)
+    println("------------------$i------------------")
 
     solucion = Types.Solution(instance, X, Y, obj_value)
     # println(value.(model[:x]))
 #    println(value.(y))
 
-    jldsave("out/" * "solution_$i" * ".jld2"; solucion)
+    jldsave("outL_100/" * "solution_new_$i" * ".jld2"; solucion)
     return model
 end
 
