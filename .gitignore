@@ -1,1 +1,9 @@
 .vscode/
+inst_100/
+instL_100/
+instM_100/
+out_100/
+outL_100/
+outM_100/
+outXL_100/
+*.lp
