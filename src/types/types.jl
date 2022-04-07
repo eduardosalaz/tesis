@@ -1,4 +1,5 @@
 module Types
+include("utils.jl")
 struct Instance
     B::Int64
     S::Int64
@@ -25,5 +26,5 @@ struct Solution
     Weight::Int64
 end
 
-export Instance, Solution
+export Instance, Solution, plot_instance, plot_solution
 end

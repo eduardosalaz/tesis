@@ -63,28 +63,6 @@ end
 function generate_coords(B, S)
     BU_coords = rand(10:800, (B, 2))
     S_coords = rand(10:800, (S, 2))
-    #=
-     Plots.scatter(
-        BU_coords[:, 1],
-        BU_coords[:, 2],
-        label = "BUs",
-        markershape = :circle,
-        markercolor = :blue,
-    )
-    Plots.scatter!(
-        S_coords[:, 1],
-        S_coords[:, 2],
-        label = "Branches",
-        markershape = :square,
-        markercolor = :white,
-        markersize = 6,
-        markerstrokecolor = :red,
-        markerstrokewidth = 2,
-    )
-    =#
-    # png("out/plot_instance_bu$B" * "_suc" * "$S" * ".png")
-    #@info "Wrote plot and coords"
-    # mover esto a su propia funcion
     return BU_coords, S_coords
 end
 
@@ -281,7 +259,7 @@ function generate_risk(size::String, B::Int64, S::Int64)
         sum_R = sum(R)
         lower = trunc(Int, trunc(sum_R/S) - 0.001sum_R)
         upper = trunc(Int, trunc(sum_R/S) + 0.001sum_R)
-	β = trunc(Int, sum_R/S)
+	    β = trunc(Int, sum_R/S)
         return R, β
     end
 end
