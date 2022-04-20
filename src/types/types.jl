@@ -26,5 +26,9 @@ struct Solution
     Weight::Int64
 end
 
-export Instance, Solution, plot_instance, plot_solution
+export
+    Instance, Solution,
+    plot_instance, plot_solution,
+    read_instance, write_instance
+    read_solution, write_solution
 end
