@@ -9,3 +9,4 @@ Pendientes:
  - [ ] Mover a Julia 1.8 cuando salga para crear sysimages rápidas [#41936](https://github.com/JuliaLang/julia/pull/41936)
  - [ ] Docstrings
  - [ ] Seguir probando si las restricciones son demasiado estrictas
+ - [ ] Callbacks para probear resultado del MIP 
