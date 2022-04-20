@@ -1,7 +1,7 @@
 include("../types/types.jl")
 using Distances, JLD2, Plots, Random, .Types
 
-function generate_instance(size::String, i::Int)
+function generate_instance(size::String, i::Int; write=true)
     K = 5
     M = 3
     B, S, P = 0
@@ -29,7 +29,10 @@ function generate_instance(size::String, i::Int)
     dir_path = "instances_"* size * "/"
     file_name = "inst_" * string(i) * ".jld2"
     full_path = dir_path * file_name
-    write_instance(instance, full_path)
+    if write
+        write_instance(instance, full_path)
+    end
+    return instance
 end
 
 function generate_coords(B, S)
