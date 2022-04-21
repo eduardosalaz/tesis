@@ -4,24 +4,29 @@ using .Types: Instance as inst, solution as sol
 
 function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
     set_optimizer(model, solver.Optimizer)
+    set_time_limit_sec(model, 600.0) # 10 mins timeout
     if !verbose
         set_silent(model)
     end
     show(model)
     optimize!(model)
-    X = value.(model[:x])
-    X = trunc.(Int, X)
-    Y = value.(model[:y])
-    Y = trunc.(Int, Y)
-    obj_value = trunc(Int, objective_value(model)
+    if primal_status(model) != MOI.FEASIBLE_POINT
+        @error "Punto factible no alcanzado"
+        obj_value = 0 # TODO hacer algo mejor
+        X = [0 0 ; 0 0]
+        Y = [0 0] # idk
+    else
+        obj_value = trunc(Int, objective_value(model)
+        X = value.(model[:x])
+        X = trunc.(Int, X)
+        Y = value.(model[:y])
+        Y = trunc.(Int, Y)
+    end
+    if termination_status(model) != MOI.OPTIMAL
+        @warn "Óptimo no alcanzado"
+    end
     println(obj_value)
     return X, Y, obj_value
-end
-
-function get_solution(instance, X, Y, obj_value)
-    solucion = sol(instance, X, Y, obj_value)
-    path = "sols/" * "file.jld2"
-    write_solution(path; solucion) # WIP
 end
 
 function build_model(instance::inst)
