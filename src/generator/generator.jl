@@ -1,5 +1,6 @@
 include("../types/types.jl")
-using Distances, JLD2, Plots, Random, .Types
+using Distances, JLD2, Plots, Random
+using .Types
 
 function generate_instance(size::String, i::Int; write=true)
     K = 5
@@ -25,12 +26,12 @@ function generate_instance(size::String, i::Int; write=true)
     BU_coords, S_coords = generate_coords(B, S)
     dist_mat = generate_dist(BU_coords, S_coords, B, S)
     parameters = generate_params(B, S)
-    instance = Instance(B, S, K, M, P, BU_coords, S_coords, dist_mat, parameters...)
+    instance = Types.Instance(B, S, K, M, P, BU_coords, S_coords, dist_mat, parameters...)
     dir_path = "instances/instances_"* size * "/"
     file_name = "inst_" * string(i) * ".jld2"
     full_path = dir_path * file_name
     if write
-        write_instance(instance, full_path)
+        Types.write_instance(instance, full_path)
     end
     return instance
 end
@@ -96,7 +97,7 @@ function generate_activities(B::Int64, S::Int64)
     return V, μ, T
 end
 
-function generate_risk(size::String, B::Int64, S::Int64)
+function generate_risk(B::Int64, S::Int64)
     R = rand(2:15, B)
     sum_R = sum(R)
     lower = trunc(Int, trunc(sum_R/S) - 0.01sum_R)

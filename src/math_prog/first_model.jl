@@ -1,6 +1,6 @@
 include("../types/types.jl")
 using CPLEX, JuMP, JLD2
-using .Types: Instance as inst, solution as sol
+using .Types
 
 function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
     set_optimizer(model, solver.Optimizer)
@@ -14,9 +14,9 @@ function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
         @error "Punto factible no alcanzado"
         obj_value = 0 # TODO hacer algo mejor
         X = [0 0 ; 0 0]
-        Y = [0 0] # idk
+        Y = [0,0] # idk
     else
-        obj_value = trunc(Int, objective_value(model)
+        obj_value = trunc(Int, objective_value(model))
         X = value.(model[:x])
         X = trunc.(Int, X)
         Y = value.(model[:y])
@@ -29,7 +29,7 @@ function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
     return X, Y, obj_value
 end
 
-function build_model(instance::inst)
+function build_model(instance::Types.Instance)
     B = instance.B
     S = instance.S
     D = instance.D
