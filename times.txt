@@ -1,0 +1,3 @@
+76 segundos para una instancia de tamaño L
+62 segundos
+180 segundos
