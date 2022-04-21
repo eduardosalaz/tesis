@@ -8,7 +8,7 @@ function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
     if !verbose
         set_silent(model)
     end
-    show(model)
+    # show(model)
     optimize!(model)
     if primal_status(model) != MOI.FEASIBLE_POINT
         @error "Punto factible no alcanzado"

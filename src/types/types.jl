@@ -61,33 +61,35 @@ function plot_solution(Solution, path::String)
     X = Solution.X
     S = Instance.S
     B = Instance.B
-
-    is_used = [(Y2[j] ? :red : :white) for j in 1:S] #TODO fix this
     Sk = Instance.Sk
     S₁ = Sk[1]
     S₁_coords = S_coords[S₁, :]
+    Y₁_used = [(Y2[j] ? :red : :white) for j in S₁]
     S₂ = Sk[2]
     S₂_coords = S_coords[S₂, :]
+    Y₂_used = [(Y2[j] ? :red : :white) for j in S₂]
     S₃ = Sk[3]
     S₃_coords = S_coords[S₃, :]
+    Y₃_used = [(Y2[j] ? :red : :white) for j in S₃]
     S₄ = Sk[4]
     S₄_coords = S_coords[S₄, :]
+    Y₄_used = [(Y2[j] ? :red : :white) for j in S₄]
     S₅ = Sk[5]
     S₅_coords = S_coords[S₅, :]
+    Y₅_used = [(Y2[j] ? :red : :white) for j in S₅]
     Plots.scatter(
         BU_coords[:, 1],
         BU_coords[:, 2],
-        label = "BUs",
         markershape = :circle,
         markercolor = :blue,
-        legendfontsize=4,
+        label = nothing
     )
     Plots.scatter!(
         S₁_coords[:, 1],
         S₁_coords[:, 2],
-        label = "Branches K₁",
+        label = "K₁",
         markershape = :hexagon,
-        markercolor = is_used,
+        markercolor = Y₁_used,
         markersize = 6,
         markerstrokecolor = :red,
         markerstrokewidth = 2,
@@ -95,9 +97,9 @@ function plot_solution(Solution, path::String)
     Plots.scatter!(
         S₂_coords[:, 1],
         S₂_coords[:, 2],
-        label = "Branches K₂",
+        label = "K₂",
         markershape = :diamond,
-        markercolor = is_used,
+        markercolor = Y₂_used,
         markersize = 6,
         markerstrokecolor = :red,
         markerstrokewidth = 2,
@@ -105,9 +107,9 @@ function plot_solution(Solution, path::String)
     Plots.scatter!(
         S₃_coords[:, 1],
         S₃_coords[:, 2],
-        label = "Branches K₃",
+        label = "K₃",
         markershape = :star5,
-        markercolor = is_used,
+        markercolor = Y₃_used,
         markersize = 6,
         markerstrokecolor = :red,
         markerstrokewidth = 2,
@@ -115,9 +117,9 @@ function plot_solution(Solution, path::String)
     Plots.scatter!(
         S₄_coords[:, 1],
         S₄_coords[:, 2],
-        label = "Branches K₄",
+        label = "K₄",
         markershape = :pentagon,
-        markercolor = is_used,
+        markercolor = Y₄_used ,
         markersize = 6,
         markerstrokecolor = :red,
         markerstrokewidth = 2,
@@ -125,9 +127,9 @@ function plot_solution(Solution, path::String)
     Plots.scatter!(
         S₅_coords[:, 1],
         S₅_coords[:, 2],
-        label = "Branches K₅",
+        label = "K₅",
         markershape = :star4,
-        markercolor = is_used,
+        markercolor = Y₅_used ,
         markersize = 6,
         markerstrokecolor = :red,
         markerstrokewidth = 2,
@@ -135,7 +137,6 @@ function plot_solution(Solution, path::String)
 
     for i in 1:B
         for j in 1:S
-            println(i, j)
             if X[j,i] == 1
                 Plots.plot!(
                     [BU_coords[i,1], S_coords[j,1]],

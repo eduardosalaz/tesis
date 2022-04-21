@@ -36,9 +36,9 @@ function generate_solve()
             @error "Instancia $i no resuelta"
             full_failed_inst_path = failed_dir_path * file_sol_path
             Types.write_instance(instance, full_failed_inst_path)
+            continue
             # como determinar si la instancia no es la que es infactible? TODO
         end
-
         solution = Types.Solution(instance, X, Y, obj_val)
         full_sol_path = sol_dir_path * file_sol_path
         full_inst_path = inst_dir_path * file_inst_path
