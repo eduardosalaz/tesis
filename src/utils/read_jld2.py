@@ -7,7 +7,7 @@ if __name__ == '__main__':
     for key in f.keys():
         print(key)
     dataset = f['instance']
-    print(dataset[...]) # this in the repl shows names 
+    # dataset[...] this in the repl shows names 
     B = dataset['B']
     S = dataset['S']
     K = dataset['K']

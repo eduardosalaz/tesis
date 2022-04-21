@@ -2,7 +2,7 @@ Pendientes:
  - [x] Terminar el generador de instancias
  - [x] Programar el modelo exacto usando JuMP o otra API de CPLEX (Renovar licencia de Gurobi)
  - [x] Visualizar resultado del modelo
- - [x] Mover el formato de las instancias a HDF5 (intercambiar accesibilidad por robustez, al final use [JLD2](https://github.com/JuliaIO/JLD2.jl) que es compatible)
+ - [x] Mover el formato de las instancias a HDF5 (intercambiar accesibilidad por robustez, al final use [JLD2](https://github.com/JuliaIO/JLD2.jl) que es compatible, pero no guarda los vectores de vectores zzz)
  - [x] Refactorear el generador de instancias para tomar en cuenta factibilidad entre los parámetros
  - [x] Leer de ~~stdin~~ **tamaños predefinidos** datos para el generador
  - [x] Crear un tipo específico para las instancias
