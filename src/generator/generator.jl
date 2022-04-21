@@ -26,7 +26,7 @@ function generate_instance(size::String, i::Int; write=true)
     dist_mat = generate_dist(BU_coords, S_coords, B, S)
     parameters = generate_params(B, S)
     instance = Instance(B, S, K, M, P, BU_coords, S_coords, dist_mat, parameters...)
-    dir_path = "instances_"* size * "/"
+    dir_path = "instances/instances_"* size * "/"
     file_name = "inst_" * string(i) * ".jld2"
     full_path = dir_path * file_name
     if write
@@ -50,17 +50,17 @@ function generate_dist(BU_coords, S_coords, B, S)
             mat[i, j] = distancia
         end
     end
-    # @info "Wrote distance matrix"
+    @debug "Wrote distance matrix"
     return trunc.(Int, mat)
 end
 
 function generate_params(B::Int64, S::Int64)
     Sk, Lk, Uk = generate_k(B, S)
-    #@info "Wrote k"
+    @debug "Wrote k"
     V, μ, T = generate_activities(B, S)
-    #@info "Wrote activities"
+    @debug "Wrote activities"
     R, β = generate_risk(B, S)
-    #@info "Wrote risk"
+    @debug "Wrote risk"
     return Sk, Lk, Uk, V, μ, T, R, β
 end
 
