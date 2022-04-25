@@ -7,21 +7,21 @@ function generate_instance(size::String, i::Int; write=true)
     M = 3
     B, S, P = 0
     if size == "S"
-        B = 25
-        S = 10
-        P = 8
+        B = 100
+        S = 20
+        P = 10
     elseif size == "M"
-        B = 80
+        B = 200
         S = 40
-        P = 25
+        P = 20
     elseif size == "L"
-        B = 150
+        B = 300
+        S = 60
+        P = 30
+    elseif size == "XL"
+        B = 500
         S = 80
         P = 50
-    elseif size == "XL"
-        B = 300
-        S = 120
-        P = 70
     end
     BU_coords, S_coords = generate_coords(B, S)
     dist_mat = generate_dist(BU_coords, S_coords, B, S)
@@ -37,8 +37,8 @@ function generate_instance(size::String, i::Int; write=true)
 end
 
 function generate_coords(B, S)
-    BU_coords = rand(10:800, (B, 2))
-    S_coords = rand(10:800, (S, 2))
+    BU_coords = rand(10:1000, (B, 2))
+    S_coords = rand(10:1000, (S, 2))
     return BU_coords, S_coords
 end
 
@@ -55,12 +55,12 @@ function generate_dist(BU_coords, S_coords, B, S)
     return trunc.(Int, mat)
 end
 
-function generate_params(B::Int64, S::Int64)
+function generate_params(B::Int64, S::Int64, P)
     Sk, Lk, Uk = generate_k(B, S)
     @debug "Wrote k"
-    V, μ, T = generate_activities(B, S)
+    V, μ, T = generate_activities(B, S, P)
     @debug "Wrote activities"
-    R, β = generate_risk(B, S)
+    R, β = generate_risk(B, S, P)
     @debug "Wrote risk"
     return Sk, Lk, Uk, V, μ, T, R, β
 end
@@ -82,26 +82,26 @@ function generate_k(B::Int64, S::Int64)
     return Sk, Lk, Uk
 end
 
-function generate_activities(B::Int64, S::Int64)
+function generate_activities(B::Int64, S::Int64, P)
     M = 3
     V = [zeros(Int64, B) for _ in 1:M]
     for i in 1:length(V)
-        V[i] = rand(10:30, B)
+        V[i] = rand(10:20, B)
     end
     μ = [zeros(Int64, S) for _ in 1:M]
     for i in 1:length(μ)
         sum_vals = sum(V[i])
         μ[i] = fill(trunc(Int, sum_vals/S), S)
     end
-    T = fill(0.3, M)
+    T = fill(0.4, M)
     return V, μ, T
 end
 
-function generate_risk(B::Int64, S::Int64)
+function generate_risk(B::Int64, S::Int64, P)
     R = rand(2:15, B)
     sum_R = sum(R)
-    lower = trunc(Int, trunc(sum_R/S) - 0.01sum_R)
-    upper = trunc(Int, trunc(sum_R/S) + 0.01sum_R)
+    lower = trunc(Int, trunc(sum_R/S) - 0.2sum_R)
+    upper = trunc(Int, trunc(sum_R/S) + 0.2sum_R)
     β = rand(lower:upper, S)
     return R, β
 end

@@ -31,14 +31,14 @@ function plot_instance(Instance, path::String)
     Plots.scatter(
         Instance.BU_coords[:, 1],
         Instance.BU_coords[:, 2],
-        label = "BUs",
+        label = nothing,
         markershape = :circle,
         markercolor = :blue,
     )
     Plots.scatter!(
         Instance.S_coords[:, 1],
         Instance.S_coords[:, 2],
-        label = "Branches",
+        label = nothing,
         markershape = :square,
         markercolor = :white,
         markersize = 6,
@@ -87,7 +87,7 @@ function plot_solution(Solution, path::String)
     Plots.scatter!(
         S₁_coords[:, 1],
         S₁_coords[:, 2],
-        label = "K₁",
+        label = nothing,
         markershape = :hexagon,
         markercolor = Y₁_used,
         markersize = 6,
@@ -97,7 +97,7 @@ function plot_solution(Solution, path::String)
     Plots.scatter!(
         S₂_coords[:, 1],
         S₂_coords[:, 2],
-        label = "K₂",
+        label = nothing,
         markershape = :diamond,
         markercolor = Y₂_used,
         markersize = 6,
@@ -107,7 +107,7 @@ function plot_solution(Solution, path::String)
     Plots.scatter!(
         S₃_coords[:, 1],
         S₃_coords[:, 2],
-        label = "K₃",
+        label = nothing,
         markershape = :star5,
         markercolor = Y₃_used,
         markersize = 6,
@@ -117,7 +117,7 @@ function plot_solution(Solution, path::String)
     Plots.scatter!(
         S₄_coords[:, 1],
         S₄_coords[:, 2],
-        label = "K₄",
+        label = nothing,
         markershape = :pentagon,
         markercolor = Y₄_used ,
         markersize = 6,
@@ -127,7 +127,7 @@ function plot_solution(Solution, path::String)
     Plots.scatter!(
         S₅_coords[:, 1],
         S₅_coords[:, 2],
-        label = "K₅",
+        label = nothing,
         markershape = :star4,
         markercolor = Y₅_used ,
         markersize = 6,

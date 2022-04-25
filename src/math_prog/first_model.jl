@@ -1,10 +1,10 @@
-include("../types/types.jl")
-using CPLEX, JuMP, JLD2
+# include("../types/types.jl")
+using CPLEX, Gurobi, Cbc, JuMP, JLD2
 using .Types
 
-function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
+function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
     set_optimizer(model, solver.Optimizer)
-    set_time_limit_sec(model, 600.0) # 10 mins timeout
+    set_time_limit_sec(model, 1200.0) # 20 mins timeout
     if !verbose
         set_silent(model)
     end
@@ -25,7 +25,7 @@ function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
     if termination_status(model) != MOI.OPTIMAL
         @warn "Óptimo no alcanzado"
     end
-    println(obj_value)
+    @info obj_value
     return X, Y, obj_value
 end
 
