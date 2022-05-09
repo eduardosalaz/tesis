@@ -25,7 +25,7 @@ function generate_instance(size::String, i::Int; write=true)
     end
     BU_coords, S_coords = generate_coords(B, S)
     dist_mat = generate_dist(BU_coords, S_coords, B, S)
-    parameters = generate_params(B, S)
+    parameters = generate_params(B, S, P)
     instance = Types.Instance(B, S, K, M, P, BU_coords, S_coords, dist_mat, parameters...)
     dir_path = "instances/instances_"* size * "/"
     file_name = "inst_" * string(i) * ".jld2"
