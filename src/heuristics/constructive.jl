@@ -53,7 +53,27 @@ function naive_assign_bu(instance, Y)
     end
     return X
 
+    # no empezar con la columna 1, de manera lexicografica
+    # puede sesgar 
+    # hay una manera mas inteligente de seleccionar el orden de las BUs
+    # escoger la BU que tenga la menor distancia O la mayor distancias
+    # agarrar el minimo de los minimos
+    # o agarrar el maximo de los minimos para asegurar que ya asigne el peor
+    # otro criterio: el costo de oportunidad
+    # diferencia de la segunda con la primera y eliges con eso
+    # al principio las restricciones no se violan
+    # al final, las restricciones se violan y la asigno a una facility muy lejana
+    # poner un tope de decir: no asignar a la 5ta mas lejana aunque me viole mi restriccion
+    # tope = P/3, P/4 o P/2
 
+    # otra heuristica:
+        # Yi entera
+        # resuelveme una relajacion del problema
+        # Xij, tope 0-1, no es entera, es continua
+        # se va a resolver MUY rapido
+        # PERO YA ME UBICO LOS CENTROS
+        # en base a eso ya los agarro
+        
     # una fila representa una facility
     # una columna representa una BU
     # quiero encontrar el minimo de cada columna (la distancia minima de cada BU)
@@ -79,6 +99,8 @@ function pdisp(instance)
     idx_1, idx_2 = Tuple(argmax(s_distances)) # two furthest facs
     S_sol = Set([idx_1, idx_2]) # S is our solution of our p-disp problem
     T = Set(collect(1:S)) # nodes not in our solution
+    # se puede usar la suma de xⱼ a S_sol
+    # o usar la facility mas cercana de xⱼ
     for s in S_sol
         delete!(T, s)
     end
@@ -106,6 +128,7 @@ end
 
 
 function random_init(instance)
+    # tengo que agarrar los parametros para asignar una factible
     P = instance.P
     S_coords = instance.S_coords
     S = instance.S
