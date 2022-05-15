@@ -27,13 +27,15 @@ function generate_instance(size::String, i::Int; write=true)
     BU_coords, S_coords = generate_coords(B, S)
     dist_mat = generate_dist(BU_coords, S_coords, B, S)
     parameters = generate_params(B, S, P)
-    instance = Types.Instance(B, S, K, M, P, BU_coords, S_coords, dist_mat, parameters...)
-    dir_path = "instances/instances_"* size * "/"
-    mkdir(dir_path)
+    instance = Instance(B, S, K, M, P, BU_coords, S_coords, dist_mat, parameters...)
+    dir_path = "instances/instances_" * size * "/"
+    if !isdir(dir_path)
+        mkdir(dir_path)
+    end
     file_name = "inst_" * string(i) * ".jld2"
     full_path = dir_path * file_name
     if write
-        Types.write_instance(instance, full_path)
+        write_instance(instance, full_path)
         println(full_path)
     end
     return instance
@@ -73,7 +75,7 @@ function generate_k(B::Int64, S::Int64)
     Ks = rand(1:K, S)
     Sk = []
     for i in 1:K
-        Si = findall(x->x==i, Ks)
+        Si = findall(x -> x == i, Ks)
         push!(Sk, Si)
     end
     Sk = convert(Vector{Vector{Int64}}, Sk)
@@ -94,17 +96,17 @@ function generate_activities(B::Int64, S::Int64, P)
     μ = [zeros(Int64, S) for _ in 1:M]
     for i in 1:length(μ)
         sum_vals = sum(V[i])
-        μ[i] = fill(trunc(Int, sum_vals/S), S)
+        μ[i] = fill(trunc(Int, sum_vals / S), S)
     end
     T = fill(0.4, M)
     return V, μ, T
 end
 
 function generate_risk(B::Int64, S::Int64, P)
-    R = rand(2:15, B)
+    R = rand(10:25, B)
     sum_R = sum(R)
-    lower = trunc(Int, trunc(sum_R/S) - 0.2sum_R)
-    upper = trunc(Int, trunc(sum_R/S) + 0.2sum_R)
+    lower = trunc(Int, trunc(sum_R / S) - 0.2sum_R)
+    upper = trunc(Int, trunc(sum_R / S) + 0.2sum_R)
     β = rand(lower:upper, S)
     return R, β
 end
@@ -112,12 +114,11 @@ end
 function main()
     size = ARGS[1]
     n = parse(Int64, ARGS[2])
-    println(typeof(n))
-    
+
     for i in 1:n
         generate_instance(size, i)
     end
     @info "Done"
 end
 
-main()
+# main()

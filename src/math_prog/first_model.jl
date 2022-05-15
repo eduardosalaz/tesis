@@ -12,8 +12,8 @@ function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
     if primal_status(model) != MOI.FEASIBLE_POINT
         @error "Punto factible no alcanzado"
         obj_value = 0 # TODO hacer algo mejor
-        X = [0 0 ; 0 0]
-        Y = [0,0] # idk
+        X = [0 0; 0 0]
+        Y = [0, 0] # idk
     else
         obj_value = trunc(Int, objective_value(model))
         X = value.(model[:x])
@@ -28,7 +28,7 @@ function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
     return X, Y, obj_value
 end
 
-function build_model(instance::Types.Instance)
+function build_model(instance::Instance)
     B = instance.B
     S = instance.S
     D = instance.D
@@ -43,7 +43,7 @@ function build_model(instance::Types.Instance)
     β = instance.β
 
     m = 3 # activities
-    k = 5 # types of branches
+    k = 5 #  of branches
 
     model = Model() # THIS IS WHERE THE FUN BEGINS
 
@@ -87,13 +87,13 @@ function build_model(instance::Types.Instance)
 
     @constraint(
         model,
-        low_k_types[K in 1:k],
+        low_k[K in 1:k],
         Lk[K] <= sum(y[i] for i in Sk[K]),
     )
 
     @constraint(
         model,
-        upp_k_types[K in 1:k],
+        upp_k[K in 1:k],
         sum(y[i] for i in Sk[K]) <= Uk[K],
     )
 
