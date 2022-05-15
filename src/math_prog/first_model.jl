@@ -1,6 +1,5 @@
-# include("../types/types.jl")
 using CPLEX, Gurobi, Cbc, JuMP, JLD2
-using .Types
+using Types
 
 function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
     set_optimizer(model, solver.Optimizer)

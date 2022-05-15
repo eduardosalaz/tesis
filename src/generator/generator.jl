@@ -1,11 +1,12 @@
-include("../types/types.jl")
 using Distances, JLD2, Plots, Random
-using .Types
+using Types
 
 function generate_instance(size::String, i::Int; write=true)
     K = 5
     M = 3
-    B, S, P = 0
+    B = 0
+    S = 0
+    P = 0
     if size == "S"
         B = 100
         S = 20
@@ -28,10 +29,12 @@ function generate_instance(size::String, i::Int; write=true)
     parameters = generate_params(B, S, P)
     instance = Types.Instance(B, S, K, M, P, BU_coords, S_coords, dist_mat, parameters...)
     dir_path = "instances/instances_"* size * "/"
+    mkdir(dir_path)
     file_name = "inst_" * string(i) * ".jld2"
     full_path = dir_path * file_name
     if write
         Types.write_instance(instance, full_path)
+        println(full_path)
     end
     return instance
 end
@@ -107,9 +110,14 @@ function generate_risk(B::Int64, S::Int64, P)
 end
 
 function main()
-    size = ARGS[1], n = Int(ARGS[2])
+    size = ARGS[1]
+    n = parse(Int64, ARGS[2])
+    println(typeof(n))
+    
     for i in 1:n
         generate_instance(size, i)
     end
     @info "Done"
 end
+
+main()
