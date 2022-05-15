@@ -827,6 +827,14 @@ git-tree-sha1 = "216b95ea110b5972db65aa90f88d8d89dcb8851c"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 version = "0.9.6"
 
+[[Types]]
+deps = ["DelimitedFiles", "Distances", "JLD2", "Plots"]
+git-tree-sha1 = "a9d5057bf980694a58af72d0cca925b2f2ffd73a"
+repo-rev = "main"
+repo-url = "https://github.com/eduardosalaz/Types.jl"
+uuid = "7b3e2029-821e-499e-bcc7-d977996c9338"
+version = "0.1.0"
+
 [[URIs]]
 git-tree-sha1 = "97bbe755a53fe859669cd907f2d96aee8d2c1355"
 uuid = "5c2747f8-b7ea-4ff2-ba2e-563bfd36b1d4"
