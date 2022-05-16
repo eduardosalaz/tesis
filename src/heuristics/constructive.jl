@@ -1,5 +1,6 @@
 using Distances
 using Types
+using JuMP, Gurobi
 
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
@@ -10,29 +11,39 @@ function constructive(instance)
     X = Matrix{Int64}[]
     Y = Vector{Int64}[]
     D = instancia.D
+    method = :relax
     Weight = 0
-    Y = localize_facs(instancia)
+    Y = localize_facs(instancia, method)
     println(Y)
     X = naive_assign_bu(instancia, Y)
     indices = findall(x -> x == 1, X)
     for indice in indices
         Weight += D[indice]
     end
-    Y_bool = zeros(instancia.S)
-    for idx in Y
-        Y_bool[idx] = 1
+    if method ≠ :relax
+        Y_bool = zeros(instancia.S)
+        for idx in Y
+            Y_bool[idx] = 1
+        end
+    else
+        Y_bool = Y
     end
     solution = Solution(instancia, X, Y_bool, Weight)
-    plot_solution(solution, "plot_solucion_3algo2_1.png")
-    write_solution(solution, "solucion_3algo2_1.jld2")
+    plot_solution(solution, "plot_solucion_1algo31_relax.png")
+    write_solution(solution, "solucion_1algo31_relax.jld2")
 end
 
-function localize_facs(instance; method=:pdisp)
+function localize_facs(instance,method)
     # k_type = findall(x->x==1, idx_candidate .∈ Sk) # get k type of fac
     if method == :pdisp
+        println("P-DISP")
         return pdisp(instance)
     elseif method == :random
+        println("RANDOM")
         return random_init(instance)
+    elseif method == :relax
+        println("RELAXATION")
+        return relax_init(instance)
     end
 
 end
@@ -139,6 +150,83 @@ function random_init(instance)
         push!(Y, rand_elem)
         remove!(S_vec, rand_elem)
     end
+    return Y
+end
+
+
+function relax_init(instance)
+
+    B = instance.B
+    S = instance.S
+    D = instance.D
+    Sk = instance.Sk
+    Lk = instance.Lk
+    Uk = instance.Uk
+    P = instance.P
+    V = instance.V
+    μ = instance.μ
+    T = instance.T
+    R = instance.R
+    β = instance.β
+    m = instance.M
+    k = instance.K
+
+    model = Model(Gurobi.Optimizer) # THIS IS WHERE THE FUN BEGINS
+
+    @variable(model, x[1:S, 1:B], lower_bound=0, upper_bound=1)
+    # num suc and num bu, Xᵢⱼ
+    @variable(model, y[1:S], Bin)
+    # Yᵢ
+
+    @objective(model, Min, sum(D .* x))
+    # Xᵢⱼ * Dᵢⱼ
+
+    @constraint(model, bu_service[j in 1:B], sum(x[i, j] for i in 1:S) == 1)
+
+    # ∑ᵢ∈S Xᵢⱼ = 1, ∀ j ∈ B
+
+    @constraint(model, use_branch[j in 1:B, i in 1:S], x[i, j] <= y[i])
+
+    # Xᵢⱼ ≤ Yᵢ , ∀ i ∈ S, j ∈ B
+
+    @constraint(model, cardinality, sum(y) == P)
+
+    # ∑ i ∈ S Yᵢ = p
+
+    @constraint(model, risk[j in 1:B, i in 1:S], x[i, j] * R[j] <= β[i])
+
+    # ∑ j ∈ B Xᵢⱼ Rⱼ ≤ βᵢ, ∀ i ∈ S
+
+    @constraint(
+        model,
+        tol_l[i in 1:S, M in 1:m],
+        y[i] * μ[M][i] * (1 - T[M]) <= sum(x[i, j] * V[m][j] for j in 1:B),
+    )
+
+    @constraint(
+        model,
+        tol_u[i in 1:S, M in 1:m],
+        sum(x[i, j] * V[m][j] for j in 1:B) <= y[i] * μ[M][i] * (1 + T[M]),
+    )
+
+    # Yᵢμₘⁱ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vⱼᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
+
+    @constraint(
+        model,
+        low_k[K in 1:k],
+        Lk[K] <= sum(y[i] for i in Sk[K]),
+    )
+
+    @constraint(
+        model,
+        upp_k[K in 1:k],
+        sum(y[i] for i in Sk[K]) <= Uk[K],
+    )
+
+    set_silent(model)
+    optimize!(model)
+    Y = trunc.(Int, value.(model[:y]))
+    println(value.(model[:x]))
     return Y
 end
 
