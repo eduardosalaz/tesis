@@ -48,19 +48,61 @@ function localize_facs(instance,method)
 
 end
 
-function naive_assign_bu(instance, Y)
+function minimize_assign(instance, Y)
     B = instance.B
     S = instance.S
     X = zeros(Int, S, B)
     D = instance.D
+
+    branches_not_used = findall(x->x==0, Y)
+    diff = [branches_not_used[i] - branches_not_used[i-1] for i in 2:length(branches_not_used)]
+    signos = sign.(diff)
+    D = instance.D
+    D_copy = copy(D)
+    pushfirst!(signos, 0) # first offset is 0 obviously as there is no previous row to be removed
+    for i in eachindex(signos)
+        D = D[1:end .≠ branches_not_used[i] - signos[i], :] # flawless
+    end
+
+    for j in 1:B
+        min_row, min_col = argmin(D) # get the global minimum of the distance matrix
+        min_val = D[min_row, min_col]
+        original_row, original_col = findall(x->x==min_val, D_copy)
+        # BUT, the entries in X must reflect the original D matrix
+        # this breaks if there aren't unique entries in D
+        X[original_row, original_col] = 1
+        D = D[:, 1:end .≠ min_col] # remove from D the column which has that minimal value
+        # in theory every column should be served?
+    end
+    return X
+end
+
+function naive_assign_bu(instance, Y)
+    # i haven't been using Y
+    # if i remove from the matrix, i must offset the index 
+    branches_not_used = findall(x->x==0, Y)
+    diff = [branches_not_used[i] - branches_not_used[i-1] for i in 2:length(branches_not_used)]
+    signos = sign.(diff)
+    D = instance.D
+    D_copy = copy(D)
+    pushfirst!(signos, 0) # first offset is 0 obviously as there is no previous row to be removed
+    for i in eachindex(signos)
+        D = D[1:end .≠ branches_not_used[i] - signos[i], :] # flawless
+    end
+    # BUT, the entries in X must reflect the original D matrix
+    B = instance.B
+    S = instance.S
+    X = zeros(Int, S, B)
+    
     Sk = instance.Sk
 
     for j in 1:B
         Dⱼ = D[:, j] # get each column as a vector
         sort!(Dⱼ) # sort to get min distances in order
         candidate = Dⱼ[1] # first should be the minimal distance of the BU j to any fac
-        idx_candidate = findfirst((x -> x == candidate), D[:, j]) # we dont search in Dⱼ as it has mixed idxs
-        X[idx_candidate, j] = 1
+        # idx_candidate = findfirst((x -> x == candidate), D[:, j]) # we dont search in Dⱼ as it has mixed idxs
+        original_row, original_col = findall(x->x==candidate, D_copy)
+        X[original_row, original_col] = 1 # maybe?
     end
     return X
 
