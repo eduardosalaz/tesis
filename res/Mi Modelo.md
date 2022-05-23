@@ -26,6 +26,7 @@ Medimos 3 actividades $m$ para cada $j$ BU con el parámetro $v_j^m$, y asignamo
 
 ## Función objetivo
 Minimizar 
+
 $$ 
 \sum_{i \in S} \sum_{j \in B} X_{ij}d_{ij} 
 $$
