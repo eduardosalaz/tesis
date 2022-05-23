@@ -31,33 +31,42 @@ $$
 \sum_{i \in S} \sum_{j \in B} X_{ij}d_{ij} 
 $$
 ## Restricciones
+
 $$
 \sum_{i \in S} X_{ij} = 1, \forall j \in B
 $$
+
 Asignar sólo a una sucursal $i$ la BU $j$
 
 $$
 X_{ij} \le Y_i, \forall i \in S, j \in B
 $$
+
 Sólo se pueden asignar a las sucursales determinadas como centros territoriales
+
 $$
 Y_i\mu_m^i(1-t^m) \le \sum_{j\in B}X_{ij}v_j^m \le Y_i\mu_m^i(1+t^m), \forall i \in S, m = 1\ldots3
 $$
+
 Medidas de actividad para cada territorio que estén dentro de un rango de tolerancia territorial.
 
 $$
 l_k \le \sum_{i \in S_k} Y_i \le u_k, k = 1 \ldots 5
 $$
+
 Asegurarse que se respeten los límites inferiores y superiores $l_k, u_k$ de los tipos de sucursales a emplearse de acuerdo a $k$. Definir conjuntos $s_k$ para cada sucursal que pertenezca a $k$, podemos usar cada conjunto $S_k$ en lugar de un parámetro binario. Hay que mantener una coherencia de los límites con respecto a la cardinalidad de cada $S_k$ ya sea ingresado por el usuario o calculado en base a ese tamaño.
 Las sumatorias de las cotas deben de ser menores y mayores a todas las que tenemos de manera respectiva. El $u_k$ debe de ser menor que la cardinalidad de $S_k$, por su parte la sumatoria de $l_k$ debe de ser menor que la cardinalidad de $S$ y la sumatoria de las $u_k$ debe de ser mayor que la cardinalidad de $S$.
+
 $$
 \sum_{i \in S} Y_i = p
 $$
+
 El número de centros de territoriales debe concordar con el parámetro p
 
 $$
 \sum_{j \in B}X_{ij}R_j \le \alpha_i, \forall i \in S
 $$
+
 Para balancear el riesgo hay que escribir la sumatoria del parámetro de riesgo de cada BU por la $X_{ij}$ asignadas a la sucursal $i$ es la medida del riesgo del territorio $i$ acotar a una constante superior $\alpha_i$ para cada $i$ que también debe de tener sentido con respecto a los $R_j$ para la factibilidad del problema. Experimentar en base a los $R$.
 
 Ir creando instancias (primero a mano, luego hago el generador) y su programación matemática correspondiente en CPLEX/Gurobi.
