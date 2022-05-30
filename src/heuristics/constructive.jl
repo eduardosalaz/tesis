@@ -79,38 +79,36 @@ end
 
 function naive_assign_bu(instance, Y)
     # i haven't been using Y
-    # if i remove from the matrix, i must offset the index 
-    branches_not_used = findall(x->x==0, Y)
-    println(branches_not_used)
-    D = instance.D
-    if length(branches_not_used) != 0 
-        println("entre aca")
-        diff = [branches_not_used[i] - branches_not_used[i-1] for i in 2:length(branches_not_used)]
-        println(diff)
-        signos = sign.(diff)
-        pushfirst!(signos, 0) # first offset is 0 obviously as there is no previous row to be removed
-        for i in eachindex(signos)
-            D = D[1:end .≠ branches_not_used[i] - signos[i], :] # flawless
-        end
-    end
-
-    D_copy = copy(D)
-
+    branches_used = findall(x->x==1, Y)
     # BUT, the entries in X must reflect the original D matrix
     B = instance.B
     S = instance.S
     X = zeros(Int, S, B)
+
+    minimums = Tuple{Int, Tuple{Int, Int}}[]
+
+    for j in 1:B
+        minimum = 1e9
+        i_exported = 0
+        for i in 1:S
+            if i ∉ branches_used
+                continue
+            end
+            Dij = D[i,j]
+            if Dij < minimum
+                minimum = Dij
+                i_exported = i
+            end
+        end
+        X[i_exported,j] = 1
+        # min_and_index = (minimum, (i_exported, j))
+        # push!(minimums, min_and_index)
+    end
     
     Sk = instance.Sk
 
-    for j in 1:B
-        Dⱼ = D[:, j] # get each column as a vector
-        sort!(Dⱼ) # sort to get min distances in order
-        candidate = Dⱼ[1] # first should be the minimal distance of the BU j to any fac
-        # idx_candidate = findfirst((x -> x == candidate), D[:, j]) # we dont search in Dⱼ as it has mixed idxs
-        (original_row, original_col) = Tuple(findfirst(x->x==candidate, D_copy))
-        X[original_row, original_col] = 1 # maybe?
-    end
+
+
     return X
 
     # no empezar con la columna 1, de manera lexicografica
