@@ -11,7 +11,7 @@ function constructive(instance)
     X = Matrix{Int64}[]
     Y = Vector{Int64}[]
     D = instancia.D
-    method = :relax
+    method = :pdisp
     Weight = 0
     Y = localize_facs(instancia, method)
     println(Y)
@@ -29,8 +29,8 @@ function constructive(instance)
         Y_bool = Y
     end
     solution = Solution(instancia, X, Y_bool, Weight)
-    plot_solution(solution, "plot_solucion_1algo31_relax.png")
-    write_solution(solution, "solucion_1algo31_relax.jld2")
+    plot_solution(solution, "pruebas/plot_solucion_1algo31_pdisp.png")
+    write_solution(solution, "pruebas/solucion_1algo31_pdisp.jld2")
 end
 
 function localize_facs(instance,method)
@@ -81,14 +81,21 @@ function naive_assign_bu(instance, Y)
     # i haven't been using Y
     # if i remove from the matrix, i must offset the index 
     branches_not_used = findall(x->x==0, Y)
-    diff = [branches_not_used[i] - branches_not_used[i-1] for i in 2:length(branches_not_used)]
-    signos = sign.(diff)
+    println(branches_not_used)
     D = instance.D
-    D_copy = copy(D)
-    pushfirst!(signos, 0) # first offset is 0 obviously as there is no previous row to be removed
-    for i in eachindex(signos)
-        D = D[1:end .≠ branches_not_used[i] - signos[i], :] # flawless
+    if length(branches_not_used) != 0 
+        println("entre aca")
+        diff = [branches_not_used[i] - branches_not_used[i-1] for i in 2:length(branches_not_used)]
+        println(diff)
+        signos = sign.(diff)
+        pushfirst!(signos, 0) # first offset is 0 obviously as there is no previous row to be removed
+        for i in eachindex(signos)
+            D = D[1:end .≠ branches_not_used[i] - signos[i], :] # flawless
+        end
     end
+
+    D_copy = copy(D)
+
     # BUT, the entries in X must reflect the original D matrix
     B = instance.B
     S = instance.S
@@ -101,7 +108,7 @@ function naive_assign_bu(instance, Y)
         sort!(Dⱼ) # sort to get min distances in order
         candidate = Dⱼ[1] # first should be the minimal distance of the BU j to any fac
         # idx_candidate = findfirst((x -> x == candidate), D[:, j]) # we dont search in Dⱼ as it has mixed idxs
-        original_row, original_col = findall(x->x==candidate, D_copy)
+        (original_row, original_col) = Tuple(findfirst(x->x==candidate, D_copy))
         X[original_row, original_col] = 1 # maybe?
     end
     return X
