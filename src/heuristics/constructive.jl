@@ -1,6 +1,6 @@
 using Distances
 using Types
-using JuMP, Gurobi
+using JuMP, CPLEX
 
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
@@ -11,10 +11,10 @@ function constructive(instance)
     X = Matrix{Int64}[]
     Y = Vector{Int64}[]
     D = instancia.D
-    method = :pdisp
+    method = :relax
     Weight = 0
     Y = localize_facs(instancia, method)
-    println(Y)
+    # println(Y)
     X = naive_assign_bu(instancia, Y)
     indices = findall(x -> x == 1, X)
     for indice in indices
@@ -29,8 +29,8 @@ function constructive(instance)
         Y_bool = Y
     end
     solution = Solution(instancia, X, Y_bool, Weight)
-    plot_solution(solution, "pruebas/plot_solucion_1algo31_pdisp.png")
-    write_solution(solution, "pruebas/solucion_1algo31_pdisp.jld2")
+    plot_solution(solution, "pruebas2/plot_solucion_1algo_relax.png")
+    write_solution(solution, "pruebas2/solucion_1algo_relax.jld2")
 end
 
 function localize_facs(instance,method)
@@ -48,39 +48,8 @@ function localize_facs(instance,method)
 
 end
 
-function minimize_assign(instance, Y)
-    B = instance.B
-    S = instance.S
-    X = zeros(Int, S, B)
-    D = instance.D
-
-    branches_not_used = findall(x->x==0, Y)
-    diff = [branches_not_used[i] - branches_not_used[i-1] for i in 2:length(branches_not_used)]
-    signos = sign.(diff)
-    D = instance.D
-    D_copy = copy(D)
-    pushfirst!(signos, 0) # first offset is 0 obviously as there is no previous row to be removed
-    for i in eachindex(signos)
-        D = D[1:end .≠ branches_not_used[i] - signos[i], :] # flawless
-    end
-
-    for j in 1:B
-        min_row, min_col = argmin(D) # get the global minimum of the distance matrix
-        min_val = D[min_row, min_col]
-        original_row, original_col = findall(x->x==min_val, D_copy)
-        # BUT, the entries in X must reflect the original D matrix
-        # this breaks if there aren't unique entries in D
-        X[original_row, original_col] = 1
-        D = D[:, 1:end .≠ min_col] # remove from D the column which has that minimal value
-        # in theory every column should be served?
-    end
-    return X
-end
-
-function naive_assign_bu(instance, Y)
-    # i haven't been using Y
+function smarter_assign_bu(instance, Y)
     branches_used = findall(x->x==1, Y)
-    # BUT, the entries in X must reflect the original D matrix
     B = instance.B
     S = instance.S
     X = zeros(Int, S, B)
@@ -100,14 +69,92 @@ function naive_assign_bu(instance, Y)
                 i_exported = i
             end
         end
-        X[i_exported,j] = 1
-        # min_and_index = (minimum, (i_exported, j))
-        # push!(minimums, min_and_index)
+        min_and_index = (minimum, (i_exported, j))
+        push!(minimums, min_and_index)
     end
     
     Sk = instance.Sk
+    return X
+end
+
+function naive_assign_bu(instance, Y)
+    # i haven't been using Y
+    branches_used = findall(x->x==1, Y)
+    @show branches_used
+    # BUT, the entries in X must reflect the original D matrix
+    B = instance.B
+    S = instance.S
+    K = instance.K
+    D = instance.D
+    P = instance.P
+    X = zeros(Int, S, B)
+    centers_used = 0
+
+    minimums = Tuple{Int, Tuple{Int, Int}}[]
+
+    Sk = instance.Sk
+    @show Sk
+    counts_k = zeros(Int, K)
+    Lk = instance.Lk
+    @show Lk
+    Uk = instance.Uk
+    @show Uk
+
+    for j in 1:B
+        minimum = 1e9
+        second_minimum = 1e9
+        i_exported = 0
+        for i in 1:S
+            if i ∉ branches_used
+                continue
+            end
+            Dij = D[i,j]
+            if Dij < minimum
+                second_minimum = minimum
+                minimum = Dij
+                i_exported = i
+            end
+        end
+
+        k_type = 0
+
+        for k in 1:K
+            if i_exported in Sk[k]
+                k_type = k
+            end
+        end
+
+        if counts_k[k_type] < Uk[k_type]
+            # if counts_k[k_type] > Lk[k_type]
+                println("OK constraint K $k_type for $i_exported")
+                X[i_exported,j] = 1
+                counts_k[k_type] += 1
+                centers_used += 1
+            #else
+            # end
+        else
+                @show counts_k[k_type]
+                @show Uk[k_type]
+                @show Lk[k_type]
+                centers_used += 1
+                X[i_exported,j] = 1
+                println("Violating constraint: K type $k_type for facility: $i_exported")
+        end
+    end
+        # min_and_index = (minimum, (i_exported, j))
+        # push!(minimums, min_and_index)
 
 
+    unos = findall(x->x==1, X)
+
+    display("text/plain", X)
+
+
+    # Notas:
+
+    # preguntar lo del costo de oportunidad
+    # se escoge el que tenga la diferencia mas grande
+    # como hacer que se seleccionen facilities tomando en cuenta Lk
 
     return X
 
@@ -218,7 +265,7 @@ function relax_init(instance)
     m = instance.M
     k = instance.K
 
-    model = Model(Gurobi.Optimizer) # THIS IS WHERE THE FUN BEGINS
+    model = Model(CPLEX.Optimizer) # THIS IS WHERE THE FUN BEGINS
 
     @variable(model, x[1:S, 1:B], lower_bound=0, upper_bound=1)
     # num suc and num bu, Xᵢⱼ
@@ -273,7 +320,7 @@ function relax_init(instance)
     set_silent(model)
     optimize!(model)
     Y = trunc.(Int, value.(model[:y]))
-    println(value.(model[:x]))
+    # println(value.(model[:x]))
     return Y
 end
 
