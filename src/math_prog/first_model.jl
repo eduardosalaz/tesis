@@ -1,9 +1,9 @@
 using CPLEX, Gurobi, Cbc, JuMP, JLD2
 using Types
 
-function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
+function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
     set_optimizer(model, solver.Optimizer)
-    set_time_limit_sec(model, 1200.0) # 20 mins timeout
+    set_time_limit_sec(model, 600.0) # 10 mins timeout
     if !verbose
         set_silent(model)
     end
@@ -25,6 +25,7 @@ function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
         @warn "Óptimo no alcanzado"
     end
     @info obj_value
+
     return X, Y, obj_value
 end
 
@@ -67,20 +68,20 @@ function build_model(instance::Instance)
 
     # ∑ i ∈ S Yᵢ = p
 
-    @constraint(model, risk[j in 1:B, i in 1:S], x[i, j] * R[j] <= β[i])
+    @constraint(model, risk[i in 1:S], sum(x[i, j] * R[j] for j in 1:B) <= β[i])
 
     # ∑ j ∈ B Xᵢⱼ Rⱼ ≤ βᵢ, ∀ i ∈ S
 
     @constraint(
         model,
         tol_l[i in 1:S, M in 1:m],
-        y[i] * μ[M][i] * (1 - T[M]) <= sum(x[i, j] * V[m][j] for j in 1:B),
+        y[i] * μ[M][i] * (1 - T[M]) <= sum(x[i, j] * V[M][j] for j in 1:B),
     )
-
+    
     @constraint(
         model,
         tol_u[i in 1:S, M in 1:m],
-        sum(x[i, j] * V[m][j] for j in 1:B) <= y[i] * μ[M][i] * (1 + T[M]),
+        sum(x[i, j] * V[M][j] for j in 1:B) <= y[i] * μ[M][i] * (1 + T[M]),
     )
 
     # Yᵢμₘⁱ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vⱼᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
@@ -99,5 +100,9 @@ function build_model(instance::Instance)
 
     # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 5
 
+
+    write_to_file(model, "modelo_aparentementebueno.lp")
+    write_to_file(model, "modelo_aparentementebueno.mps")
+    write_to_file(model, "modelo_aparentementebueno.nl")
     return model
 end

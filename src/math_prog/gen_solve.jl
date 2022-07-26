@@ -8,9 +8,9 @@ function generate_solve()
     B = 25
     S = 11
     P = 9
-    failed_dir_path = "instances/experiments8/failed_instances/"
-    inst_dir_path = "instances/experiments8/"
-    sol_dir_path = "out/solutions/experiments8/"
+    failed_dir_path = "instances/experiments10/failed_instances/"
+    inst_dir_path = "instances/experiments10/"
+    sol_dir_path = "out/solutions/experiments10/"
     if !isdir(inst_dir_path)
         mkdir(inst_dir_path)
     end
@@ -21,7 +21,7 @@ function generate_solve()
     if !isdir(sol_dir_path)
         mkdir(sol_dir_path)
     end
-    for i in 1:100
+    for i in 1:400
         BU_coords, S_coords = generate_coords(B, S)
         dist_mat = generate_dist(BU_coords, S_coords, B, S)
         parameters = generate_params(B, S, P)
@@ -40,9 +40,9 @@ function generate_solve()
         solution = Solution(instance, X, Y, obj_val)
         full_sol_path = sol_dir_path * file_sol_path
         full_inst_path = inst_dir_path * file_inst_path
-        plot_sol_dir_path = "out/plots/experiments8/solutions/"
+        plot_sol_dir_path = "out/plots/experiments10/solutions/"
         plot_sol_path = plot_sol_dir_path * "sol$i" * "_" * size * ".png"
-        plot_inst_dir_path = "out/plots/experiments8/instances/"
+        plot_inst_dir_path = "out/plots/experiments10/instances/"
         plot_inst_path = plot_inst_dir_path * "inst$i" * "_" * size * ".png"
         write_instance(instance, full_inst_path)
         write_solution(solution, full_sol_path)

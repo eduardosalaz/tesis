@@ -4,10 +4,9 @@ function solve(path::String)
     instance = read_instance(path)
     model = build_model(instance)
     X, Y, obj_val = optimize_model(model)
-    println(obj_val)
     solution = Solution(instance, X, Y, obj_val)
-    write_solution(solution, "1solucionperra1.jld2")
-    plot_solution(solution, "1plotperro1.png")
+    write_solution(solution, "sol_nuevo.jld2")
+    plot_solution(solution, "plot_nuevo.png")
 end
 
 
