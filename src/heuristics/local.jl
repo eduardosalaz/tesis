@@ -49,7 +49,7 @@ function isFactible(solution::Solution)
 
     for i in 1:S
         for m in 1:M
-            if Y[i] * μ[m][i] * (1 - T[m]) > sum(X[i,j] * V[m][j] for j in 1:B)
+            if !(Y[i] * μ[m][i] * (1 - T[m]) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 println("violando V inferior en i: $i y m: $m")
                 println("μ: ", Y[i] * μ[m][i] * (1 - T[m]))
                 println("V: ", sum(X[i,j] * V[m][j] for j in 1:B))

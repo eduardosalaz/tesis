@@ -1,6 +1,7 @@
 using Distances
 using Types
-using JuMP, CPLEX
+using JuMP, Cbc
+using Random
 
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
@@ -11,26 +12,27 @@ function constructive(instance)
     X = Matrix{Int64}[]
     Y = Vector{Int64}[]
     D = instancia.D
-    method = :relax
+    method = :random
     Weight = 0
     Y = localize_facs(instancia, method)
-    # println(Y)
-    X = naive_assign_bu(instancia, Y)
-    indices = findall(x -> x == 1, X)
-    for indice in indices
-        Weight += D[indice]
-    end
     if method ≠ :relax
-        Y_bool = zeros(instancia.S)
+        Y_bool = zeros(Int, instancia.S)
         for idx in Y
             Y_bool[idx] = 1
         end
     else
         Y_bool = Y
     end
+    println(Y_bool)
+    X = naive_assign_bu(instancia, Y_bool)
+    indices = findall(x -> x == 1, X)
+    for indice in indices
+        Weight += D[indice]
+    end
+
     solution = Solution(instancia, X, Y_bool, Weight)
-    plot_solution(solution, "pruebas2/plot_solucion_1algo_relax.png")
-    write_solution(solution, "pruebas2/solucion_1algo_relax.jld2")
+    plot_solution(solution, "plot_5_cons_random")
+    write_solution(solution, "sol_5_cons_random.jld2")
 end
 
 function localize_facs(instance,method)
@@ -92,14 +94,6 @@ function naive_assign_bu(instance, Y)
 
     minimums = Tuple{Int, Tuple{Int, Int}}[]
 
-    Sk = instance.Sk
-    @show Sk
-    counts_k = zeros(Int, K)
-    Lk = instance.Lk
-    @show Lk
-    Uk = instance.Uk
-    @show Uk
-
     for j in 1:B
         minimum = 1e9
         second_minimum = 1e9
@@ -115,31 +109,8 @@ function naive_assign_bu(instance, Y)
                 i_exported = i
             end
         end
-
-        k_type = 0
-
-        for k in 1:K
-            if i_exported in Sk[k]
-                k_type = k
-            end
-        end
-
-        if counts_k[k_type] < Uk[k_type]
-            # if counts_k[k_type] > Lk[k_type]
-                println("OK constraint K $k_type for $i_exported")
-                X[i_exported,j] = 1
-                counts_k[k_type] += 1
-                centers_used += 1
-            #else
-            # end
-        else
-                @show counts_k[k_type]
-                @show Uk[k_type]
-                @show Lk[k_type]
-                centers_used += 1
-                X[i_exported,j] = 1
-                println("Violating constraint: K type $k_type for facility: $i_exported")
-        end
+        X[i_exported,j] = 1
+        centers_used += 1
     end
         # min_and_index = (minimum, (i_exported, j))
         # push!(minimums, min_and_index)
@@ -235,15 +206,9 @@ end
 function random_init(instance)
     # tengo que agarrar los parametros para asignar una factible
     P = instance.P
-    S_coords = instance.S_coords
     S = instance.S
-    S_vec = collect(1:S)
-    Y = Int64[]
-    for p in 1:P
-        rand_elem = S_vec[rand(1:end)]
-        push!(Y, rand_elem)
-        remove!(S_vec, rand_elem)
-    end
+    Y = shuffle(collect(1:S))
+    Y = Y[1:P]
     return Y
 end
 
@@ -265,7 +230,7 @@ function relax_init(instance)
     m = instance.M
     k = instance.K
 
-    model = Model(CPLEX.Optimizer) # THIS IS WHERE THE FUN BEGINS
+    model = Model(Cbc.Optimizer) # THIS IS WHERE THE FUN BEGINS
 
     @variable(model, x[1:S, 1:B], lower_bound=0, upper_bound=1)
     # num suc and num bu, Xᵢⱼ
