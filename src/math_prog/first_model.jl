@@ -50,6 +50,7 @@ function build_model(instance::Instance)
 
     @variable(model, x[1:S, 1:B], Bin)
     # num suc and num bu, Xᵢⱼ
+    
     @variable(model, y[1:S], Bin)
     # Yᵢ
 
@@ -75,13 +76,13 @@ function build_model(instance::Instance)
     @constraint(
         model,
         tol_l[i in 1:S, M in 1:m],
-        y[i] * μ[M][i] * (1 - T[M]) <= sum(x[i, j] * V[M][j] for j in 1:B),
+        sum(x[i, j] * V[M][j] for j in 1:B) >= (y[i] * μ[M][i] * (1 - T[M])),
     )
     
     @constraint(
         model,
         tol_u[i in 1:S, M in 1:m],
-        sum(x[i, j] * V[M][j] for j in 1:B) <= y[i] * μ[M][i] * (1 + T[M]),
+        sum(x[i, j] * V[M][j] for j in 1:B) <= (y[i] * μ[M][i] * (1 + T[M])),
     )
 
     # Yᵢμₘⁱ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vⱼᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
@@ -99,10 +100,5 @@ function build_model(instance::Instance)
     )
 
     # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 5
-
-
-    write_to_file(model, "modelo_aparentementebueno.lp")
-    write_to_file(model, "modelo_aparentementebueno.mps")
-    write_to_file(model, "modelo_aparentementebueno.nl")
     return model
 end
