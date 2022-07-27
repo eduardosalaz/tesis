@@ -12,7 +12,7 @@ function constructive(instance)
     X = Matrix{Int64}[]
     Y = Vector{Int64}[]
     D = instancia.D
-    method = :random
+    method = :pdisp
     Weight = 0
     Y = localize_facs(instancia, method)
     if method ≠ :relax
@@ -31,8 +31,8 @@ function constructive(instance)
     end
 
     solution = Solution(instancia, X, Y_bool, Weight)
-    plot_solution(solution, "plot_5_cons_random")
-    write_solution(solution, "sol_5_cons_random.jld2")
+    plot_solution(solution, "plot_5_pdisp_random")
+    write_solution(solution, "sol_5_pdisp_random.jld2")
 end
 
 function localize_facs(instance,method)
