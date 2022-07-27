@@ -1,4 +1,4 @@
-using CPLEX, Gurobi, Cbc, JuMP, JLD2
+using CPLEX, SCIP, Cbc, JuMP, JLD2, HiGHS
 using Types
 
 function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
