@@ -25,6 +25,17 @@ function isFactible(solution::Solution)
 
     counts_k = []
 
+
+    for y in eachindex(Y)
+        if Y[y] == 1
+            assignments_y = X[y, :]
+            if !any(x->x==1, assignments_y)
+                println("Violando asignación de Y en: $y")
+                number_constraints_violated +=1
+            end
+        end
+    end
+
     for k_type in 1:K
         indices_k_type = Sk[k_type]
         count_k_type = 0
@@ -85,7 +96,8 @@ end
 
 
 function main()
-    path = ARGS[1]
+    # path = ARGS[1]
+    path = "sol_5_pdisp_random.jld2"
     solution = read_solution(path)
     factible = isFactible(solution)
     println(factible)
