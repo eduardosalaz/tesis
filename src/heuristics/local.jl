@@ -132,38 +132,30 @@ function simple_move_bu(solution::Solution, cons_v)
     B = instance.B
     S = instance.S
     max_steps = 10
+    X = solution.X
+    original_X = solution.X
     step = 1
     while original_cons ≠ 0
-        X = solution.X
         for j in 1:B
             ψ = j
-            original_b = findall(x->x==1, X[:,j])[1] # asignacion inicial de la sucursal
+            # original_b = findall(x->x==1, original_X[:,j])[1] # asignacion inicial de la sucursal
             for i in 1:S
-                if i ≠ original_b
-                    new_cons, newSol = move_bu(solution, original_b, i, j)
-                    a = 1
-                    if new_cons < original_cons
-                        if new_cons == 0
-                            println("Solucion factible, no hay constraints violadas")
-                        end
-                        original_cons = new_cons
-                        τ = i
-                        best_ψiτ = (ψ, original_b, τ)
-                        solution = newSol
-                        println("new_cons: $new_cons")
-                        println("pichula")
-                        println("best tuple: $best_ψiτ")
-                    else
-                        break
+                new_cons, newSol = move_bu(solution, i, j)
+                if new_cons < original_cons
+                    if new_cons == 0
+                        println("Solucion factible, no hay constraints violadas")
                     end
-                end
+                    original_cons = new_cons
+                    τ = i
+                    best_ψiτ = (ψ, i, τ)
+                    solution = newSol
+                    original_X = newSol.X
+                    println("new_cons: $new_cons")
                 step += 1
+                println("cambiando de S")
             end
+            println("cambiando de B")
         end
-        if step > max_steps
-            break
-        end
-        println(step)
     end
     return solution
 end
@@ -179,15 +171,19 @@ function evalWeight(X, D)
 end
 
 
-function move_bu(solution::Solution, original_b, i, j)
+function move_bu(solution::Solution, i, j)
     # movimiento simple de basic unit
     X = solution.X
     Y = solution.Y
     instance = solution.Instance
     D = instance.D
     diff_X = X
-    diff_X[original_b, j] = 0
+    diff_X[:, j].= 0
+    println("i: ", i)
+    println(diff_X[:,j])
     diff_X[i, j] = 1
+    println()
+    println(diff_X[:,j])
     Weight = evalWeight(diff_X, D)
     newSol = Solution(instance, diff_X, Y, Weight)
     factible, cons_v = isFactible(newSol, false)
@@ -205,8 +201,8 @@ function main()
     path = "sol_34_pdisp.jld2"
     solution = read_solution(path)
     newSol = localSearch(solution)
-    write_solution(newSol, "sol_34_ls3_pdisp.jld2")
-    plot_solution(newSol, "plot_sol_34_ls3_pdisp.png")
+    write_solution(newSol, "sol_34_ls8_pdisp.jld2")
+    plot_solution(newSol, "plot_sol_34_ls8_pdisp.png")
 end
 
 main()
