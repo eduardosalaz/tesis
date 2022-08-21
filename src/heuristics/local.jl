@@ -29,11 +29,11 @@ function isFactible(solution::Solution, verbose=true)
     for y in eachindex(Y)
         if Y[y] == 1
             assignments_y = X[y, :]
-            if !any(x->x==1, assignments_y)
+            if !any(x -> x == 1, assignments_y)
                 if verbose
                     println("Violando asignación de Y en: $y")
                 end
-                number_constraints_violated +=1
+                number_constraints_violated += 1
             end
         end
     end
@@ -70,7 +70,7 @@ function isFactible(solution::Solution, verbose=true)
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
                     println("μ: ", Y[i] * μ[m][i] * (1 - T[m]))
-                    println("V: ", sum(X[i,j] * V[m][j] for j in 1:B))
+                    println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
             end
@@ -78,7 +78,7 @@ function isFactible(solution::Solution, verbose=true)
                 if verbose
                     println("violando V superior en i: $i y m: $m")
                     println("μ: ", Y[i] * μ[m][i] * (1 + T[m]))
-                    println("V: ", sum(X[i,j] * V[m][j] for j in 1:B))
+                    println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
             end
@@ -89,17 +89,17 @@ function isFactible(solution::Solution, verbose=true)
         if sum(X[i, j] * R[j] for j in 1:B) > β[i]
             if verbose
                 println("violando riesgo en $i")
-                println("β: ",  β[i])
+                println("β: ", β[i])
                 println("R: ", sum(X[i, j] * R[j] for j in 1:B))
             end
             number_constraints_violated += 1
         end
     end
     println("Restricciones violadas: $number_constraints_violated")
-        # intercambiar nodo i por nodo j 
-        # mover nodo de territorio i a territorio j
-        # apagar un branch y prender otro branch
-        # checar ILS ??
+    # intercambiar nodo i por nodo j 
+    # mover nodo de territorio i a territorio j
+    # apagar un branch y prender otro branch
+    # checar ILS ??
     if number_constraints_violated ≠ 0
         return false, number_constraints_violated
     else
@@ -118,6 +118,14 @@ function localSearch(solution::Solution)
     return newSol
 end
 
+struct simpleMove
+    newConstraints::Int64
+    newSolution::Solution
+    original_branch::Int64
+    new_branch::Int64
+    bu::Int64
+end
+
 function simple_move_bu(solution::Solution, cons_v)
     # este movimiento se define de la siguiente manera:
     # Muevo una unidad básica ψ de un territorio i a un territorio τ
@@ -125,38 +133,45 @@ function simple_move_bu(solution::Solution, cons_v)
     # El movimiento consiste en iterar para cada j dentro de B:
     #   X[τ, j] = 1, donde τ es distinto de i
     # Se evalua cada solucion buscando la minimización del número de constraints violadas
-    original_cons = cons_v
-    original_sol = solution
-    instance = solution.Instance
-    best_ψiτ = (1,1,1)
-    B = instance.B
-    S = instance.S
-    max_steps = 10
-    X = solution.X
     original_X = solution.X
-    step = 1
-    while original_cons ≠ 0
+    original_w = solution.Weight
+    original_cons = cons_v
+    instance = solution.Instance
+    factible = false
+    S = instance.S
+    B = instance.B
+    D = instance.D
+    max_iters = 10_000
+    iter = 0
+    while !factible
+        if iter > max_iters
+            break
+        end
         for j in 1:B
-            ψ = j
-            # original_b = findall(x->x==1, original_X[:,j])[1] # asignacion inicial de la sucursal
+            moves = simpleMove[]
+            i_original = findall(x -> x == 1, original_X[:, j])[1] # el nodo asociado inicialmente a la BU
             for i in 1:S
-                new_cons, newSol = move_bu(solution, i, j)
-                if new_cons < original_cons
-                    if new_cons == 0
-                        println("Solucion factible, no hay constraints violadas")
-                    end
-                    original_cons = new_cons
-                    τ = i
-                    best_ψiτ = (ψ, i, τ)
-                    solution = newSol
-                    original_X = newSol.X
-                    println("new_cons: $new_cons")
-                step += 1
-                println("cambiando de S")
+                if i ≠ i_original
+                    iter += 1
+                    new_cons_v, new_sol = move_bu(solution, j, i_original, i)
+                    move = simpleMove(new_cons_v, new_sol, i_original, i, j)
+                    push!(moves, move)
+                end
             end
-            println("cambiando de B")
+            sort!(moves, by=move -> move.newConstraints) # ordena en base a las menores constraints violadas
+            bestMove = moves[1] # obten el mejor movimiento
+            if bestMove.newConstraints < original_cons
+                original_X = bestMove.newSolution.X # actualizamos la X
+                original_cons = bestMove.newConstraints
+                solution = bestMove.newSolution
+                if bestMove.newConstraints == 0 # empezamos a minimizar entonces el valor de la funcion objetivo
+                    @info "Factible solution"
+                    factible = true
+                end
+            end
         end
     end
+
     return solution
 end
 
@@ -170,22 +185,71 @@ function evalWeight(X, D)
     return Weight
 end
 
+#=
+for j in 1:B
+           i_original = findall(x->x==1, X[:,j])[1]
+           for i in 1:S
+               if i ≠ i_original
+                   X_copy = copy(X)
+                   X_copy[i_original, j] = 0
+                   X_copy[i, j] = 1
+                   count += 1
+                   if count < max_count
+                       println(X_copy)
+                       println()
+                       println(X)
+                   end
+               end
+           end
+       end
+=#
 
-function move_bu(solution::Solution, i, j)
+#=
+contador = 0
+for j in 1:B
+    i_original = findall(x->x==1, X[:,j])[1]
+    @show j, i_original
+    for i in 1:S
+        if i ≠ i_original
+            X_copy = copy(X)
+            X_copy[i_original, j] = 0
+            X_copy[i, j] = 1
+            Y_copy = copy(Y)
+            contador += 1
+            for aux in 1:S
+                if any(entry->entry==1, X_copy[aux,:]) # revisando cada fila si hay un 1, si hay entonces Y[i] se usa
+                    Y_copy[aux] = 1
+                else # si no hay ni un solo 1, entonces Y[i] = 0
+                    Y_copy[aux] = 0
+                end
+            end
+        end
+    end
+end
+=#
+
+
+function move_bu(solution::Solution, j, previous, new)
     # movimiento simple de basic unit
     X = solution.X
     Y = solution.Y
     instance = solution.Instance
+    S, B = size(X)
     D = instance.D
-    diff_X = X
-    diff_X[:, j].= 0
-    println("i: ", i)
-    println(diff_X[:,j])
-    diff_X[i, j] = 1
-    println()
-    println(diff_X[:,j])
-    Weight = evalWeight(diff_X, D)
-    newSol = Solution(instance, diff_X, Y, Weight)
+    X_copy = copy(X)
+    Y_copy = copy(Y)
+    X_copy[previous, j] = 0
+    X_copy[new, j] = 1
+    Weight = evalWeight(X_copy, D)
+    # ahora hay que revisar que Y no haya cambiado
+    for i in 1:S
+        if any(entry -> entry == 1, X_copy[i, :]) # revisando cada fila si hay un 1, si hay entonces Y[i] se usa
+            Y_copy[i] = 1
+        else # si no hay ni un solo 1, entonces Y[i] = 0
+            Y_copy[i] = 0
+        end
+    end
+    newSol = Solution(instance, X_copy, Y_copy, Weight)
     factible, cons_v = isFactible(newSol, false)
     if factible
         return 0, newSol
@@ -198,11 +262,11 @@ end
 
 function main()
     # path = ARGS[1]
-    path = "sol_34_pdisp.jld2"
+    path = "sol_5_pdisp.jld2"
     solution = read_solution(path)
     newSol = localSearch(solution)
-    write_solution(newSol, "sol_34_ls8_pdisp.jld2")
-    plot_solution(newSol, "plot_sol_34_ls8_pdisp.png")
+    write_solution(newSol, "sol_5_ls_pdisp.jld2")
+    plot_solution(newSol, "plot_sol_5_ls_pdisp.png")
 end
 
 main()

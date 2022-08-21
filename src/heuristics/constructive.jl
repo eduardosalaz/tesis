@@ -31,8 +31,8 @@ function constructive(instance)
     end
 
     solution = Solution(instancia, X, Y_bool, Weight)
-    plot_solution(solution, "plot_34_pdisp.png")
-    write_solution(solution, "sol_34_pdisp.jld2")
+    plot_solution(solution, "plot_5_pdisp.png")
+    write_solution(solution, "sol_5_pdisp.jld2")
 end
 
 function localize_facs(instance,method)
@@ -291,4 +291,4 @@ end
 
 
 # constructive(ARGS[1])
-constructive("instances\\experiments10\\inst_34_25_11_9.jld2")
+constructive("instances\\experiments10\\inst_5_25_11_9.jld2")
