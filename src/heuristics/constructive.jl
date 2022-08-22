@@ -90,6 +90,30 @@ function naive_assign_bu(instance, Y)
     D = instance.D
     P = instance.P
     X = zeros(Int, S, B)
+
+    for j in 1:B
+        for i in 1:S
+        end
+    end
+
+
+    unos = findall(x->x==1, X)
+
+    display("text/plain", X)
+    return X
+end
+
+function naive_assign_bu(instance, Y)
+    # i haven't been using Y
+    branches_used = findall(x->x==1, Y)
+    @show branches_used
+    # BUT, the entries in X must reflect the original D matrix
+    B = instance.B
+    S = instance.S
+    K = instance.K
+    D = instance.D
+    P = instance.P
+    X = zeros(Int, S, B)
     centers_used = 0
 
     minimums = Tuple{Int, Tuple{Int, Int}}[]

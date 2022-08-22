@@ -34,7 +34,14 @@ function isFactible(solution::Solution, verbose=true)
                     println("Violando asignación de Y en: $y")
                 end
                 number_constraints_violated += 1
+                # penalizar más aquí?
             end
+        end
+    end
+
+    if sum(Y) > P
+        if verbose
+            println("Violando número de centros asignados ", sum(Y))
         end
     end
 
@@ -107,12 +114,51 @@ function isFactible(solution::Solution, verbose=true)
     end
 end
 
+#=
+for y in eachindex(Y2)
+               if Y2[y] == 1
+                   assignments_y = X2[y, :]
+                   if !any(x -> x == 1, assignments_y)
+                       println("Violando asignación de Y en: $y")
+                       nearest_bu = argmin(D[y,:])
+                       println(nearest_bu)
+                       X3[:,nearest_bu].=0
+                       X3[y, nearest_bu] = 1
+                   end
+               end
+           end
+=#
+
+function assigntounused(solution::Solution) # en esta funcion agarramos las Y[i] = 1 pero que no tienen asignacion y hacemos una asignacion simple
+    number_constraints_violated = 0
+    instance = solution.Instance
+    Y = solution.Y
+    X = solution.X
+    X2 = copy(X)
+    D = instance.D
+    for y in eachindex(Y)
+        if Y[y] == 1
+            assignments_y = X2[y, :]
+            if !any(x -> x == 1, assignments_y)
+                nearest_bu = argmin(D[y,:])
+                X2[:,nearest_bu].=0
+                X2[y, nearest_bu] = 1 # asignamos a la bu mas cercana para no dejar sola la branch
+            end
+        end
+    end
+    weight = evalWeight(X2, D)
+    newSol = Solution(instance, X2, Y, weight)
+    return newSol
+end
+
 function localSearch(solution::Solution)
     factible, cons_v = isFactible(solution, false)
+    solution2 = assigntounused(solution)
+    factibleAfter, cons_v_after = isFactible(solution2, false)
     move = :simple_move_bu
-    if !factible
+    if !factibleAfter
         if move == :simple_move_bu
-            newSol = simple_move_bu(solution, cons_v)
+            newSol = simple_move_bu(solution2, cons_v_after)
         end
     end
     return newSol
@@ -126,6 +172,15 @@ struct simpleMove
     bu::Int64
 end
 
+function interchange_bus() # en este movimiento se intercambian dos BUs i y j de territorio
+    
+end
+
+# en este movimiento hay que apagar una branch completa
+function moveBranch()
+end
+
+
 function simple_move_bu(solution::Solution, cons_v)
     # este movimiento se define de la siguiente manera:
     # Muevo una unidad básica ψ de un territorio i a un territorio τ
@@ -133,15 +188,16 @@ function simple_move_bu(solution::Solution, cons_v)
     # El movimiento consiste en iterar para cada j dentro de B:
     #   X[τ, j] = 1, donde τ es distinto de i
     # Se evalua cada solucion buscando la minimización del número de constraints violadas
-    original_X = solution.X
-    original_w = solution.Weight
+    original_solution = solution
+    original_X = original_solution.X
+    original_w = original_solution.Weight
     original_cons = cons_v
-    instance = solution.Instance
+    instance = original_solution.Instance
     factible = false
     S = instance.S
     B = instance.B
     D = instance.D
-    max_iters = 10_000
+    max_iters = 100
     iter = 0
     while !factible
         if iter > max_iters
@@ -171,7 +227,6 @@ function simple_move_bu(solution::Solution, cons_v)
             end
         end
     end
-
     return solution
 end
 
@@ -265,8 +320,8 @@ function main()
     path = "sol_5_pdisp.jld2"
     solution = read_solution(path)
     newSol = localSearch(solution)
-    write_solution(newSol, "sol_5_ls_pdisp.jld2")
-    plot_solution(newSol, "plot_sol_5_ls_pdisp.png")
+    write_solution(newSol, "sol_5_lscorregida3_pdisp.jld2")
+    plot_solution(newSol, "plot_sol_5_lscorregida3_pdisp.png")
 end
 
 main()
