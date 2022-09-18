@@ -1,9 +1,9 @@
 using CPLEX, Gurobi, Cbc, JuMP, JLD2, HiGHS
 using Types
 
-function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
+function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
     set_optimizer(model, solver.Optimizer)
-    set_time_limit_sec(model, 300.0) # 300 seconds timeout
+    set_time_limit_sec(model, 600.0) # 10 mins timeout
     if !verbose
         set_silent(model)
     end
@@ -29,7 +29,7 @@ function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
     return X, Y, obj_value
 end
 
-function build_model(instance::Instance)
+function build_2model(instance::Instance)
     B = instance.B
     S = instance.S
     D = instance.D
@@ -69,10 +69,6 @@ function build_model(instance::Instance)
 
     # ∑ i ∈ S Yᵢ = p
 
-    @constraint(model, risk[i in 1:S], sum(x[i, j] * R[j] for j in 1:B) <= β[i])
-
-    # ∑ j ∈ B Xᵢⱼ Rⱼ ≤ βᵢ, ∀ i ∈ S
-
     @constraint(
         model,
         tol_l[i in 1:S, M in 1:m],
@@ -100,5 +96,6 @@ function build_model(instance::Instance)
     )
 
     # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 5
+
     return model
 end

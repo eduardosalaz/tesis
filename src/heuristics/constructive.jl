@@ -1,6 +1,7 @@
 using Distances
 using Types
-using JuMP, Cbc
+using JuMP
+using Gurobi
 using Random
 
 function remove!(V, item)
@@ -12,7 +13,7 @@ function constructive(instance)
     X = Matrix{Int64}[]
     Y = Vector{Int64}[]
     D = instancia.D
-    method = :pdisp
+    method = :relax
     Weight = 0
     Y = localize_facs(instancia, method)
     if method ≠ :relax
@@ -23,7 +24,7 @@ function constructive(instance)
     else
         Y_bool = Y
     end
-    println(Y_bool)
+    # println(Y_bool)
     X = naive_assign_bu(instancia, Y_bool)
     indices = findall(x -> x == 1, X)
     for indice in indices
@@ -31,8 +32,8 @@ function constructive(instance)
     end
 
     solution = Solution(instancia, X, Y_bool, Weight)
-    plot_solution(solution, "plot_5_pdisp.png")
-    write_solution(solution, "sol_5_pdisp.jld2")
+    plot_solution(solution, "plot_1n_200_relax.png")
+    write_solution(solution, "sol_1n_200_relax.jld2")
 end
 
 function localize_facs(instance,method)
@@ -99,7 +100,7 @@ function naive_assign_bu(instance, Y)
 
     unos = findall(x->x==1, X)
 
-    display("text/plain", X)
+    # display("text/plain", X)
     return X
 end
 
@@ -142,7 +143,7 @@ function naive_assign_bu(instance, Y)
 
     unos = findall(x->x==1, X)
 
-    display("text/plain", X)
+    # display("text/plain", X)
 
 
     # Notas:
@@ -152,6 +153,126 @@ function naive_assign_bu(instance, Y)
     # como hacer que se seleccionen facilities tomando en cuenta Lk
 
     return X
+end
+
+function oppCostAssignment(Y, instance)
+    D = instance.D
+    diff = copy(D)
+    X = copy(D)
+    X .= 0
+    for i in 1:B
+        minimal = minimum(D[:,i])
+        diff[:,i] .= D[:,i] .- minimal
+    end
+
+    todos = false
+    while !todos
+        ok = false
+        contador = 0
+        indices = []
+        assignments_y = findall(y->y==1, Y)
+        while !ok
+            indices = argmax(diff)
+            diff[indices] = 0
+            X_copy = copy(X)
+            pasar = restricciones(X_copy, Y, instance)
+            pasa = pasar == 0 ? true: false
+            if indices[1] ∉ assignments_y # solo usar las Y prendidas aunque a lo mejor considerar cuales violan menos restricciones?
+                pasa = false
+            end
+            if pasa
+                ok = true
+            else
+                contador += 1
+                if contador == 5
+                    ok = true # mandarlo como quiera aunque se violen
+                end
+            end
+        end
+        X[indices] = 1
+        columna = indices[2]
+        diff = diff[:, 1:end .≠ columna] # remover de dif la columna
+        for i in 1:B
+            todos = true
+            if(any(x-> x ≠ 1, X[:,i]))
+                todos = false
+            end
+        end
+    end
+    return X
+end
+
+function restricciones(X_copy, Y_copy, instance)
+    Sk = instance.Sk
+    Lk = instance.Lk
+    Uk = instance.Uk
+    Y = Y_copy
+    X = X_copy
+    Lk = instance.Lk
+    Uk = instance.Uk
+    Sk = instance.Sk
+    μ = instance.μ
+    T = instance.T
+    M = instance.M
+    S = instance.S
+    P = instance.S
+    B = instance.B
+    β = instance.β
+    R = instance.R
+    K = instance.K
+    V = instance.V
+    number_constraints_violated = 0
+
+    counts_k = []
+    if sum(Y) > P
+        if verbose
+            println("Violando número de centros asignados ", sum(Y))
+        end
+    end
+    for k_type in 1:K
+        indices_k_type = Sk[k_type]
+        count_k_type = 0
+        for indice in indices_k_type
+            if Y[indice] == 1
+                count_k_type += 1
+            end
+        end
+        push!(counts_k, count_k_type)
+    end
+
+    for k in 1:K
+        if counts_k[k] > Uk[k]
+            if verbose
+                println("Violando Uk en $k")
+            end
+            number_constraints_violated += 1
+        end
+    end
+    for i in 1:S
+        for m in 1:M
+            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))    
+                if verbose
+                    println("violando V superior en i: $i y m: $m")
+                    println("μ: ", Y[i] * μ[m][i] * (1 + T[m]))
+                    println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
+                end
+                number_constraints_violated += 1
+            end
+        end
+    end
+    for i in 1:S
+        if sum(X[i, j] * R[j] for j in 1:B) > β[i]
+            if verbose
+                println("violando riesgo en $i")
+                println("β: ", β[i])
+                println("R: ", sum(X[i, j] * R[j] for j in 1:B))
+            end
+            number_constraints_violated += 1
+        end
+    end
+    return number_constraints_violated
+end
+
 
     # no empezar con la columna 1, de manera lexicografica
     # puede sesgar 
@@ -161,6 +282,126 @@ function naive_assign_bu(instance, Y)
     # agarrar el minimo de los minimos
     # o agarrar el maximo de los minimos para asegurar que ya asigne el peor
     # otro criterio: el costo de oportunidad
+    #=
+    si yo le pongo la BU1 al centro i me cuesta x
+    si yo le pongo la BU1 al centro j me cuesta x + 30
+    diferencia = 30
+    si yo le pongo la BU2 al centro i me cuesta y
+    si yo le pongo la BU2 al centro j me cuesta y + 5
+    escojo BU1 al centro i ya que la diferencia es mayor
+
+    diff = copy(D)
+    for i in 1:B
+        minimal = minimum(D[:,i])
+        diff[:,i] .= D[:,i] .- minimal
+    end
+
+    todos = false
+    diff_original = copy(diff)
+    while !todos
+        ok = false
+        contador = 0
+        indices = []
+        while !ok
+            maximo, indices = encontrar_maximo(diff)
+            diff[indices] = 0
+            X_copy = copy(X)
+            pasar = restricciones(X_copy)
+            pasa = pasar == 0 ? true: false
+            if pasa
+                ok = true
+            else
+                contador += 1
+                if contador == 5
+                    ok = true # mandarlo como quiera
+                end
+            end
+        end
+        X[indices] = 1
+        remover de diff la columna de indices
+        columna = indices[2]
+        diff = diff[:, 1:end ≠ columna]
+        for i in 1:B
+            todos = true
+            if(any(x-> x ≠ 1, X[:,i]))
+                todos = false
+            end
+        end
+    end
+
+    function restricciones(X_copy, Y_copy, instance)
+        Sk = instance.Sk
+        Lk = instance.Lk
+        Uk = instance.Uk
+        Y = Y_copy
+        X = X_copy
+        Lk = instance.Lk
+        Uk = instance.Uk
+        Sk = instance.Sk
+        μ = instance.μ
+        T = instance.T
+        M = instance.M
+        S = instance.S
+        P = instance.S
+        B = instance.B
+        β = instance.β
+        R = instance.R
+        K = instance.K
+        V = instance.V
+
+        counts_k = []
+        if sum(Y) > P
+            if verbose
+                println("Violando número de centros asignados ", sum(Y))
+            end
+        end
+        for k_type in 1:K
+            indices_k_type = Sk[k_type]
+            count_k_type = 0
+            for indice in indices_k_type
+                if Y[indice] == 1
+                    count_k_type += 1
+                end
+            end
+            push!(counts_k, count_k_type)
+        end
+
+        for k in 1:K
+            if counts_k[k] > Uk[k]
+                if verbose
+                    println("Violando Uk en $k")
+                end
+                number_constraints_violated += 1
+            end
+        end
+        for i in 1:S
+            for m in 1:M
+                if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))    
+                    if verbose
+                        println("violando V superior en i: $i y m: $m")
+                        println("μ: ", Y[i] * μ[m][i] * (1 + T[m]))
+                        println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
+                    end
+                    number_constraints_violated += 1
+                end
+            end
+        end
+        for i in 1:S
+            if sum(X[i, j] * R[j] for j in 1:B) > β[i]
+                if verbose
+                    println("violando riesgo en $i")
+                    println("β: ", β[i])
+                    println("R: ", sum(X[i, j] * R[j] for j in 1:B))
+                end
+                number_constraints_violated += 1
+            end
+        end
+    end
+
+      tope = P / 3
+
+      las que quedan volando, ponlas en donde se violen menos restricciones
+    =#
     # diferencia de la segunda con la primera y eliges con eso
     # al principio las restricciones no se violan
     # al final, las restricciones se violan y la asigno a una facility muy lejana
@@ -187,10 +428,10 @@ function naive_assign_bu(instance, Y)
     # tengo que quitar las filas que no escogi en Y primero D[Y, :]
     # each column represents a facility
     # meter al pseudocodigo
-end
 
 function pdisp(instance)
     P = instance.P
+    findmax
     s_coords = instance.S_coords
     D = instance.D
     S = instance.S
@@ -254,7 +495,7 @@ function relax_init(instance)
     m = instance.M
     k = instance.K
 
-    model = Model(Cbc.Optimizer) # THIS IS WHERE THE FUN BEGINS
+    model = Model(Gurobi.Optimizer) # THIS IS WHERE THE FUN BEGINS
 
     @variable(model, x[1:S, 1:B], lower_bound=0, upper_bound=1)
     # num suc and num bu, Xᵢⱼ
@@ -314,5 +555,5 @@ function relax_init(instance)
 end
 
 
-# constructive(ARGS[1])
-constructive("instances\\experiments10\\inst_5_25_11_9.jld2")
+constructive(ARGS[1])
+# constructive("instances\\experiments10\\inst_5_25_11_9.jld2")
