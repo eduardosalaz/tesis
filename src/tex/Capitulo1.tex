@@ -1,0 +1,57 @@
+\chapter{Este es un capítulo}
+
+\section{Esta es una sección}
+
+Quiero escribir un texto largo para ver la sangría que ha sido colocada en el formato del párrafo. También ha sido declarado el espacio entre párrafos, pero puedes agregar espacio adicional cuando se requiera (entre algunos objetos o entornos quizá llegue a ser necesario).
+
+Y aquí quiero escribir otro texto largo para ver el espacio entre párrafos colocado por defecto.
+
+\subsection{Entornos}
+
+Ahora mostraremos cómo quedan algunos entornos:
+
+\paragraph{Una tabla:} El estilo de tesis de la UANL requiere que la descripción de las tablas sea de tipo encabezado, así que recuerda colocar el {\tt caption} antes que la tabla.
+
+\begin{table}[ht]
+	\centering
+	\caption{Una tablita}
+	\label{tab:una-tablita}
+		\begin{tabular}{|c|c|}
+			\hline
+			a & b \\
+			\hline
+			c & d \\
+			\hline
+		\end{tabular}
+\end{table}
+
+\paragraph{Una figura:} Ya ha sido cargado el paquete {\tt graphicx} en {\tt fime.cls}, así que podemos incluir gráficas. Coloca todas tus figuras en la carpeta {\tt Figuras} ya que esa es la ubicación en que las buscará {\tt fime.cls}, además, de esa manera tendrás un poco más de orden en tus archivos. El estilo de tesis de la UANL requiere que la descripción de las figuras sea al calce, así que recuerda colocar el {\tt caption} después que la figura.
+
+\begin{figure}[htp]
+	\centering
+		\includegraphics[width=4cm]{uanl.eps}
+	\caption{El escudo de la UANL}
+	\label{fig:uanl}
+\end{figure}
+
+\subsection{Matemáticas}
+
+Ahora mostraremos cómo quedan algunos objetos matemáticos: una ecuación y una definición.
+
+La ecuación \eqref{eq:obvia} es obvia.
+\begin{equation}
+	x + x = 2x
+	\label{eq:obvia}
+\end{equation}
+
+Ahora una definición. En {\tt fime.cls} se definen otros entornos como teorema, lema, proposición, ejemplo, etc. Echa un vistazo y si falta el que necesitas, ¡agrégalo!
+
+\begin{definicion}
+	Un número entero es primo si y sólo si tiene exactamente cuatro divisores distintos.
+\end{definicion}
+
+Agreguemos otro entorno para que se vea la numeración de estos.
+
+\begin{teorema}[Fermat]
+	No existen $x,y,z \in \mathbb{Z}$ (que no sean los triviales) tales que $x^n + y^n = z^n$ para $n \geq 3$.
+\end{teorema}

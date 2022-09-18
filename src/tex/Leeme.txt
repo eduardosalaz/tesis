@@ -1,0 +1,87 @@
+   +--~---~--~---~-----~-------~----~--~---~---~-----~----+
+   | Una clase LaTeX para la tesis de posgrado: FIME-UANL |
+   +---~----~--~---~----~---~---~--~---~-----~----~-------+
+
+
+--- Propósito ---
+
+El archivo fime.cls provee una clase LaTeX para la tesis del
+Departamento de Estudios de Posgrado (DEP) de la Facultad de
+Ingeniería Mecánica y Eléctrica (FIME) de la Universidad
+Autónoma de Nuevo León (UANL) según la guía de estilo vigente.
+
+El archivo MiTesis.tex es, más que un ejemplo, una guía de cómo
+fueron declaradas algunas cosas, por lo que conviene leerlo.
+Más aún, puede usarse como base para su propia tesis. También
+conviene conservar Resumen.tex y Autobiografía.tex y
+modificarlos para su tesis.
+
+Los archivos pueden distribuirse libremente y pueden ser
+modificados para otros usos (en cuyo caso no estaría nada mal
+atribuir y agradecer el esfuerzo). Sin embargo, si el uso será
+una tesis de posgrado de la UANL, deberá tenerse cuidado al
+modificar fime.cls pues el resultado deberá seguir respetando
+el <<Manual de estilo para presentacion de tesis de postgrado>>
+de la UANL (márgenes, paginado, estilo de títulos, estilo de
+párrafos, etcétera).
+
+
+--- Figuras ---
+
+Las figuras deberán incluirse dentro de la carpeta Figuras/
+ya que es allí donde las buscará la clase fime.cls.
+
+
+--- Bibliografía ---
+
+Han sido agregados al paquete dos archivos de estilo
+bibliográfico para la herramienta BibTeX para aquellos que
+disfrutan del uso de este poderoso gestor de bibliografía. El
+uso de BibTeX no es obligatorio.
+
+Los archivos de estilo bibliográfico (mighelbib.bst y
+mighelnat.bst) están diseñados según los estándares del idioma
+español, por lo que pueden usarse para otros propósitos.
+
+El estilo bibliográfico "mighelbib" es numérico, es decir cita
+con un número entre corchetes, por ejemplo una cita
+\cite{Dan82} genera una etiqueta del tipo [13].
+
+El estilo bibliográfico "mighelnat" es tipo autor-año y
+requiere que el paquete natbib sea cargado para su correcto
+funcionamiento, cita con el apellido del autor y el año, por
+ejemplo una cita \citet{Dan82} genera una etiqueta del tipo
+Dantzig (1982), mientras que una cita \citep{Dan82} genera una
+etiqueta del tipo (Dantzig, 1982).
+
+
+--- Formato ---
+
+La clase fime.cls requiere el paquete titlesec (el cual se
+encarga del formato), por lo que se incluyen los archivos
+titlesec.sty y ttlps.def, así no tendrá qué instalarse el
+paquete si no se desea, sino sólo conservar dichos archivos
+en la carpeta en la cual se esté trabajando.
+
+
+--- Contacto ---
+
+Le agradezco cualquier comentario, duda o sugerencia para la
+mejora del archivo:
+
+Miguel Mata Pérez
+miguel.matapr@uanl.edu.mx
+
+
+--- Versión ---
+
+Última actualización: 5 de marzo de 2020.
+
+[ 5 mar 20] Actualización de formato.
+[30 ene 15] Corrección del formato de varias secciones.
+[ 5 ene 15] Corrección en portadas y codificado en UTF-8.
+[15 abr 14] Corregida una nomenclatura en las portadas.
+[26 sep 11] Corregida una omisión de estilo en los entornos.
+[ 7 abr 09] Agregado mighelnat.bst para bibliografía autor-año.
+[13 dic 08] Corregido un error generado por títulos largos.
+

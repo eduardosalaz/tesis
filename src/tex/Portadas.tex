@@ -1,0 +1,125 @@
+%%%%%%%%%%%%%%%%%%%%%%%%
+% Primer portada: UANL %
+%%%%%%%%%%%%%%%%%%%%%%%%
+\thispagestyle{empty}
+
+\begin{scshape}
+\begin{center}
+	{\Large \uanl} \\[5mm]
+	{\large \fime} \\[5mm]
+	{\large \depg}
+	\vskip15mm
+	\includegraphics[height=55mm]{uanl}
+	\vskip12mm
+	\begin{tabular}{p{11cm}}
+		\centering
+		{\large \titulo}
+	\end{tabular}
+	\vskip7mm
+	{por}\\[7mm]
+	{\large \autor}\\[7mm]
+        % Si en tu posgrado la tesis no es opcional (como sí lo es en licenciatura), no modifiques esta línea:
+	{como requisito parcial para obtener el grado de}\\[3mm]
+	\MakeUppercase{\grado}\\
+	\orientacion
+	\vfill
+	\fecha
+\end{center}
+\end{scshape}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%
+% Segunda portada: FIME %
+%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\thispagestyle{empty}
+
+\begin{scshape}
+\begin{center}
+	{\Large\uanl} \\[5mm]
+	{\large\fime} \\[5mm]
+	{\large\depg}
+	\vskip16mm
+	\includegraphics[height=50mm]{fime}
+	\vskip16mm
+	\begin{tabular}{p{11cm}}
+		\centering
+		{\large \titulo}
+	\end{tabular}
+	\vskip7mm
+	{por}\\[7mm]
+	{\large \autor}\\[7mm]
+        % Si en tu posgrado la tesis no es opcional (como sí lo es en licenciatura), no modifiques esta línea:
+	{como requisito parcial para obtener el grado de}\\[3mm]
+	\MakeUppercase{\grado}\\
+	\orientacion
+	\vfill
+	\fecha
+\end{center}
+\end{scshape}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Carta del comité de tesis %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\thispagestyle{empty}
+\enlargethispage{8mm}
+
+{\renewcommand{\baselinestretch}{1.1}\selectfont
+\begin{center}\vspace*{-25mm}\hspace*{-10mm}
+\begin{minipage}{170.5mm}
+\hspace{-1.5mm}\includegraphics[height=20mm]{uanl}\hfill\raise1mm\hbox{\includegraphics[height=18.5mm]{fime}}
+\hrule\vspace{0.5mm}
+\scalebox{.5}{\MakeUppercase{\uanl}}\hfill\scalebox{.5}{\MakeUppercase{\fime}}\medskip
+\end{minipage}
+\vskip4mm{\sc\large\uanl\\\fime\\[3pt]\depg}\vskip6mm
+\end{center}
+
+Los miembros del Comité de Tesis recomendamos que la Tesis <<\titulo>>, realizada por el alumno \autor, con número de matrícula \matricula, sea aceptada para su defensa como requisito para obtener el grado de \grado\orientacion.
+\ifdoctorado\vskip10mm\else\vskip8mm\fi
+
+\begin{center}
+El Comité de Tesis\\
+\ifdoctorado\vskip12mm\else\vskip25mm\fi
+\ifdoctorado{%%%
+\begin{tabular}{p{37mm}p{21mm}p{12mm}p{21mm}p{37mm}}
+	\cline{2-4}
+	& \multicolumn{3}{c}{\asesor} & \\
+	& \multicolumn{3}{c}{Asesor}  & \\[15mm]
+	\cline{1-2} \cline{4-5}
+	\multicolumn{2}{c}{\revisorA} & & \multicolumn{2}{c}{\revisorB} \\
+	\multicolumn{2}{c}{Revisor}   & & \multicolumn{2}{c}{Revisor}   \\[17mm]
+	\cline{1-2} \cline{4-5}
+	\multicolumn{2}{c}{\revisorC} & & \multicolumn{2}{c}{\revisorD} \\
+	\multicolumn{2}{c}{Revisor}   & & \multicolumn{2}{c}{Revisor}   \\[2mm]
+	& \multicolumn{3}{c}{Vo. Bo.} & \\[14mm]
+	\cline{2-4}
+	& \multicolumn{3}{c}{\vobo}   & \\
+	& \multicolumn{3}{c}{Subdirector de Estudios de Posgrado}   & \\ &&&&
+\end{tabular}
+}\else{%%%
+\begin{tabular}{p{37mm}p{21mm}p{12mm}p{21mm}p{37mm}}
+	\cline{2-4}
+	& \multicolumn{3}{c}{\asesor} & \\
+	& \multicolumn{3}{c}{Asesor}  & \\[19mm]
+	\cline{1-2} \cline{4-5}
+	\multicolumn{2}{c}{\revisorA} & & \multicolumn{2}{c}{\revisorB} \\
+	\multicolumn{2}{c}{Revisor}   & & \multicolumn{2}{c}{Revisor}   \\[2mm]
+	& \multicolumn{3}{c}{Vo. Bo.} & \\[17mm]
+	\cline{2-4}
+	& \multicolumn{3}{c}{\vobo}   & \\
+	& \multicolumn{3}{c}{Subdirector de Estudios de Posgrado}   & \\ &&&&
+\end{tabular}
+}\fi%%%
+\vfill
+\snnl, \MakeLowercase{\fecha}
+\end{center}
+\vfill
+\begin{flushright}
+\begin{minipage}{68mm}
+\sffamily\tiny\color{gray}
+Ciudad Universitaria,\hfill Pedro de Alba s/n,\hfill C.P. 66455,\hfill A.P. 076 Suc.\! ``F''\\
+San Nicolás de los Garza,\hfill Nuevo León,\hfill México.\hfill Tels.: 81 8332 0903\\
+Conm.: 81 8329 4020.\; Fax: 81 8332 0904.
+\end{minipage}
+\end{flushright}
+}
