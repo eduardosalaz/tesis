@@ -287,25 +287,6 @@ function deactivateBranch(solution::Solution, cons_v)
     D = instance.D
     max_iters = 300
     iter = 0
-    #=
-    is = findall(y->y==1, Y)
-    for i in is
-           js = findall(y->y==0, Y)
-           bus = findall(x->x==1, X[i,:])
-           for j in js
-               y_2 = copy(Y)
-               y_2[i] = 0
-               y_2[j] = 1
-               X_2 = copy(X)
-               X_2[i,:] .= 0
-               for bu in bus
-                   X_2[j,bu] = 1
-               end
-               println(y_2)
-               println(X_2)
-           end
-       end
-    =#
     while !factible
         if iter > max_iters
             break
@@ -506,8 +487,8 @@ function main()
     #path = "sol_34_pdisp.jld2"
     solution = read_solution(path)
     newSol = localSearch(solution)
-    write_solution(newSol, "sol_1n_200_lstodo_relax.jld2")
-    plot_solution(newSol, "plot_sol_1n_200_lstodo_relax.png")
+    write_solution(newSol, "sol6_8_200_ls_relax.jld2")
+    plot_solution(newSol, "plot6_sol_8_200_ls_relax.png")
 end
 
 main()

@@ -3,6 +3,7 @@ using Types
 using JuMP
 using Gurobi
 using Random
+using DelimitedFiles
 
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
@@ -13,7 +14,7 @@ function constructive(instance)
     X = Matrix{Int64}[]
     Y = Vector{Int64}[]
     D = instancia.D
-    method = :relax
+    method = :pdisp
     Weight = 0
     Y = localize_facs(instancia, method)
     if method ≠ :relax
@@ -25,15 +26,17 @@ function constructive(instance)
         Y_bool = Y
     end
     # println(Y_bool)
-    X = naive_assign_bu(instancia, Y_bool)
+    println("y done ok")
+    # X = naive_assign_bu(instancia, Y_bool)
+    X = oppCostAssignment(Y_bool, instancia)
     indices = findall(x -> x == 1, X)
     for indice in indices
         Weight += D[indice]
     end
 
     solution = Solution(instancia, X, Y_bool, Weight)
-    plot_solution(solution, "plot_1n_200_relax.png")
-    write_solution(solution, "sol_1n_200_relax.jld2")
+    plot_solution(solution, "plotsize6_1_200_pdisp.png")
+    write_solution(solution, "solsize6_1_200_pdisp.jld2")
 end
 
 function localize_facs(instance,method)
@@ -91,34 +94,9 @@ function naive_assign_bu(instance, Y)
     D = instance.D
     P = instance.P
     X = zeros(Int, S, B)
-
-    for j in 1:B
-        for i in 1:S
-        end
-    end
-
-
-    unos = findall(x->x==1, X)
-
-    # display("text/plain", X)
-    return X
-end
-
-function naive_assign_bu(instance, Y)
-    # i haven't been using Y
-    branches_used = findall(x->x==1, Y)
-    @show branches_used
-    # BUT, the entries in X must reflect the original D matrix
-    B = instance.B
-    S = instance.S
-    K = instance.K
-    D = instance.D
-    P = instance.P
-    X = zeros(Int, S, B)
     centers_used = 0
 
     minimums = Tuple{Int, Tuple{Int, Int}}[]
-
     for j in 1:B
         minimum = 1e9
         second_minimum = 1e9
@@ -155,54 +133,107 @@ function naive_assign_bu(instance, Y)
     return X
 end
 
+function maximums(matrix, n)
+    type = eltype(matrix)
+    vals = zeros(type, n)
+    arr = Array{Tuple{type, CartesianIndex}}(undef, n)
+    for i ∈ axes(matrix, 1), j ∈ axes(matrix, 2)
+        smallest, index = findmin(vals)
+        if matrix[i, j] > smallest
+            arr[index] = matrix[i,j], CartesianIndex(i, j)
+            vals[index] = matrix[i, j]
+        end
+    end
+    arr = sort(arr, by = x->x[1], rev=true)
+    vals = [x[1] for x in arr]
+    indices = [x[2] for x in arr]
+    return vals, indices
+end
+
 function oppCostAssignment(Y, instance)
     D = instance.D
     diff = copy(D)
     X = copy(D)
     X .= 0
+    B = instance.B
+    S = instance.S
     for i in 1:B
         minimal = minimum(D[:,i])
         diff[:,i] .= D[:,i] .- minimal
     end
 
+
+
+    not_assigned_y = findall(y->y==0, Y)
+    for not_assignment in not_assigned_y
+        diff[not_assignment, :] .= -1
+    end
+    println(size(diff))
+
+
+    pausar = 0
     todos = false
     while !todos
         ok = false
         contador = 0
         indices = []
-        assignments_y = findall(y->y==1, Y)
+        maximo = 0
         while !ok
-            indices = argmax(diff)
-            diff[indices] = 0
-            X_copy = copy(X)
-            pasar = restricciones(X_copy, Y, instance)
-            pasa = pasar == 0 ? true: false
-            if indices[1] ∉ assignments_y # solo usar las Y prendidas aunque a lo mejor considerar cuales violan menos restricciones?
-                pasa = false
-            end
-            if pasa
-                ok = true
-            else
-                contador += 1
-                if contador == 5
-                    ok = true # mandarlo como quiera aunque se violen
+            try
+                maximo, indices = findmax(diff)
+                println("indices: ", indices)
+                println("diff: ", diff[indices])
+                diff[indices] = 0
+                # println(diff)
+                X_copy = copy(X)
+                X_copy[indices] = 1
+                #println(X_copy)
+                pasar = restricciones(X_copy, Y, instance)
+                pasa = pasar == 0 ? true : false
+                if pasa
+                    ok = true
+                else
+                    contador += 1
+                    println("pasando al siguiente mejor costo")
+                    println(size(diff))
+                    if contador == 5
+                        ok = true # mandarlo como quiera aunque se violen
+                    end
+                    continue
                 end
-            end
-        end
-        X[indices] = 1
-        columna = indices[2]
-        diff = diff[:, 1:end .≠ columna] # remover de dif la columna
-        for i in 1:B
-            todos = true
-            if(any(x-> x ≠ 1, X[:,i]))
-                todos = false
+                X[indices] = 1
+                if pausar == 195
+                    println("aqui")
+                    show(stdout, "text/plain", X)
+                    show(stdout, "text/plain", diff)
+                end
+                columna = indices[2]
+                println("Removiendo la columna: ", columna)
+                diff = diff[:, 1:end .≠ columna] # remover de dif la columna
+                diff[:,columna] .= -1
+                # println(diff)
+                # asigne la bu = unidad basica, ya no me interesa
+                for i in 1:B
+                    todos = true
+                    if(all(x-> x == 0, X[:,i])) # 0 = bu
+                        todos = false
+                        pausar += 1
+                        break
+                    end
+                end
+                #println(X)
+                #sleep(2)
+            catch
+                open("X.txt", "w") do io
+                    writedlm(io, X)
+                end
             end
         end
     end
     return X
 end
 
-function restricciones(X_copy, Y_copy, instance)
+function restricciones(X_copy, Y_copy, instance; verbose = true)
     Sk = instance.Sk
     Lk = instance.Lk
     Uk = instance.Uk
@@ -283,11 +314,12 @@ end
     # o agarrar el maximo de los minimos para asegurar que ya asigne el peor
     # otro criterio: el costo de oportunidad
     #=
-    si yo le pongo la BU1 al centro i me cuesta x
-    si yo le pongo la BU1 al centro j me cuesta x + 30
+    si yo le pongo la BU 1 al centro i me cuesta x = 100
+    si yo le pongo la BU 1 al centro j me cuesta x + 30 130
     diferencia = 30
-    si yo le pongo la BU2 al centro i me cuesta y
-    si yo le pongo la BU2 al centro j me cuesta y + 5
+    si yo le pongo la BU 2 al centro i me cuesta y 5
+    si yo le pongo la BU 2 al centro j me cuesta y + 5 10
+    diferencia/costo = 5
     escojo BU1 al centro i ya que la diferencia es mayor
 
     diff = copy(D)
@@ -556,4 +588,4 @@ end
 
 
 constructive(ARGS[1])
-# constructive("instances\\experiments10\\inst_5_25_11_9.jld2")
+#constructive("instances\\new_size6\\inst_1_200_30_25.jld2")
