@@ -96,7 +96,7 @@ function generate_activities(B::Int64, S::Int64, P)
     μ = [zeros(Int64, S) for _ in 1:M]
     for i in eachindex(V)
         sum_vals = sum(V[i])
-        τ = 0.6
+        τ = 0.5
         upper = trunc(Int, trunc(sum_vals / S) * (1 + τ))
         μ[i] = fill(upper, S)
     end

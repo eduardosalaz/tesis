@@ -487,8 +487,8 @@ function main()
     #path = "sol_34_pdisp.jld2"
     solution = read_solution(path)
     newSol = localSearch(solution)
-    write_solution(newSol, "sol6_8_200_ls_relax.jld2")
-    plot_solution(newSol, "plot6_sol_8_200_ls_relax.png")
+    write_solution(newSol, "sol6_1_200_ls_pdisp2.jld2")
+    plot_solution(newSol, "plot6_sol_1_200_ls_pdisp2.png")
 end
 
 main()

@@ -35,8 +35,8 @@ function constructive(instance)
     end
 
     solution = Solution(instancia, X, Y_bool, Weight)
-    plot_solution(solution, "plotsize6_1_200_pdisp.png")
-    write_solution(solution, "solsize6_1_200_pdisp.jld2")
+    plot_solution(solution, "plotsize6_1_200_pdisp_cost2.png")
+    write_solution(solution, "solsize6_1_200_pdisp_cost2.jld2")
 end
 
 function localize_facs(instance,method)
@@ -133,6 +133,40 @@ function naive_assign_bu(instance, Y)
     return X
 end
 
+function minimums(matrix::Matrix, n)
+    type = eltype(matrix)
+    vals = fill(1e9, n)
+    arr = Array{Tuple{type, CartesianIndex}}(undef, n)
+    for i ∈ axes(matrix, 1), j ∈ axes(matrix, 2)
+        biggest, index = findmax(vals)
+        if matrix[i, j] < biggest
+            arr[index] = matrix[i,j], CartesianIndex(i, j)
+            vals[index] = matrix[i, j]
+        end
+    end
+    arr = sort(arr, by = x->x[1])
+    vals = [x[1] for x in arr]
+    indices = [x[2] for x in arr]
+    return vals, indices
+end
+
+function minimums(vec::Vector, n)
+    type = eltype(vec)
+    vals = fill(1e9, n)
+    arr = Array{Tuple{type, Int64}}(undef, n)
+    for i ∈ eachindex(vec)
+        biggest, index = findmax(vals)
+        if vec[i] < biggest
+            arr[index] = vec[i], i
+            vals[index] = vec[i]
+        end
+    end
+    arr = sort(arr, by = x->x[1])
+    vals = [x[1] for x in arr]
+    indices = [x[2] for x in arr]
+    return vals, indices
+end
+
 function maximums(matrix, n)
     type = eltype(matrix)
     vals = zeros(type, n)
@@ -150,83 +184,76 @@ function maximums(matrix, n)
     return vals, indices
 end
 
-function oppCostAssignment(Y, instance)
+function oppCostAssignment(Y, instance::Instance)
     D = instance.D
+    P = instance.P
     diff = copy(D)
     X = copy(D)
     X .= 0
     B = instance.B
     S = instance.S
+    minimos = S
+    not_assigned_y = findall(y->y==0, Y)
     for i in 1:B
-        minimal = minimum(D[:,i])
+        minimal = 0
+        minimals, idxs = minimums(D[:,i], minimos)
+        for j in eachindex(idxs)
+            if idxs[j] ∉ not_assigned_y
+                minimal = minimals[j]
+                break
+            end
+        end
         diff[:,i] .= D[:,i] .- minimal
     end
-
-
-
-    not_assigned_y = findall(y->y==0, Y)
-    for not_assignment in not_assigned_y
-        diff[not_assignment, :] .= -1
-    end
-    println(size(diff))
-
-
-    pausar = 0
+    count = 0
     todos = false
+    n = trunc(Int, P/4)
     while !todos
-        ok = false
-        contador = 0
-        indices = []
-        maximo = 0
-        while !ok
-            try
-                maximo, indices = findmax(diff)
-                println("indices: ", indices)
-                println("diff: ", diff[indices])
-                diff[indices] = 0
-                # println(diff)
-                X_copy = copy(X)
-                X_copy[indices] = 1
-                #println(X_copy)
-                pasar = restricciones(X_copy, Y, instance)
-                pasa = pasar == 0 ? true : false
-                if pasa
-                    ok = true
-                else
-                    contador += 1
-                    println("pasando al siguiente mejor costo")
-                    println(size(diff))
-                    if contador == 5
-                        ok = true # mandarlo como quiera aunque se violen
-                    end
-                    continue
-                end
-                X[indices] = 1
-                if pausar == 195
-                    println("aqui")
-                    show(stdout, "text/plain", X)
-                    show(stdout, "text/plain", diff)
-                end
-                columna = indices[2]
-                println("Removiendo la columna: ", columna)
-                diff = diff[:, 1:end .≠ columna] # remover de dif la columna
-                diff[:,columna] .= -1
-                # println(diff)
-                # asigne la bu = unidad basica, ya no me interesa
-                for i in 1:B
-                    todos = true
-                    if(all(x-> x == 0, X[:,i])) # 0 = bu
-                        todos = false
-                        pausar += 1
+        count += 1
+        maximos, indices = maximums(diff, n)
+        constraints = []
+        for indice in indices
+            X_copy = copy(X)
+            col = indice[2]
+            row = findall(x->x==0, diff[:,col])[1]
+            X_copy[row,col] = 1
+            constraints_v = restricciones(X_copy, Y, instance; verbose = true)
+            push!(constraints, constraints_v)
+        end
+        picked = CartesianIndex(1,1)
+        if all(x->x==0, constraints) # si no se violan constraints, agarra el 0 de la columna del costo maximo
+            indice = indices[1]
+            col = indice[2]
+            row = findall(x->x==0, diff[:,col])[1]
+            picked = CartesianIndex(row,col)
+        else
+            if all(x->x ≠ 0, constraints) # si todas violan constraints
+                _, idx = findmin(constraints) # agarra el que viole menos constraints
+                indice = indices[idx]
+                col = indice[2]
+            row = findall(x->x==0, diff[:,col])[1]
+            picked = CartesianIndex(row,col)
+            else # si hay una que no viola constraints
+                for idx in eachindex(constraints)
+                    if constraints[idx] == 0 # agarrala
+                        indice = indices[idx]
+                        col = indice[2]
+                        row = findall(x->x==0, diff[:,col])[1]
+                        picked = CartesianIndex(row,col)
                         break
                     end
                 end
-                #println(X)
-                #sleep(2)
-            catch
-                open("X.txt", "w") do io
-                    writedlm(io, X)
-                end
+            end
+        end
+        # en teoria tanto constraints como indices estan en orden del mejor costo de op al peor
+        X[picked] = 1
+        column = picked[2]
+        diff[:,column] .= -1 # "apagamos" esa columna
+        todos = true
+        for col in eachcol(X)
+            if all(x->x==0, col)
+                todos = false
+                break
             end
         end
     end
@@ -587,5 +614,5 @@ function relax_init(instance)
 end
 
 
-constructive(ARGS[1])
+constructive("instances\\new_size6\\inst_1_200_30_25.jld2")
 #constructive("instances\\new_size6\\inst_1_200_30_25.jld2")

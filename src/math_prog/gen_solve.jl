@@ -1,16 +1,16 @@
 include("../generator/generator.jl")
 include("first_model.jl")
 #TODO fix this
-function generate_solve()
-    size = "10_4_3"
+function generate_solve(size)
     K = 5
     M = 3
-    B = 10
-    S = 4
-    P = 3
-    failed_dir_path = "instances/new_size7/failed_instances/"
-    inst_dir_path = "instances/new_size7/"
-    sol_dir_path = "out/solutions/new_size7/"
+    B, S, P = parse.(Int, split(size, "_"))
+    failed_dir_path = "instances/" * size * "/failed_instances/"
+    inst_dir_path = "instances/" * size * "/"
+    sol_dir_path = "out/solutions/" * size * "/"
+    plot_out_dir_path = "out/plots/" * size * "/"
+    plot_sol_dir_path = "out/plots/" * size * "/solutions/"
+    plot_inst_dir_path = "out/plots/" * size * "/instances/"
     if !isdir(inst_dir_path)
         mkdir(inst_dir_path)
     end
@@ -20,6 +20,17 @@ function generate_solve()
 
     if !isdir(sol_dir_path)
         mkdir(sol_dir_path)
+    end
+
+    if !isdir(plot_out_dir_path)
+        mkdir(plot_out_dir_path)
+    end
+
+    if !isdir(plot_sol_dir_path)
+        mkdir(plot_sol_dir_path)
+    end
+    if !isdir(plot_inst_dir_path)
+        mkdir(plot_inst_dir_path)
     end
     for i in 1:1000
         BU_coords, S_coords = generate_coords(B, S)
@@ -40,9 +51,7 @@ function generate_solve()
         solution = Solution(instance, X, Y, obj_val)
         full_sol_path = sol_dir_path * file_sol_path
         full_inst_path = inst_dir_path * file_inst_path
-        plot_sol_dir_path = "out/plots/new_size7/solutions/"
         plot_sol_path = plot_sol_dir_path * "sol$i" * "_" * size * ".png"
-        plot_inst_dir_path = "out/plots/new_size7/instances/"
         plot_inst_path = plot_inst_dir_path * "inst$i" * "_" * size * ".png"
         write_instance(instance, full_inst_path)
         write_solution(solution, full_sol_path)
@@ -51,4 +60,4 @@ function generate_solve()
     end
 end
 
-generate_solve()
+generate_solve(ARGS[1])
