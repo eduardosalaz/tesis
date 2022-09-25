@@ -9,3 +9,5 @@ outXL_100/
 *.lp
 *.mps
 *.nl
+out/
+instances/
