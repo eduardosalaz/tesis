@@ -482,13 +482,17 @@ function interchange()
 end
 
 
-function main()
-    path = ARGS[1]
-    #path = "sol_34_pdisp.jld2"
+function main(path::String)
     solution = read_solution(path)
+    _, newPath = split(path, ".")
+    newPath = newPath[2:end]
+    println(newPath)
+    newPath = newPath * "_ls"
+    solPath = newPath * ".jld2"
+    plotPath = newPath * ".png"
     newSol = localSearch(solution)
-    write_solution(newSol, "sol6_1_200_ls_pdisp2.jld2")
-    plot_solution(newSol, "plot6_sol_1_200_ls_pdisp2.png")
+    write_solution(newSol, solPath)
+    plot_solution(newSol, plotPath)
 end
 
-main()
+# main(ARGS[1])

@@ -9,15 +9,17 @@ function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
 end
 
-function constructive(instance)
+function constructive(instance, init_method, assign_method)
     instancia = read_instance(instance)
+    B = instancia.B 
+    S = instancia.S
+    P = instancia.P
     X = Matrix{Int64}[]
     Y = Vector{Int64}[]
     D = instancia.D
-    method = :pdisp
     Weight = 0
-    Y = localize_facs(instancia, method)
-    if method ≠ :relax
+    Y = localize_facs(instancia, init_method)
+    if init_method ≠ "relax"
         Y_bool = zeros(Int, instancia.S)
         for idx in Y
             Y_bool[idx] = 1
@@ -25,29 +27,40 @@ function constructive(instance)
     else
         Y_bool = Y
     end
-    # println(Y_bool)
-    println("y done ok")
-    # X = naive_assign_bu(instancia, Y_bool)
-    X = oppCostAssignment(Y_bool, instancia)
+    println("Y done")
+    if assign_method == "naive"
+        println("NAIVE")
+        X = naive_assign_bu(instancia, Y_bool)
+    elseif assign_method == "opp"
+        println("OPP COST")
+        X = oppCostAssignment(Y_bool, instancia)
+    end
+    println("X done")
     indices = findall(x -> x == 1, X)
     for indice in indices
         Weight += D[indice]
     end
 
+    str_path = "sol" * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * init_method * "_" * assign_method
+    plot_str_path = str_path * ".png"
+    solution_str_path = str_path * ".jld2"
+
+
     solution = Solution(instancia, X, Y_bool, Weight)
-    plot_solution(solution, "plotsize6_1_200_pdisp_cost2.png")
-    write_solution(solution, "solsize6_1_200_pdisp_cost2.jld2")
+    plot_solution(solution, plot_str_path)
+    write_solution(solution, solution_str_path)
+    return str_path
 end
 
 function localize_facs(instance,method)
     # k_type = findall(x->x==1, idx_candidate .∈ Sk) # get k type of fac
-    if method == :pdisp
+    if method == "pdisp"
         println("P-DISP")
         return pdisp(instance)
-    elseif method == :random
+    elseif method == "random"
         println("RANDOM")
         return random_init(instance)
-    elseif method == :relax
+    elseif method == "relax"
         println("RELAXATION")
         return relax_init(instance)
     end
@@ -207,7 +220,7 @@ function oppCostAssignment(Y, instance::Instance)
     end
     count = 0
     todos = false
-    n = trunc(Int, P/4)
+    n = trunc(Int, P/3)
     while !todos
         count += 1
         maximos, indices = maximums(diff, n)
@@ -217,25 +230,32 @@ function oppCostAssignment(Y, instance::Instance)
             col = indice[2]
             row = findall(x->x==0, diff[:,col])[1]
             X_copy[row,col] = 1
-            constraints_v = restricciones(X_copy, Y, instance; verbose = true)
+            constraints_v = restricciones(X_copy, Y, instance; verbose = false)
             push!(constraints, constraints_v)
         end
         picked = CartesianIndex(1,1)
         if all(x->x==0, constraints) # si no se violan constraints, agarra el 0 de la columna del costo maximo
+            println("Sin violar constraints")
             indice = indices[1]
             col = indice[2]
             row = findall(x->x==0, diff[:,col])[1]
             picked = CartesianIndex(row,col)
         else
             if all(x->x ≠ 0, constraints) # si todas violan constraints
+                println("Todas violan constraints")
+                println(constraints)
                 _, idx = findmin(constraints) # agarra el que viole menos constraints
+                println(idx)
                 indice = indices[idx]
                 col = indice[2]
-            row = findall(x->x==0, diff[:,col])[1]
-            picked = CartesianIndex(row,col)
+                row = findall(x->x==0, diff[:,col])[1]
+                picked = CartesianIndex(row,col)
             else # si hay una que no viola constraints
+                println("Hay una que no viola constraints")
+                println(constraints)
                 for idx in eachindex(constraints)
                     if constraints[idx] == 0 # agarrala
+                        println(idx)
                         indice = indices[idx]
                         col = indice[2]
                         row = findall(x->x==0, diff[:,col])[1]
@@ -348,115 +368,6 @@ end
     si yo le pongo la BU 2 al centro j me cuesta y + 5 10
     diferencia/costo = 5
     escojo BU1 al centro i ya que la diferencia es mayor
-
-    diff = copy(D)
-    for i in 1:B
-        minimal = minimum(D[:,i])
-        diff[:,i] .= D[:,i] .- minimal
-    end
-
-    todos = false
-    diff_original = copy(diff)
-    while !todos
-        ok = false
-        contador = 0
-        indices = []
-        while !ok
-            maximo, indices = encontrar_maximo(diff)
-            diff[indices] = 0
-            X_copy = copy(X)
-            pasar = restricciones(X_copy)
-            pasa = pasar == 0 ? true: false
-            if pasa
-                ok = true
-            else
-                contador += 1
-                if contador == 5
-                    ok = true # mandarlo como quiera
-                end
-            end
-        end
-        X[indices] = 1
-        remover de diff la columna de indices
-        columna = indices[2]
-        diff = diff[:, 1:end ≠ columna]
-        for i in 1:B
-            todos = true
-            if(any(x-> x ≠ 1, X[:,i]))
-                todos = false
-            end
-        end
-    end
-
-    function restricciones(X_copy, Y_copy, instance)
-        Sk = instance.Sk
-        Lk = instance.Lk
-        Uk = instance.Uk
-        Y = Y_copy
-        X = X_copy
-        Lk = instance.Lk
-        Uk = instance.Uk
-        Sk = instance.Sk
-        μ = instance.μ
-        T = instance.T
-        M = instance.M
-        S = instance.S
-        P = instance.S
-        B = instance.B
-        β = instance.β
-        R = instance.R
-        K = instance.K
-        V = instance.V
-
-        counts_k = []
-        if sum(Y) > P
-            if verbose
-                println("Violando número de centros asignados ", sum(Y))
-            end
-        end
-        for k_type in 1:K
-            indices_k_type = Sk[k_type]
-            count_k_type = 0
-            for indice in indices_k_type
-                if Y[indice] == 1
-                    count_k_type += 1
-                end
-            end
-            push!(counts_k, count_k_type)
-        end
-
-        for k in 1:K
-            if counts_k[k] > Uk[k]
-                if verbose
-                    println("Violando Uk en $k")
-                end
-                number_constraints_violated += 1
-            end
-        end
-        for i in 1:S
-            for m in 1:M
-                if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))    
-                    if verbose
-                        println("violando V superior en i: $i y m: $m")
-                        println("μ: ", Y[i] * μ[m][i] * (1 + T[m]))
-                        println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
-                    end
-                    number_constraints_violated += 1
-                end
-            end
-        end
-        for i in 1:S
-            if sum(X[i, j] * R[j] for j in 1:B) > β[i]
-                if verbose
-                    println("violando riesgo en $i")
-                    println("β: ", β[i])
-                    println("R: ", sum(X[i, j] * R[j] for j in 1:B))
-                end
-                number_constraints_violated += 1
-            end
-        end
-    end
-
       tope = P / 3
 
       las que quedan volando, ponlas en donde se violen menos restricciones
@@ -613,6 +524,6 @@ function relax_init(instance)
     return Y
 end
 
-
-constructive("instances\\new_size6\\inst_1_200_30_25.jld2")
+# constructive(ARGS[1], ARGS[2], ARGS[3])
+#constructive("instances\\new_size6\\inst_1_200_30_25.jld2")
 #constructive("instances\\new_size6\\inst_1_200_30_25.jld2")
