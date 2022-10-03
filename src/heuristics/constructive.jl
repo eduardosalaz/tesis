@@ -1,16 +1,15 @@
-using Distances
+using Random
 using Types
 using JuMP
-using Gurobi
-using Random
+using Distances
 using DelimitedFiles
-
+using Gurobi
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
 end
 
-function constructive(instance, init_method, assign_method)
-    instancia = read_instance(instance)
+function constructive(instance, id,  init_method, assign_method)
+    instancia = Types.read_instance(instance)
     B = instancia.B 
     S = instancia.S
     P = instancia.P
@@ -41,15 +40,15 @@ function constructive(instance, init_method, assign_method)
         Weight += D[indice]
     end
 
-    str_path = "sol" * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * init_method * "_" * assign_method
+    str_path = "sol" * "_" * id * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * init_method * "_" * assign_method
     plot_str_path = str_path * ".png"
     solution_str_path = str_path * ".jld2"
 
 
-    solution = Solution(instancia, X, Y_bool, Weight)
-    plot_solution(solution, plot_str_path)
-    write_solution(solution, solution_str_path)
-    return str_path
+    solution = Types.Solution(instancia, X, Y_bool, Weight)
+    # Types.plot_solution(solution, plot_str_path)
+    Types.write_solution(solution, solution_str_path)
+    return solution_str_path
 end
 
 function localize_facs(instance,method)
@@ -99,7 +98,6 @@ end
 function naive_assign_bu(instance, Y)
     # i haven't been using Y
     branches_used = findall(x->x==1, Y)
-    @show branches_used
     # BUT, the entries in X must reflect the original D matrix
     B = instance.B
     S = instance.S
@@ -108,8 +106,6 @@ function naive_assign_bu(instance, Y)
     P = instance.P
     X = zeros(Int, S, B)
     centers_used = 0
-
-    minimums = Tuple{Int, Tuple{Int, Int}}[]
     for j in 1:B
         minimum = 1e9
         second_minimum = 1e9
@@ -131,11 +127,9 @@ function naive_assign_bu(instance, Y)
         # min_and_index = (minimum, (i_exported, j))
         # push!(minimums, min_and_index)
 
-
     unos = findall(x->x==1, X)
 
     # display("text/plain", X)
-
 
     # Notas:
 
@@ -168,10 +162,12 @@ function minimums(vec::Vector, n)
     vals = fill(1e9, n)
     arr = Array{Tuple{type, Int64}}(undef, n)
     for i ∈ eachindex(vec)
-        biggest, index = findmax(vals)
-        if vec[i] < biggest
-            arr[index] = vec[i], i
-            vals[index] = vec[i]
+        if vec[i] ≠ -1
+            biggest, index = findmax(vals)
+            if vec[i] < biggest
+                arr[index] = vec[i], i
+                vals[index] = vec[i]
+            end
         end
     end
     arr = sort(arr, by = x->x[1])
@@ -200,13 +196,18 @@ end
 function oppCostAssignment(Y, instance::Instance)
     D = instance.D
     P = instance.P
-    diff = copy(D)
     X = copy(D)
     X .= 0
     B = instance.B
     S = instance.S
-    minimos = S
+    unavez = true
+    minimos = P
+
     not_assigned_y = findall(y->y==0, Y)
+    for j in not_assigned_y
+        D[j,:] .= -1
+    end
+    diff = copy(D)
     for i in 1:B
         minimal = 0
         minimals, idxs = minimums(D[:,i], minimos)
@@ -214,48 +215,68 @@ function oppCostAssignment(Y, instance::Instance)
             if idxs[j] ∉ not_assigned_y
                 minimal = minimals[j]
                 break
+            else
+                println("No deberia pasar esto")
             end
         end
         diff[:,i] .= D[:,i] .- minimal
     end
-    count = 0
     todos = false
-    n = trunc(Int, P/3)
+    n = trunc(Int, P/4)
     while !todos
-        count += 1
-        maximos, indices = maximums(diff, n)
-        constraints = []
+        _, indices = maximums(diff, n)
+        constraints = Int64[]
         for indice in indices
             X_copy = copy(X)
             col = indice[2]
-            row = findall(x->x==0, diff[:,col])[1]
+            row = findall(x->x==0, diff[:,col])
+            if length(row) ≠ 0
+                row = row[1]
+            else
+                println("NO SE")
+            end
             X_copy[row,col] = 1
             constraints_v = restricciones(X_copy, Y, instance; verbose = false)
             push!(constraints, constraints_v)
         end
+        primero = constraints[1]
         picked = CartesianIndex(1,1)
         if all(x->x==0, constraints) # si no se violan constraints, agarra el 0 de la columna del costo maximo
-            println("Sin violar constraints")
             indice = indices[1]
             col = indice[2]
             row = findall(x->x==0, diff[:,col])[1]
             picked = CartesianIndex(row,col)
         else
             if all(x->x ≠ 0, constraints) # si todas violan constraints
-                println("Todas violan constraints")
-                println(constraints)
-                _, idx = findmin(constraints) # agarra el que viole menos constraints
-                println(idx)
+                original_cons, idx = findmin(constraints) # agarra el que viole menos constraints
                 indice = indices[idx]
                 col = indice[2]
-                row = findall(x->x==0, diff[:,col])[1]
-                picked = CartesianIndex(row,col)
+                original_row = findall(x->x==0, diff[:,col])[1]
+                println("antes: ", original_cons, " ", original_row)
+                # queremos buscar en esa columna el siguiente valor más cercano a 0 en diff
+                # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
+                busqueda = P # a lo mejor cambiarlo despues
+                values, idxs_inner = minimums(diff[:,col], busqueda)
+                # el primer minimo es el 0 de nuestra localizacion optima
+                # lo desechamos para darle variedad a la busqueda
+                values = values[2:end]
+                idxs_inner = idxs_inner[2:end]
+                for row in idxs_inner
+                    X_copy = copy(X)
+                    X_copy[row,col] = 1
+                    constraints_v2 = restricciones(X_copy, Y, instance)
+                    println("despues: ", constraints_v2, " ", row)
+                    if constraints_v2 < original_cons
+                        println("HOLAAAAAAAAAAAAAAAAAAAA")
+                        original_cons = constraints_v2
+                        original_row = row
+                    end
+                    unavez = false
+                end
+                picked = CartesianIndex(original_row,col)
             else # si hay una que no viola constraints
-                println("Hay una que no viola constraints")
-                println(constraints)
                 for idx in eachindex(constraints)
                     if constraints[idx] == 0 # agarrala
-                        println(idx)
                         indice = indices[idx]
                         col = indice[2]
                         row = findall(x->x==0, diff[:,col])[1]
@@ -265,6 +286,7 @@ function oppCostAssignment(Y, instance::Instance)
                 end
             end
         end
+        # hay un bug
         # en teoria tanto constraints como indices estan en orden del mejor costo de op al peor
         X[picked] = 1
         column = picked[2]
@@ -361,9 +383,12 @@ end
     # o agarrar el maximo de los minimos para asegurar que ya asigne el peor
     # otro criterio: el costo de oportunidad
     #=
+
     si yo le pongo la BU 1 al centro i me cuesta x = 100
     si yo le pongo la BU 1 al centro j me cuesta x + 30 130
+    150
     diferencia = 30
+    50
     si yo le pongo la BU 2 al centro i me cuesta y 5
     si yo le pongo la BU 2 al centro j me cuesta y + 5 10
     diferencia/costo = 5
@@ -401,12 +426,11 @@ end
 
 function pdisp(instance)
     P = instance.P
-    findmax
     s_coords = instance.S_coords
     D = instance.D
     S = instance.S
-    metric = Euclidean()
-    s_distances = trunc.(Int, pairwise(metric, s_coords, dims=1))
+    metric = Distances.Euclidean()
+    s_distances = trunc.(Int, Distances.pairwise(metric, s_coords, dims=1))
     idx_1, idx_2 = Tuple(argmax(s_distances)) # two furthest facs
     S_sol = [idx_1, idx_2] # S is our solution of our p-disp problem
     T = collect(1:S) # nodes not in our solution
@@ -442,7 +466,7 @@ function random_init(instance)
     # tengo que agarrar los parametros para asignar una factible
     P = instance.P
     S = instance.S
-    Y = shuffle(collect(1:S))
+    Y = Random.shuffle(collect(1:S))
     Y = Y[1:P]
     return Y
 end
@@ -465,39 +489,39 @@ function relax_init(instance)
     m = instance.M
     k = instance.K
 
-    model = Model(Gurobi.Optimizer) # THIS IS WHERE THE FUN BEGINS
+    model = JuMP.Model(Gurobi.Optimizer) # THIS IS WHERE THE FUN BEGINS
 
-    @variable(model, x[1:S, 1:B], lower_bound=0, upper_bound=1)
+    JuMP.@variable(model, x[1:S, 1:B], lower_bound=0, upper_bound=1)
     # num suc and num bu, Xᵢⱼ
-    @variable(model, y[1:S], Bin)
+    JuMP.@variable(model, y[1:S], Bin)
     # Yᵢ
 
-    @objective(model, Min, sum(D .* x))
+    JuMP.@objective(model, Min, sum(D .* x))
     # Xᵢⱼ * Dᵢⱼ
 
-    @constraint(model, bu_service[j in 1:B], sum(x[i, j] for i in 1:S) == 1)
+    JuMP.@constraint(model, bu_service[j in 1:B], sum(x[i, j] for i in 1:S) == 1)
 
     # ∑ᵢ∈S Xᵢⱼ = 1, ∀ j ∈ B
 
-    @constraint(model, use_branch[j in 1:B, i in 1:S], x[i, j] <= y[i])
+    JuMP.@constraint(model, use_branch[j in 1:B, i in 1:S], x[i, j] <= y[i])
 
     # Xᵢⱼ ≤ Yᵢ , ∀ i ∈ S, j ∈ B
 
-    @constraint(model, cardinality, sum(y) == P)
+    JuMP.@constraint(model, cardinality, sum(y) == P)
 
     # ∑ i ∈ S Yᵢ = p
 
-    @constraint(model, risk[j in 1:B, i in 1:S], x[i, j] * R[j] <= β[i])
+    JuMP.@constraint(model, risk[j in 1:B, i in 1:S], x[i, j] * R[j] <= β[i])
 
     # ∑ j ∈ B Xᵢⱼ Rⱼ ≤ βᵢ, ∀ i ∈ S
 
-    @constraint(
+    JuMP.@constraint(
         model,
         tol_l[i in 1:S, M in 1:m],
         y[i] * μ[M][i] * (1 - T[M]) <= sum(x[i, j] * V[m][j] for j in 1:B),
     )
 
-    @constraint(
+    JuMP.@constraint(
         model,
         tol_u[i in 1:S, M in 1:m],
         sum(x[i, j] * V[m][j] for j in 1:B) <= y[i] * μ[M][i] * (1 + T[M]),
@@ -505,25 +529,23 @@ function relax_init(instance)
 
     # Yᵢμₘⁱ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vⱼᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
 
-    @constraint(
+    JuMP.@constraint(
         model,
         low_k[K in 1:k],
         Lk[K] <= sum(y[i] for i in Sk[K]),
     )
 
-    @constraint(
+    JuMP.@constraint(
         model,
         upp_k[K in 1:k],
         sum(y[i] for i in Sk[K]) <= Uk[K],
     )
 
-    set_silent(model)
-    optimize!(model)
-    Y = trunc.(Int, value.(model[:y]))
+    JuMP.set_silent(model)
+    JuMP.optimize!(model)
+    Y = trunc.(Int, JuMP.value.(model[:y]))
     # println(value.(model[:x]))
     return Y
 end
-
-# constructive(ARGS[1], ARGS[2], ARGS[3])
-#constructive("instances\\new_size6\\inst_1_200_30_25.jld2")
-#constructive("instances\\new_size6\\inst_1_200_30_25.jld2")
+constructive("instances\\250_40_30\\inst_83_250_40_30.jld2", "1", "pdisp", "naive")
+# constructive(ARGS[1], "1", ARGS[2], ARGS[3])

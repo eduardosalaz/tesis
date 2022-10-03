@@ -1,5 +1,4 @@
 using Types
-
 function isFactible(solution::Solution, verbose=true)
     number_constraints_violated = 0
     instance = solution.Instance
@@ -24,7 +23,6 @@ function isFactible(solution::Solution, verbose=true)
     V = instance.V
 
     counts_k = []
-
 
     for y in eachindex(Y)
         if Y[y] == 1
@@ -115,7 +113,7 @@ function isFactible(solution::Solution, verbose=true)
     end
 end
 
-function assigntounused(solution::Solution) # en esta funcion agarramos las Y[i] = 1 pero que no tienen asignacion y hacemos una asignacion simple
+function assigntounused(solution::Types.Solution) # en esta funcion agarramos las Y[i] = 1 pero que no tienen asignacion y hacemos una asignacion simple
     number_constraints_violated = 0
     instance = solution.Instance
     Y = solution.Y
@@ -133,32 +131,37 @@ function assigntounused(solution::Solution) # en esta funcion agarramos las Y[i]
         end
     end
     weight = evalWeight(X2, D)
-    newSol = Solution(instance, X2, Y, weight)
+    newSol = Types.Solution(instance, X2, Y, weight)
     return newSol
 end
 
-function localSearch(solution::Solution)
+function localSearch(solution::Types.Solution)
     factible, cons_v = isFactible(solution, false)
-    println(cons_v)
-    println("______________________________________________________")
+    # println(cons_v)
+    # println("______________________________________________________")
     solution2 = assigntounused(solution)
     factibleAfter, cons_v_after = isFactible(solution2, false)
     move = :simple_move_bu
     if !factibleAfter
         if move == :simple_move_bu
             newSol, cons_v_after = simple_move_bu(solution2, cons_v_after)
-            println("simple done ", cons_v_after)
+            # println("simple done ", cons_v_after)
             newSol, cons_v_after = interchange_bus(newSol, cons_v_after)
-            println("interchange done ", cons_v_after)
+            # println("interchange done ", cons_v_after)
             newSol, cons_v_after = deactivateBranch(newSol, cons_v_after)
-            println("daectivate done ", cons_v_after)
+            # println("daectivate done ", cons_v_after)
             newSol, cons_v_after = simple_move_bu(newSol, cons_v_after)
-            println("simple done 2 ", cons_v_after)
+            # println("simple done 2 ", cons_v_after)
             newSol, cons_v_after = interchange_bus(newSol, cons_v_after)
-            println("interchange done 2 ", cons_v_after)
+            # println("interchange done 2 ", cons_v_after)
             newSol, cons_v_after = deactivateBranch(newSol, cons_v_after)
-            println("deactivate done 2 ", cons_v_after)
-            isFactible(newSol, true)
+            # println("deactivate done 2 ", cons_v_after)
+            fac, cons = isFactible(newSol, true)
+            if fac
+                println("------------------------------------------------------------")
+                println("------------------SOLUCION FACTIBLE-------------------------")
+                println("------------------------------------------------------------")
+            end
             return newSol
         end
     end
@@ -168,14 +171,14 @@ end
 
 struct interchangeMove
     newConstraints::Int64
-    newSolution::Solution
+    newSolution::Types.Solution
     bu_1::Int64
     bu_2::Int64
     i::Int64
     j::Int64
 end
 
-function interchange_bus(solution::Solution, cons_v) # en este movimiento se intercambian dos BUs 1 y 2 de territorios i y j
+function interchange_bus(solution::Types.Solution, cons_v) # en este movimiento se intercambian dos BUs 1 y 2 de territorios i y j
 
     original_solution = solution
     original_X = original_solution.X
@@ -236,7 +239,7 @@ function interchange_bus(solution::Solution, cons_v) # en este movimiento se int
                             end
                         end
                         Weight = evalWeight(X_copy, D)
-                        newSol = Solution(instance, X_copy, Y_copy, Weight)
+                        newSol = Types.Solution(instance, X_copy, Y_copy, Weight)
                         factible, cons_v = isFactible(newSol, false)
                         interchangedMove = interchangeMove(cons_v, newSol, j, j2, i_original, j_original)
                         push!(moves, interchangedMove)
@@ -265,14 +268,14 @@ end
 
 struct deactivatedMove
     newConstraints::Int64
-    newSolution::Solution
+    newSolution::Types.Solution
     deactivated_branch::Int64
     activated_branch::Int64
 end
 
 
 # en este movimiento hay que apagar una branch completa y prender otra
-function deactivateBranch(solution::Solution, cons_v)
+function deactivateBranch(solution::Types.Solution, cons_v)
     original_solution = solution
     original_X = original_solution.X
     original_Y = original_solution.Y
@@ -311,7 +314,7 @@ function deactivateBranch(solution::Solution, cons_v)
                 
                 =#
                 Weight = evalWeight(X2, D)
-                newSol = Solution(instance, X2, Y2, Weight)
+                newSol = Types.Solution(instance, X2, Y2, Weight)
                 factible, cons_v = isFactible(newSol, false)
                 deactivatedmove = deactivatedMove(cons_v, newSol, i, j)
                 push!(moves, deactivatedmove)
@@ -339,14 +342,14 @@ end
 
 struct simpleMove
     newConstraints::Int64
-    newSolution::Solution
+    newSolution::Types.Solution
     original_branch::Int64
     new_branch::Int64
     bu::Int64
 end
 
 
-function simple_move_bu(solution::Solution, cons_v)
+function simple_move_bu(solution::Types.Solution, cons_v)
     # este movimiento se define de la siguiente manera:
     # Muevo una unidad básica ψ de un territorio i a un territorio τ
     # La unidad básica originalmente se define como ψ = X[i,j] = 1
@@ -448,7 +451,7 @@ end
 =#
 
 
-function move_bu(solution::Solution, j, previous, new)
+function move_bu(solution::Types.Solution, j, previous, new)
     # movimiento simple de basic unit
     X = solution.X
     Y = solution.Y
@@ -468,7 +471,7 @@ function move_bu(solution::Solution, j, previous, new)
             Y_copy[i] = 0
         end
     end
-    newSol = Solution(instance, X_copy, Y_copy, Weight)
+    newSol = Types.Solution(instance, X_copy, Y_copy, Weight)
     factible, cons_v = isFactible(newSol, false)
     if factible
         return 0, newSol
@@ -483,16 +486,15 @@ end
 
 
 function main(path::String)
-    solution = read_solution(path)
-    _, newPath = split(path, ".")
-    newPath = newPath[2:end]
-    println(newPath)
+    solution = Types.read_solution(path)
+    stuff, newPath = split(path, ".")
+    newPath = stuff
     newPath = newPath * "_ls"
     solPath = newPath * ".jld2"
     plotPath = newPath * ".png"
     newSol = localSearch(solution)
-    write_solution(newSol, solPath)
-    plot_solution(newSol, plotPath)
+    Types.write_solution(newSol, solPath)
+    # Types.plot_solution(newSol, plotPath)
 end
 
 # main(ARGS[1])
