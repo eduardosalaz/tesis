@@ -135,37 +135,40 @@ function assigntounused(solution::Types.Solution) # en esta funcion agarramos la
     return newSol
 end
 
-function localSearch(solution::Types.Solution)
-    factible, cons_v = isFactible(solution, false)
-    # println(cons_v)
-    # println("______________________________________________________")
+function localSearch(solPath, plotPath, solution::Solution)
+    factible, cons_v = isFactible(solution, true)
+    println(cons_v)
+    println("______________________________________________________")
     solution2 = assigntounused(solution)
-    factibleAfter, cons_v_after = isFactible(solution2, false)
+    factibleAfter, cons_v_after = isFactible(solution2, true)
+    newSol = solution
     move = :simple_move_bu
     if !factibleAfter
         if move == :simple_move_bu
             newSol, cons_v_after = simple_move_bu(solution2, cons_v_after)
-            # println("simple done ", cons_v_after)
+            println("simple done ", cons_v_after)
             newSol, cons_v_after = interchange_bus(newSol, cons_v_after)
-            # println("interchange done ", cons_v_after)
+             println("interchange done ", cons_v_after)
             newSol, cons_v_after = deactivateBranch(newSol, cons_v_after)
-            # println("daectivate done ", cons_v_after)
+             println("deactivate done ", cons_v_after)
             newSol, cons_v_after = simple_move_bu(newSol, cons_v_after)
-            # println("simple done 2 ", cons_v_after)
+             println("simple done 2 ", cons_v_after)
             newSol, cons_v_after = interchange_bus(newSol, cons_v_after)
-            # println("interchange done 2 ", cons_v_after)
+             println("interchange done 2 ", cons_v_after)
             newSol, cons_v_after = deactivateBranch(newSol, cons_v_after)
-            # println("deactivate done 2 ", cons_v_after)
+             println("deactivate done 2 ", cons_v_after)
             fac, cons = isFactible(newSol, true)
+            println(cons)
             if fac
                 println("------------------------------------------------------------")
                 println("------------------SOLUCION FACTIBLE-------------------------")
                 println("------------------------------------------------------------")
             end
-            return newSol
         end
     end
-
+    Types.write_solution(newSol, solPath)
+    Types.plot_solution(newSol, plotPath)
+    return newSol
 end
 
 
@@ -310,9 +313,6 @@ function deactivateBranch(solution::Types.Solution, cons_v)
                     # asignar a la nueva branch
                     X2[j, bu] = 1
                 end
-                #=
-
-                =#
                 Weight = evalWeight(X2, D)
                 newSol = Types.Solution(instance, X2, Y2, Weight)
                 factible, cons_v = isFactible(newSol, false)
@@ -407,50 +407,6 @@ function evalWeight(X, D)
     return Weight
 end
 
-#=
-for j in 1:B
-           i_original = findall(x->x==1, X[:,j])[1]
-           for i in 1:S
-               if i ≠ i_original
-                   X_copy = copy(X)
-                   X_copy[i_original, j] = 0
-                   X_copy[i, j] = 1
-                   count += 1
-                   if count < max_count
-                       println(X_copy)
-                       println()
-                       println(X)
-                   end
-               end
-           end
-       end
-=#
-
-#=
-contador = 0
-for j in 1:B
-    i_original = findall(x->x==1, X[:,j])[1]
-    @show j, i_original
-    for i in 1:S
-        if i ≠ i_original
-            X_copy = copy(X)
-            X_copy[i_original, j] = 0
-            X_copy[i, j] = 1
-            Y_copy = copy(Y)
-            contador += 1
-            for aux in 1:S
-                if any(entry->entry==1, X_copy[aux,:]) # revisando cada fila si hay un 1, si hay entonces Y[i] se usa
-                    Y_copy[aux] = 1
-                else # si no hay ni un solo 1, entonces Y[i] = 0
-                    Y_copy[aux] = 0
-                end
-            end
-        end
-    end
-end
-=#
-
-
 function move_bu(solution::Types.Solution, j, previous, new)
     # movimiento simple de basic unit
     X = solution.X
@@ -485,16 +441,21 @@ function interchange()
 end
 
 
-function main(path::String)
-    solution = Types.read_solution(path)
-    stuff, newPath = split(path, ".")
-    newPath = stuff
-    newPath = newPath * "_ls"
-    solPath = newPath * ".jld2"
-    plotPath = newPath * ".png"
-    newSol = localSearch(solution)
-    Types.write_solution(newSol, solPath)
-    # Types.plot_solution(newSol, plotPath)
+function main_local(;path = "inst", read_file=true, sol_obj = nothing)
+    cons_solution = 1 # scope
+    newSolPath = ""
+    newPlotPath = ""
+    if read_file
+        cons_solution = read_solution(path)
+    else
+        cons_solution = sol_obj
+    end
+    newSolPath = replace(path, ".jld2" => "_ls.jld2")
+    newPlotPath = replace(newSolPath, ".jld2" => ".png")
+    newSol = localSearch(newSolPath, newPlotPath, cons_solution)
+    return newSol
 end
 
-# main(ARGS[1])
+if abspath(PROGRAM_FILE) == @__FILE__
+    main_local(; path = ARGS[1])
+end

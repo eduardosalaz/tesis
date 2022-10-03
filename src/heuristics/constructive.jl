@@ -9,7 +9,7 @@ function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
 end
 
-function constructive(instance, id, init_method, assign_method)
+function constructive(instance, id, init_method, assign_method; withdir = false, dir = "")
     instancia = instance
     B = instancia.B
     S = instancia.S
@@ -124,18 +124,6 @@ function naive_assign_bu(instance, Y)
         X[i_exported, j] = 1
         centers_used += 1
     end
-    # min_and_index = (minimum, (i_exported, j))
-    # push!(minimums, min_and_index)
-
-    unos = findall(x -> x == 1, X)
-
-    # display("text/plain", X)
-
-    # Notas:
-
-    # preguntar lo del costo de oportunidad
-    # se escoge el que tenga la diferencia mas grande
-    # como hacer que se seleccionen facilities tomando en cuenta Lk
 
     return X
 end
@@ -373,57 +361,6 @@ function restricciones(X_copy, Y_copy, instance; verbose=true)
     return number_constraints_violated
 end
 
-
-# no empezar con la columna 1, de manera lexicografica
-# puede sesgar 
-# hay una manera mas inteligente de seleccionar el orden de las BUs
-# escoger la BU que tenga la menor distancia O la mayor distancia
-# esto se hace para ir descartando los peores nodos para al final dejar los mejores
-# agarrar el minimo de los minimos
-# o agarrar el maximo de los minimos para asegurar que ya asigne el peor
-# otro criterio: el costo de oportunidad
-#=
-
-si yo le pongo la BU 1 al centro i me cuesta x = 100
-si yo le pongo la BU 1 al centro j me cuesta x + 30 130
-150
-diferencia = 30
-50
-si yo le pongo la BU 2 al centro i me cuesta y 5
-si yo le pongo la BU 2 al centro j me cuesta y + 5 10
-diferencia/costo = 5
-escojo BU1 al centro i ya que la diferencia es mayor
-  tope = P / 3
-
-  las que quedan volando, ponlas en donde se violen menos restricciones
-=#
-# diferencia de la segunda con la primera y eliges con eso
-# al principio las restricciones no se violan
-# al final, las restricciones se violan y la asigno a una facility muy lejana
-# poner un tope de decir: no asignar a la 5ta mas lejana aunque me viole mi restriccion
-# tope = P/3, P/4 o P/2
-
-# otra heuristica:
-# Yi entera
-# resuelveme una relajacion del problema
-# Xij, tope 0-1, no es entera, es continua
-# se va a resolver MUY rapido
-# PERO YA ME UBICO LOS CENTROS
-# en base a eso ya los agarro
-
-# una fila representa una facility
-# una columna representa una BU
-# quiero encontrar el minimo de cada columna (la distancia minima de cada BU)
-# minimo de columna 1, minimo de distancia de BU1 a cualquier facility
-# irme columna por oclumna
-# agarrar el minimo
-# calcular si se respetan las tolerancias
-# si si, marcar en X 
-# si no, agarrar el segundo minimo hasta que haya uno
-# tengo que quitar las filas que no escogi en Y primero D[Y, :]
-# each column represents a facility
-# meter al pseudocodigo
-
 function pdisp(instance)
     P = instance.P
     s_coords = instance.S_coords
@@ -473,7 +410,6 @@ end
 
 
 function relax_init(instance)
-
     B = instance.B
     S = instance.S
     D = instance.D
@@ -544,20 +480,17 @@ function relax_init(instance)
     JuMP.set_silent(model)
     JuMP.optimize!(model)
     Y = trunc.(Int, JuMP.value.(model[:y]))
-    # println(value.(model[:x]))
     return Y
 end
-#constructive("instances\\250_40_30\\inst_83_250_40_30.jld2", "1", "pdisp", "naive")
-# constructive(ARGS[1], "1", ARGS[2], ARGS[3])
 
-function main_constructive(init_method, assign_method; name = "inst", read_file = true, instance_obj = nothing, id = 0)
+function main_constructive(init_method, assign_method; path = "inst", read_file = true, instance_obj = nothing, id = 0)
     instance = 1 # para traerlo al scope
     if read_file
         pattern = Regex("[t][_]\\d{1,3}")
-        index = findfirst(pattern, name)
-        almost_number = name[index]
+        index = findfirst(pattern, path)
+        almost_number = path[index]
         _, number = split(almost_number, "_")
-        instance = read_instance(name)
+        instance = read_instance(path)
     else
         instance = instance_obj
         number = id
@@ -568,5 +501,5 @@ function main_constructive(init_method, assign_method; name = "inst", read_file 
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    main_constructive(ARGS[2], ARGS[3]; name = ARGS[1])
+    main_constructive(ARGS[2], ARGS[3]; path = ARGS[1])
 end

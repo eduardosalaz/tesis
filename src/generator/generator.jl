@@ -108,7 +108,7 @@ function generate_risk(B::Int64, S::Int64, P)
     R = rand(10:25, B)
     sum_R = sum(R)
     lower = trunc(Int, (sum_R / S))
-    τ = 1.2
+    τ = 0.8
     upper = trunc(Int, trunc(sum_R / S) * (1 + τ))
     β = fill(upper, S)
     return R, β
