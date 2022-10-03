@@ -1,4 +1,4 @@
-using Distances, JLD2, Plots, Random
+using Distances, JLD2, Random
 using Types
 
 function generate_instance(size::String, i::Int; write=true)
@@ -97,10 +97,10 @@ function generate_activities(B::Int64, S::Int64, P)
     for i in eachindex(V)
         sum_vals = sum(V[i])
         τ = 0.5
-        upper = trunc(Int, trunc(sum_vals / S) * (1 + τ))
+        upper = trunc(Int, (trunc(sum_vals / S) * (1 + τ)))
         μ[i] = fill(upper, S)
     end
-    T = fill(0.6, M)
+    T = fill(0.5, M)
     return V, μ, T
 end
 
@@ -108,7 +108,7 @@ function generate_risk(B::Int64, S::Int64, P)
     R = rand(10:25, B)
     sum_R = sum(R)
     lower = trunc(Int, (sum_R/S))
-    τ = 0.8
+    τ = 1.2
     upper = trunc(Int, trunc(sum_R / S) * ( 1 + τ))
     β = fill(upper, S)
     return R, β
