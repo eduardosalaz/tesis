@@ -80,7 +80,7 @@ function isFactible(solution::Solution, verbose=true)
                 end
                 number_constraints_violated += 1
             end
-            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))    
+            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
                     println("μ: ", Y[i] * μ[m][i] * (1 + T[m]))
@@ -165,7 +165,7 @@ function localSearch(solution::Types.Solution)
             return newSol
         end
     end
-    
+
 end
 
 
@@ -205,8 +205,8 @@ function interchange_bus(solution::Types.Solution, cons_v) # en este movimiento 
                 return solution, original_cons
             end
             moves = interchangeMove[]
-            i_original = findall(x->x ==1, original_X[:,j])
-            if length(i_original)> 0
+            i_original = findall(x -> x == 1, original_X[:, j])
+            if length(i_original) > 0
                 i_original = i_original[1]
             else
                 continue
@@ -217,7 +217,7 @@ function interchange_bus(solution::Types.Solution, cons_v) # en este movimiento 
                     return solution, original_cons
                 end
                 if j ≠ j2
-                    j_original = findall(x->x ==1, original_X[:,j2])
+                    j_original = findall(x -> x == 1, original_X[:, j2])
                     if length(j_original) > 0
                         j_original = j_original[1]
                     else
@@ -294,24 +294,24 @@ function deactivateBranch(solution::Types.Solution, cons_v)
         if iter > max_iters
             break
         end
-        I = findall(y->y==1, Y)
+        I = findall(y -> y == 1, Y)
         for i in I
             moves = []
-            J = findall(y-> y == 0, Y)
-            bus = findall(x->x==1, X[i,:])
+            J = findall(y -> y == 0, Y)
+            bus = findall(x -> x == 1, X[i, :])
             for j in J
                 iter += 1
                 Y2 = copy(Y)
                 Y2[i] = 0
                 Y2[j] = 1
                 X2 = copy(X)
-                X2[i,:] .= 0
+                X2[i, :] .= 0
                 for bu in bus
                     # asignar a la nueva branch
                     X2[j, bu] = 1
                 end
                 #=
-                
+
                 =#
                 Weight = evalWeight(X2, D)
                 newSol = Types.Solution(instance, X2, Y2, Weight)
@@ -481,7 +481,7 @@ function move_bu(solution::Types.Solution, j, previous, new)
 end
 
 function interchange()
-    
+
 end
 
 

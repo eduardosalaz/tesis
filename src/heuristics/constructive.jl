@@ -4,13 +4,14 @@ using JuMP
 using Distances
 using DelimitedFiles
 using Gurobi
+
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
 end
 
-function constructive(instance, id,  init_method, assign_method)
+function constructive(instance, id, init_method, assign_method)
     instancia = Types.read_instance(instance)
-    B = instancia.B 
+    B = instancia.B
     S = instancia.S
     P = instancia.P
     X = Matrix{Int64}[]
@@ -51,7 +52,7 @@ function constructive(instance, id,  init_method, assign_method)
     return solution_str_path
 end
 
-function localize_facs(instance,method)
+function localize_facs(instance, method)
     # k_type = findall(x->x==1, idx_candidate .∈ Sk) # get k type of fac
     if method == "pdisp"
         println("P-DISP")
@@ -67,12 +68,12 @@ function localize_facs(instance,method)
 end
 
 function smarter_assign_bu(instance, Y)
-    branches_used = findall(x->x==1, Y)
+    branches_used = findall(x -> x == 1, Y)
     B = instance.B
     S = instance.S
     X = zeros(Int, S, B)
 
-    minimums = Tuple{Int, Tuple{Int, Int}}[]
+    minimums = Tuple{Int,Tuple{Int,Int}}[]
 
     for j in 1:B
         minimum = 1e9
@@ -81,7 +82,7 @@ function smarter_assign_bu(instance, Y)
             if i ∉ branches_used
                 continue
             end
-            Dij = D[i,j]
+            Dij = D[i, j]
             if Dij < minimum
                 minimum = Dij
                 i_exported = i
@@ -90,14 +91,14 @@ function smarter_assign_bu(instance, Y)
         min_and_index = (minimum, (i_exported, j))
         push!(minimums, min_and_index)
     end
-    
+
     Sk = instance.Sk
     return X
 end
 
 function naive_assign_bu(instance, Y)
     # i haven't been using Y
-    branches_used = findall(x->x==1, Y)
+    branches_used = findall(x -> x == 1, Y)
     # BUT, the entries in X must reflect the original D matrix
     B = instance.B
     S = instance.S
@@ -114,20 +115,20 @@ function naive_assign_bu(instance, Y)
             if i ∉ branches_used
                 continue
             end
-            Dij = D[i,j]
+            Dij = D[i, j]
             if Dij < minimum
                 second_minimum = minimum
                 minimum = Dij
                 i_exported = i
             end
         end
-        X[i_exported,j] = 1
+        X[i_exported, j] = 1
         centers_used += 1
     end
-        # min_and_index = (minimum, (i_exported, j))
-        # push!(minimums, min_and_index)
+    # min_and_index = (minimum, (i_exported, j))
+    # push!(minimums, min_and_index)
 
-    unos = findall(x->x==1, X)
+    unos = findall(x -> x == 1, X)
 
     # display("text/plain", X)
 
@@ -143,15 +144,15 @@ end
 function minimums(matrix::Matrix, n)
     type = eltype(matrix)
     vals = fill(1e9, n)
-    arr = Array{Tuple{type, CartesianIndex}}(undef, n)
+    arr = Array{Tuple{type,CartesianIndex}}(undef, n)
     for i ∈ axes(matrix, 1), j ∈ axes(matrix, 2)
         biggest, index = findmax(vals)
         if matrix[i, j] < biggest
-            arr[index] = matrix[i,j], CartesianIndex(i, j)
+            arr[index] = matrix[i, j], CartesianIndex(i, j)
             vals[index] = matrix[i, j]
         end
     end
-    arr = sort(arr, by = x->x[1])
+    arr = sort(arr, by=x -> x[1])
     vals = [x[1] for x in arr]
     indices = [x[2] for x in arr]
     return vals, indices
@@ -160,7 +161,7 @@ end
 function minimums(vec::Vector, n)
     type = eltype(vec)
     vals = fill(1e9, n)
-    arr = Array{Tuple{type, Int64}}(undef, n)
+    arr = Array{Tuple{type,Int64}}(undef, n)
     for i ∈ eachindex(vec)
         if vec[i] ≠ -1
             biggest, index = findmax(vals)
@@ -170,7 +171,7 @@ function minimums(vec::Vector, n)
             end
         end
     end
-    arr = sort(arr, by = x->x[1])
+    arr = sort(arr, by=x -> x[1])
     vals = [x[1] for x in arr]
     indices = [x[2] for x in arr]
     return vals, indices
@@ -179,15 +180,15 @@ end
 function maximums(matrix, n)
     type = eltype(matrix)
     vals = zeros(type, n)
-    arr = Array{Tuple{type, CartesianIndex}}(undef, n)
+    arr = Array{Tuple{type,CartesianIndex}}(undef, n)
     for i ∈ axes(matrix, 1), j ∈ axes(matrix, 2)
         smallest, index = findmin(vals)
         if matrix[i, j] > smallest
-            arr[index] = matrix[i,j], CartesianIndex(i, j)
+            arr[index] = matrix[i, j], CartesianIndex(i, j)
             vals[index] = matrix[i, j]
         end
     end
-    arr = sort(arr, by = x->x[1], rev=true)
+    arr = sort(arr, by=x -> x[1], rev=true)
     vals = [x[1] for x in arr]
     indices = [x[2] for x in arr]
     return vals, indices
@@ -203,14 +204,14 @@ function oppCostAssignment(Y, instance::Instance)
     unavez = true
     minimos = P
 
-    not_assigned_y = findall(y->y==0, Y)
+    not_assigned_y = findall(y -> y == 0, Y)
     for j in not_assigned_y
-        D[j,:] .= -1
+        D[j, :] .= -1
     end
     diff = copy(D)
     for i in 1:B
         minimal = 0
-        minimals, idxs = minimums(D[:,i], minimos)
+        minimals, idxs = minimums(D[:, i], minimos)
         for j in eachindex(idxs)
             if idxs[j] ∉ not_assigned_y
                 minimal = minimals[j]
@@ -219,51 +220,51 @@ function oppCostAssignment(Y, instance::Instance)
                 println("No deberia pasar esto")
             end
         end
-        diff[:,i] .= D[:,i] .- minimal
+        diff[:, i] .= D[:, i] .- minimal
     end
     todos = false
-    n = trunc(Int, P/4)
+    n = trunc(Int, P / 4)
     while !todos
         _, indices = maximums(diff, n)
         constraints = Int64[]
         for indice in indices
             X_copy = copy(X)
             col = indice[2]
-            row = findall(x->x==0, diff[:,col])
+            row = findall(x -> x == 0, diff[:, col])
             if length(row) ≠ 0
                 row = row[1]
             else
                 println("NO SE")
             end
-            X_copy[row,col] = 1
-            constraints_v = restricciones(X_copy, Y, instance; verbose = false)
+            X_copy[row, col] = 1
+            constraints_v = restricciones(X_copy, Y, instance; verbose=false)
             push!(constraints, constraints_v)
         end
         primero = constraints[1]
-        picked = CartesianIndex(1,1)
-        if all(x->x==0, constraints) # si no se violan constraints, agarra el 0 de la columna del costo maximo
+        picked = CartesianIndex(1, 1)
+        if all(x -> x == 0, constraints) # si no se violan constraints, agarra el 0 de la columna del costo maximo
             indice = indices[1]
             col = indice[2]
-            row = findall(x->x==0, diff[:,col])[1]
-            picked = CartesianIndex(row,col)
+            row = findall(x -> x == 0, diff[:, col])[1]
+            picked = CartesianIndex(row, col)
         else
-            if all(x->x ≠ 0, constraints) # si todas violan constraints
+            if all(x -> x ≠ 0, constraints) # si todas violan constraints
                 original_cons, idx = findmin(constraints) # agarra el que viole menos constraints
                 indice = indices[idx]
                 col = indice[2]
-                original_row = findall(x->x==0, diff[:,col])[1]
+                original_row = findall(x -> x == 0, diff[:, col])[1]
                 println("antes: ", original_cons, " ", original_row)
                 # queremos buscar en esa columna el siguiente valor más cercano a 0 en diff
                 # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
                 busqueda = P # a lo mejor cambiarlo despues
-                values, idxs_inner = minimums(diff[:,col], busqueda)
+                values, idxs_inner = minimums(diff[:, col], busqueda)
                 # el primer minimo es el 0 de nuestra localizacion optima
                 # lo desechamos para darle variedad a la busqueda
                 values = values[2:end]
                 idxs_inner = idxs_inner[2:end]
                 for row in idxs_inner
                     X_copy = copy(X)
-                    X_copy[row,col] = 1
+                    X_copy[row, col] = 1
                     constraints_v2 = restricciones(X_copy, Y, instance)
                     println("despues: ", constraints_v2, " ", row)
                     if constraints_v2 < original_cons
@@ -273,14 +274,14 @@ function oppCostAssignment(Y, instance::Instance)
                     end
                     unavez = false
                 end
-                picked = CartesianIndex(original_row,col)
+                picked = CartesianIndex(original_row, col)
             else # si hay una que no viola constraints
                 for idx in eachindex(constraints)
                     if constraints[idx] == 0 # agarrala
                         indice = indices[idx]
                         col = indice[2]
-                        row = findall(x->x==0, diff[:,col])[1]
-                        picked = CartesianIndex(row,col)
+                        row = findall(x -> x == 0, diff[:, col])[1]
+                        picked = CartesianIndex(row, col)
                         break
                     end
                 end
@@ -290,10 +291,10 @@ function oppCostAssignment(Y, instance::Instance)
         # en teoria tanto constraints como indices estan en orden del mejor costo de op al peor
         X[picked] = 1
         column = picked[2]
-        diff[:,column] .= -1 # "apagamos" esa columna
+        diff[:, column] .= -1 # "apagamos" esa columna
         todos = true
         for col in eachcol(X)
-            if all(x->x==0, col)
+            if all(x -> x == 0, col)
                 todos = false
                 break
             end
@@ -302,7 +303,7 @@ function oppCostAssignment(Y, instance::Instance)
     return X
 end
 
-function restricciones(X_copy, Y_copy, instance; verbose = true)
+function restricciones(X_copy, Y_copy, instance; verbose=true)
     Sk = instance.Sk
     Lk = instance.Lk
     Uk = instance.Uk
@@ -350,7 +351,7 @@ function restricciones(X_copy, Y_copy, instance; verbose = true)
     end
     for i in 1:S
         for m in 1:M
-            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))    
+            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
                     println("μ: ", Y[i] * μ[m][i] * (1 + T[m]))
@@ -374,55 +375,55 @@ function restricciones(X_copy, Y_copy, instance; verbose = true)
 end
 
 
-    # no empezar con la columna 1, de manera lexicografica
-    # puede sesgar 
-    # hay una manera mas inteligente de seleccionar el orden de las BUs
-    # escoger la BU que tenga la menor distancia O la mayor distancia
-    # esto se hace para ir descartando los peores nodos para al final dejar los mejores
-    # agarrar el minimo de los minimos
-    # o agarrar el maximo de los minimos para asegurar que ya asigne el peor
-    # otro criterio: el costo de oportunidad
-    #=
+# no empezar con la columna 1, de manera lexicografica
+# puede sesgar 
+# hay una manera mas inteligente de seleccionar el orden de las BUs
+# escoger la BU que tenga la menor distancia O la mayor distancia
+# esto se hace para ir descartando los peores nodos para al final dejar los mejores
+# agarrar el minimo de los minimos
+# o agarrar el maximo de los minimos para asegurar que ya asigne el peor
+# otro criterio: el costo de oportunidad
+#=
 
-    si yo le pongo la BU 1 al centro i me cuesta x = 100
-    si yo le pongo la BU 1 al centro j me cuesta x + 30 130
-    150
-    diferencia = 30
-    50
-    si yo le pongo la BU 2 al centro i me cuesta y 5
-    si yo le pongo la BU 2 al centro j me cuesta y + 5 10
-    diferencia/costo = 5
-    escojo BU1 al centro i ya que la diferencia es mayor
-      tope = P / 3
+si yo le pongo la BU 1 al centro i me cuesta x = 100
+si yo le pongo la BU 1 al centro j me cuesta x + 30 130
+150
+diferencia = 30
+50
+si yo le pongo la BU 2 al centro i me cuesta y 5
+si yo le pongo la BU 2 al centro j me cuesta y + 5 10
+diferencia/costo = 5
+escojo BU1 al centro i ya que la diferencia es mayor
+  tope = P / 3
 
-      las que quedan volando, ponlas en donde se violen menos restricciones
-    =#
-    # diferencia de la segunda con la primera y eliges con eso
-    # al principio las restricciones no se violan
-    # al final, las restricciones se violan y la asigno a una facility muy lejana
-    # poner un tope de decir: no asignar a la 5ta mas lejana aunque me viole mi restriccion
-    # tope = P/3, P/4 o P/2
+  las que quedan volando, ponlas en donde se violen menos restricciones
+=#
+# diferencia de la segunda con la primera y eliges con eso
+# al principio las restricciones no se violan
+# al final, las restricciones se violan y la asigno a una facility muy lejana
+# poner un tope de decir: no asignar a la 5ta mas lejana aunque me viole mi restriccion
+# tope = P/3, P/4 o P/2
 
-    # otra heuristica:
-    # Yi entera
-    # resuelveme una relajacion del problema
-    # Xij, tope 0-1, no es entera, es continua
-    # se va a resolver MUY rapido
-    # PERO YA ME UBICO LOS CENTROS
-    # en base a eso ya los agarro
+# otra heuristica:
+# Yi entera
+# resuelveme una relajacion del problema
+# Xij, tope 0-1, no es entera, es continua
+# se va a resolver MUY rapido
+# PERO YA ME UBICO LOS CENTROS
+# en base a eso ya los agarro
 
-    # una fila representa una facility
-    # una columna representa una BU
-    # quiero encontrar el minimo de cada columna (la distancia minima de cada BU)
-    # minimo de columna 1, minimo de distancia de BU1 a cualquier facility
-    # irme columna por oclumna
-    # agarrar el minimo
-    # calcular si se respetan las tolerancias
-    # si si, marcar en X 
-    # si no, agarrar el segundo minimo hasta que haya uno
-    # tengo que quitar las filas que no escogi en Y primero D[Y, :]
-    # each column represents a facility
-    # meter al pseudocodigo
+# una fila representa una facility
+# una columna representa una BU
+# quiero encontrar el minimo de cada columna (la distancia minima de cada BU)
+# minimo de columna 1, minimo de distancia de BU1 a cualquier facility
+# irme columna por oclumna
+# agarrar el minimo
+# calcular si se respetan las tolerancias
+# si si, marcar en X 
+# si no, agarrar el segundo minimo hasta que haya uno
+# tengo que quitar las filas que no escogi en Y primero D[Y, :]
+# each column represents a facility
+# meter al pseudocodigo
 
 function pdisp(instance)
     P = instance.P
@@ -491,7 +492,7 @@ function relax_init(instance)
 
     model = JuMP.Model(Gurobi.Optimizer) # THIS IS WHERE THE FUN BEGINS
 
-    JuMP.@variable(model, x[1:S, 1:B], lower_bound=0, upper_bound=1)
+    JuMP.@variable(model, x[1:S, 1:B], lower_bound = 0, upper_bound = 1)
     # num suc and num bu, Xᵢⱼ
     JuMP.@variable(model, y[1:S], Bin)
     # Yᵢ

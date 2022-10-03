@@ -8,7 +8,7 @@ function main_cons(path)
     if !isdir(path)
         init_methods = ["relax", "pdisp", "random"]
         assign_methods = ["naive", "opp"]
-        for init_method in init_methods, assign_method in assign_methods 
+        for init_method in init_methods, assign_method in assign_methods
             solucion = constructive(path, id, init_method, assign_method)
             solucionLs = main(solucion)
         end

@@ -8,17 +8,17 @@ function generate_instance(size::String, i::Int; write=true)
     S = 0
     P = 0
     if size == "S"
-        B = 100
-        S = 20
-        P = 10
-    elseif size == "M"
         B = 200
         S = 40
-        P = 20
-    elseif size == "L"
-        B = 300
-        S = 60
         P = 30
+    elseif size == "M"
+        B = 800
+        S = 80
+        P = 60
+    elseif size == "L"
+        B = 1500
+        S = 120
+        P = 100
     elseif size == "XL"
         B = 500
         S = 80
@@ -107,9 +107,9 @@ end
 function generate_risk(B::Int64, S::Int64, P)
     R = rand(10:25, B)
     sum_R = sum(R)
-    lower = trunc(Int, (sum_R/S))
+    lower = trunc(Int, (sum_R / S))
     τ = 1.2
-    upper = trunc(Int, trunc(sum_R / S) * ( 1 + τ))
+    upper = trunc(Int, trunc(sum_R / S) * (1 + τ))
     β = fill(upper, S)
     return R, β
 end
