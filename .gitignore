@@ -11,5 +11,5 @@ outXL_100/
 *.nl
 out/
 instances/
-.dll
+*.dll
 resultados/
