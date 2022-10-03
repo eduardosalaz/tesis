@@ -10,7 +10,7 @@ function remove!(V, item)
 end
 
 function constructive(instance, id, init_method, assign_method)
-    instancia = Types.read_instance(instance)
+    instancia = instance
     B = instancia.B
     S = instancia.S
     P = instancia.P
@@ -41,15 +41,14 @@ function constructive(instance, id, init_method, assign_method)
         Weight += D[indice]
     end
 
-    str_path = "sol" * "_" * id * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * init_method * "_" * assign_method
+    str_path = "sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * init_method * "_" * assign_method
     plot_str_path = str_path * ".png"
     solution_str_path = str_path * ".jld2"
 
-
     solution = Types.Solution(instancia, X, Y_bool, Weight)
-    # Types.plot_solution(solution, plot_str_path)
+    Types.plot_solution(solution, plot_str_path)
     Types.write_solution(solution, solution_str_path)
-    return solution_str_path
+    return solution
 end
 
 function localize_facs(instance, method)
@@ -548,5 +547,26 @@ function relax_init(instance)
     # println(value.(model[:x]))
     return Y
 end
-constructive("instances\\250_40_30\\inst_83_250_40_30.jld2", "1", "pdisp", "naive")
+#constructive("instances\\250_40_30\\inst_83_250_40_30.jld2", "1", "pdisp", "naive")
 # constructive(ARGS[1], "1", ARGS[2], ARGS[3])
+
+function main_constructive(init_method, assign_method; name = "inst", read_file = true, instance_obj = nothing, id = 0)
+    instance = 1 # para traerlo al scope
+    if read_file
+        pattern = Regex("[t][_]\\d{1,3}")
+        index = findfirst(pattern, name)
+        almost_number = name[index]
+        _, number = split(almost_number, "_")
+        instance = read_instance(name)
+    else
+        instance = instance_obj
+        number = id
+    end
+    
+    solution = constructive(instance, number, init_method, assign_method)
+    return solution
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    main_constructive(ARGS[2], ARGS[3]; name = ARGS[1])
+end
