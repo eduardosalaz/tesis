@@ -97,7 +97,7 @@ function generate_activities(B::Int64, S::Int64, P)
     for i in eachindex(V)
         sum_vals = sum(V[i])
         τ = 0.5
-        upper = trunc(Int, (trunc(sum_vals / S) * (1 + τ)))
+        upper = trunc(Int, (trunc(Int, (sum_vals / S) * (1 + τ))))
         μ[i] = fill(upper, S)
     end
     T = fill(0.5, M)
@@ -107,9 +107,8 @@ end
 function generate_risk(B::Int64, S::Int64, P)
     R = rand(10:25, B)
     sum_R = sum(R)
-    lower = trunc(Int, (sum_R / S))
     τ = 0.8
-    upper = trunc(Int, trunc(sum_R / S) * (1 + τ))
+    upper = trunc(Int, trunc(Int, (sum_R / S) * (1 + τ)))
     β = fill(upper, S)
     return R, β
 end
@@ -117,7 +116,6 @@ end
 function main()
     size = ARGS[1]
     n = parse(Int64, ARGS[2])
-
     for i in 1:n
         generate_instance(size, i)
     end

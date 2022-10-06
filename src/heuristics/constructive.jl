@@ -4,6 +4,7 @@ using JuMP
 using Distances
 using DelimitedFiles
 using Gurobi
+using Dates
 
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
@@ -18,6 +19,7 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
     Y = Vector{Int64}[]
     D = instancia.D
     Weight = 0
+    before = now()
     Y = localize_facs(instancia, init_method)
     if init_method ≠ "relax"
         Y_bool = zeros(Int, instancia.S)
@@ -35,6 +37,9 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
         println("OPP COST")
         X = oppCostAssignment(Y_bool, instancia)
     end
+    after = now()
+    time = after - before
+    println(time)
     println("X done")
     indices = findall(x -> x == 1, X)
     for indice in indices
@@ -240,7 +245,6 @@ function oppCostAssignment(Y, instance::Instance)
                 indice = indices[idx]
                 col = indice[2]
                 original_row = findall(x -> x == 0, diff[:, col])[1]
-                println("antes: ", original_cons, " ", original_row)
                 # queremos buscar en esa columna el siguiente valor más cercano a 0 en diff
                 # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
                 busqueda = P # a lo mejor cambiarlo despues
@@ -252,10 +256,8 @@ function oppCostAssignment(Y, instance::Instance)
                 for row in idxs_inner
                     X_copy = copy(X)
                     X_copy[row, col] = 1
-                    constraints_v2 = restricciones(X_copy, Y, instance)
-                    println("despues: ", constraints_v2, " ", row)
+                    constraints_v2 = restricciones(X_copy, Y, instance; verbose = false)
                     if constraints_v2 < original_cons
-                        println("HOLAAAAAAAAAAAAAAAAAAAA")
                         original_cons = constraints_v2
                         original_row = row
                     end

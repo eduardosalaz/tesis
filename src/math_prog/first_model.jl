@@ -1,5 +1,7 @@
 using Gurobi, JuMP, JLD2
 using Types
+using MathOptInterface
+const MOI = MathOptInterface
 
 function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
     set_optimizer(model, solver.Optimizer)
@@ -9,6 +11,7 @@ function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
     end
     # show(model)
     optimize!(model)
+    tiempo = MOI.get(model, MOI.SolveTimeSec())
     if primal_status(model) != MOI.FEASIBLE_POINT
         @error "Punto factible no alcanzado"
         obj_value = 0 # TODO hacer algo mejor
@@ -24,7 +27,7 @@ function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
     if termination_status(model) != MOI.OPTIMAL
         @warn "Óptimo no alcanzado"
     end
-    @info obj_value
+    @info obj_value, tiempo
 
     return X, Y, obj_value
 end
