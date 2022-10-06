@@ -38,8 +38,9 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
         X = oppCostAssignment(Y_bool, instancia)
     end
     after = now()
-    time = after - before
-    println(time)
+    delta = after - before
+    secs = round(delta, Second)
+    time = secs.value
     println("X done")
     indices = findall(x -> x == 1, X)
     for indice in indices
@@ -50,7 +51,7 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
     plot_str_path = str_path * ".png"
     solution_str_path = str_path * ".jld2"
 
-    solution = Types.Solution(instancia, X, Y_bool, Weight)
+    solution = Types.Solution(instancia, X, Y_bool, Weight, time)
     Types.plot_solution(solution, plot_str_path)
     Types.write_solution(solution, solution_str_path)
     return solution

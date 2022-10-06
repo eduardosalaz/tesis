@@ -1,4 +1,5 @@
 using Types
+using Dates
 function isFactible(solution::Solution, verbose=true)
     number_constraints_violated = 0
     instance = solution.Instance
@@ -134,6 +135,8 @@ function assigntounused(solution::Types.Solution) # en esta funcion agarramos la
 end
 
 function localSearch(solPath, plotPath, solution::Solution)
+    oldSol = solution
+    oldTime = oldSol.Time
     factible, cons_v = isFactible(solution, false)
     weight_before = 1e9
     if factible
@@ -142,11 +145,16 @@ function localSearch(solPath, plotPath, solution::Solution)
     else
         println("Solucion no factible")
     end
+    before = now()
     solution, cons_v = simple_move_bu(solution, cons_v)
     println("Simple terminado")
     solution, cons_v = interchange_bus(solution, cons_v)
     println("Intercambio terminado")
     solution, cons_v = deactivateBranch(solution, cons_v)
+    after = now()
+    delta = after - before
+    secs = round(delta, Second)
+    time = secs.value
     println("Desactivar y Activar terminado")
     println("Fin de Busqueda Local")
     factible, cons_v = isFactible(solution, false)
@@ -157,10 +165,16 @@ function localSearch(solPath, plotPath, solution::Solution)
     end
     newSol = solution
     weight_now = newSol.Weight
+    X_now = newSol.X
+    Y_now = newSol.Y
+    instance = newSol.instance
+    newTime = oldTime + time
+
+    lsSol = Solution(instance, X_now, Y_now, weight_now, newTime)
     @show weight_now
     
-    Types.write_solution(newSol, solPath)
-    Types.plot_solution(newSol, plotPath)
+    Types.write_solution(lsSol, solPath)
+    Types.plot_solution(lsSol, plotPath)
     return newSol
 end
 
