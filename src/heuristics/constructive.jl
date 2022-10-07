@@ -5,12 +5,14 @@ using Distances
 using DelimitedFiles
 using Gurobi
 using Dates
+using TimerOutputs
 
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
 end
 
 function constructive(instance, id, init_method, assign_method; withdir = false, dir = "")
+    
     instancia = instance
     B = instancia.B
     S = instancia.S
@@ -189,11 +191,11 @@ function maximums(matrix, n)::Tuple{Vector{Int64}, Vector{CartesianIndex{2}}}
 end
 
 function oppCostAssignment(Y, instance::Instance)
-    D = instance.D
+    D = copy(instance.D)
     P = instance.P
-    X = copy(D)
-    X .= 0
+    S = instance.S
     B = instance.B
+    X = zeros(Int64, S, B)
     count = 0
     not_assigned_y = findall(y -> y == 0, Y)
     for j in not_assigned_y
@@ -210,72 +212,74 @@ function oppCostAssignment(Y, instance::Instance)
     n = trunc(Int, P / 4)
     while !todos
         _, indices::Vector{CartesianIndex{2}} = maximums(diff, n)
-        constraints = Int64[]
-        for indice::CartesianIndex in indices
-            X_copy = copy(X)
-            col = indice[2]
-            row = findall(x -> x == 0, diff[:, col])[1]
-            X_copy[row, col] = 1
-            constraints_v = restricciones(X_copy, Y, instance; verbose=true)
-            push!(constraints, constraints_v)
-        end
-        picked = CartesianIndex(1, 1)::CartesianIndex{2}
-        if all(x -> x == 0, constraints) # si no se violan constraints, agarra el 0 de la columna del costo maximo
-            indice = indices[1]::CartesianIndex{2}
-            col = indice[2]::Int64
-            row = findfirst(x -> x == 0, diff[:, col])[1]
-            picked = CartesianIndex(row, col)
-        else
-            if all(x -> x ≠ 0, constraints) # si todas violan constraints
-                original_cons, idx = findmin(constraints) # agarra el que viole menos constraints
-                indice = indices[idx]
-                col = indice[2]
-                original_row = findfirst(x -> x == 0, diff[:, col])[1]::Int64
-                # queremos buscar en esa columna el siguiente valor más cercano a 0 en diff
-                # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
-                busqueda = trunc(Int, (P/2)) # a lo mejor cambiarlo despues
-                _, idxs_inner::Array{Int64} = minimums(diff[:, col], busqueda)
-                # el primer minimo es el 0 de nuestra localizacion optima
-                # lo desechamos para darle variedad a la busqueda
-                idxs_inner2::Array{Int64} = idxs_inner[2:end]
-                for row in idxs_inner2
-                    X_copy = copy(X)
-                    X_copy[row, col] = 1
-                    constraints_v2 = restricciones(X_copy, Y, instance; verbose = false)
-                    if constraints_v2 < original_cons
-                        original_cons = constraints_v2
-                        original_row = row
-                    end
-                end
-                picked = CartesianIndex(original_row, col)
-            else # si hay una que no viola constraints
-                for idx in eachindex(constraints)
-                    if constraints[idx] == 0 # agarrala
-                        indice = indices[idx]
-                        col = indice[2]
-                        row = findfirst(x -> x == 0, diff[:, col])[1]
-                        picked = CartesianIndex(row, col)
-                        break
-                    end
-                end
-            end
-        end
-        X[picked] = 1
-        column = picked[2]::Int64
-        diff[:, column] .= -1 # "apagamos" esa columna
-        todos = true
-        count += 1
-        for col in eachcol(X)
-            if all(x -> x == 0, col)
-                todos = false
-                break
-            end
-        end
-    end
+         constraints = Int64[]
+         for indice::CartesianIndex in indices
+             X_copy = Matrix{Int64}(undef, S, B)
+             unsafe_copyto!(X_copy,1,X,1, S*B)
+             col = indice[2]
+             row = findfirst(x -> x == 0, diff[:, col])
+             X_copy[row, col] = 1
+             constraints_v = restricciones(X_copy, Y, instance; verbose=false)
+             push!(constraints, constraints_v)
+         end
+         picked = CartesianIndex(1, 1)::CartesianIndex{2}
+         if all(x -> x == 0, constraints) # si no se violan constraints, agarra el 0 de la columna del costo maximo
+             indice = indices[1]::CartesianIndex{2}
+             col = indice[2]::Int64
+             row = findfirst(x -> x == 0, diff[:, col])
+             picked = CartesianIndex(row, col)
+         else
+             if all(x -> x ≠ 0, constraints) # si todas violan constraints
+                 original_cons, idx = findmin(constraints) # agarra el que viole menos constraints
+                 indice = indices[idx]
+                 col = indice[2]
+                 original_row = findfirst(x -> x == 0, diff[:, col])::Int64
+                 # queremos buscar en esa columna el siguiente valor más cercano a 0 en diff
+                 # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
+                 busqueda = trunc(Int, (P/2)) # a lo mejor cambiarlo despues
+                 _, idxs_inner::Array{Int64} = minimums(diff[:, col], busqueda)
+                 # el primer minimo es el 0 de nuestra localizacion optima
+                 # lo desechamos para darle variedad a la busqueda
+                 idxs_inner2::Array{Int64} = idxs_inner[2:end]
+                 for row in idxs_inner2
+                     X_copy = Matrix{Int64}(undef, S, B)
+                     unsafe_copyto!(X_copy,1,X,1, S*B)
+                     X_copy[row, col] = 1
+                     constraints_v2 = restricciones(X_copy, Y, instance; verbose = false)
+                     if constraints_v2 < original_cons
+                         original_cons = constraints_v2
+                         original_row = row
+                     end
+                 end
+                 picked = CartesianIndex(original_row, col)
+             else # si hay una que no viola constraints
+                 for idx in eachindex(constraints)
+                     if constraints[idx] == 0 # agarrala
+                         indice = indices[idx]
+                         col = indice[2]
+                         row = findfirst(x -> x == 0, diff[:, col])
+                         picked = CartesianIndex(row, col)
+                         break
+                     end
+                 end
+             end
+         end
+         X[picked] = 1
+         column = picked[2]::Int64
+         diff[:, column] .= -1 # "apagamos" esa columna
+         todos = true
+         count += 1
+         for col in eachcol(X)
+             if all(x -> x == 0, col)
+                 todos = false
+                 break
+             end
+         end
+     end
     return X
 end
 
-function restricciones(X_copy, Y_copy, instance; verbose=true)
+function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::Instance; verbose=true)
     Sk = instance.Sk
     Lk = instance.Lk
     Uk = instance.Uk
@@ -296,7 +300,7 @@ function restricciones(X_copy, Y_copy, instance; verbose=true)
     V = instance.V
     number_constraints_violated = 0
 
-    counts_k = []
+    counts_k = Array{Int64}(undef, K)
     if sum(Y) > P
         if verbose
             println("Violando número de centros asignados ", sum(Y))
@@ -310,7 +314,7 @@ function restricciones(X_copy, Y_copy, instance; verbose=true)
                 count_k_type += 1
             end
         end
-        push!(counts_k, count_k_type)
+        counts_k[k_type] =  count_k_type
     end
 
     for k in 1:K
@@ -323,10 +327,10 @@ function restricciones(X_copy, Y_copy, instance; verbose=true)
     end
     for i in 1:S
         for m in 1:M
-            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))
+            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= trunc(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
-                    println("μ: ", Y[i] * μ[m][i] * (1 + T[m]))
+                    println("μ: ", trunc(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
