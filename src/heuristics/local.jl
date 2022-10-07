@@ -1,5 +1,6 @@
 using Types
 using Dates
+
 function isFactible(solution::Solution, verbose=true)
     number_constraints_violated = 0
     instance = solution.Instance
@@ -72,18 +73,18 @@ function isFactible(solution::Solution, verbose=true)
 
     for i in 1:S
         for m in 1:M
-            if !(Y[i] * μ[m][i] * (1 - T[m]) <= sum(X[i, j] * V[m][j] for j in 1:B))
+            if !(trunc(Int, Y[i] * μ[m][i] * (1 - T[m])) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
-                    println("μ: ", Y[i] * μ[m][i] * (1 - T[m]))
+                    println("μ: ", trunc(Int, Y[i] * μ[m][i] * (1 - T[m])))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
             end
-            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))
+            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= trunc(Int, Y[i] * μ[m][i] * (1 + T[m])))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
-                    println("μ: ", Y[i] * μ[m][i] * (1 + T[m]))
+                    println("μ: ", trunc(Int, Y[i] * μ[m][i] * (1 + T[m])))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
@@ -246,7 +247,7 @@ function interchange_bus(solution::Types.Solution, cons_v;) # en este movimiento
                             end
                         end
                         Weight = evalWeight(X_copy, D)
-                        newSol = Types.Solution(instance, X_copy, Y_copy, Weight)
+                        newSol = Types.Solution(instance, X_copy, Y_copy, Weight, original_solution.Time)
                         factible, cons_v = isFactible(newSol, false)
                         interchangedMove = interchangeMove(cons_v, newSol, j, j2, i_original, j_original, Weight)
                         push!(moves, interchangedMove)
@@ -311,7 +312,7 @@ function interchange_bus(solution::Types.Solution, cons_v;) # en este movimiento
                             end
                         end
                         Weight = evalWeight(X_copy, D)
-                        newSol = Types.Solution(instance, X_copy, Y_copy, Weight)
+                        newSol = Types.Solution(instance, X_copy, Y_copy, Weight, original_solution.Time)
                         factible, cons_v = isFactible(newSol, false)
                         interchangedMove = interchangeMove(cons_v, newSol, j, j2, i_original, j_original, Weight)
                         push!(moves, interchangedMove)
@@ -389,7 +390,7 @@ function deactivateBranch(solution::Types.Solution, cons_v)
                     X2[j, bu] = 1
                 end
                 Weight = evalWeight(X2, D)
-                newSol = Types.Solution(instance, X2, Y2, Weight)
+                newSol = Types.Solution(instance, X2, Y2, Weight, original_solution.Time)
                 factible, cons_v = isFactible(newSol, false)
                 deactivatedmove = deactivatedMove(cons_v, newSol, i, j, Weight)
                 push!(moves, deactivatedmove)
@@ -434,7 +435,7 @@ function deactivateBranch(solution::Types.Solution, cons_v)
                         X2[j, bu] = 1
                     end
                     Weight = evalWeight(X2, D)
-                    newSol = Types.Solution(instance, X2, Y2, Weight)
+                    newSol = Types.Solution(instance, X2, Y2, Weight, original_solution.Time)
                     factible, cons_v = isFactible(newSol, false)
                     deactivatedmove = deactivatedMove(cons_v, newSol, i, j, Weight)
                     push!(moves, deactivatedmove)
@@ -492,7 +493,7 @@ function simple_move_bu(solution::Types.Solution, cons_v)
     end
     S = instance.S
     B = instance.B
-    max_iters = 300
+    max_iters = 250
     iter = 0
     while !factible
         println("No es factible")
@@ -500,11 +501,14 @@ function simple_move_bu(solution::Types.Solution, cons_v)
             break
         end
         for j in 1:B
+            println(iter)            
+            if iter > max_iters
+                break
+            end
             moves = simpleMove[]
             i_original = findall(x -> x == 1, original_X[:, j])[1] # el nodo asociado inicialmente a la BU
             for i in 1:S
                 if i ≠ i_original
-                    iter += 1
                     new_cons_v, new_sol = move_bu(solution, j, i_original, i)
                     move = simpleMove(new_cons_v, new_sol, i_original, i, j, new_sol.Weight)
                     push!(moves, move)
@@ -596,7 +600,7 @@ function move_bu(solution::Types.Solution, j, previous, new)
             Y_copy[i] = 0
         end
     end
-    newSol = Types.Solution(instance, X_copy, Y_copy, Weight)
+    newSol = Types.Solution(instance, X_copy, Y_copy, Weight, solution.Time)
     factible, cons_v = isFactible(newSol, false)
     if factible
         return 0, newSol

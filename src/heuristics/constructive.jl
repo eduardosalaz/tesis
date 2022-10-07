@@ -96,8 +96,6 @@ function smarter_assign_bu(instance, Y)
         min_and_index = (minimum, (i_exported, j))
         push!(minimums, min_and_index)
     end
-
-    Sk = instance.Sk
     return X
 end
 
@@ -134,11 +132,12 @@ function naive_assign_bu(instance, Y)
     return X
 end
 
-function minimums(matrix::Matrix, n)
+function minimums(matrix::Matrix, n)::Tuple{Vector{Int64}, Vector{CartesianIndex{2}}}
     type = eltype(matrix)
-    vals = fill(1e9, n)
+    vals = fill(1e12, n)
     arr = Array{Tuple{type,CartesianIndex}}(undef, n)
-    for i ∈ axes(matrix, 1), j ∈ axes(matrix, 2)
+    indices = Array{Int64}(undef,n)
+    @inbounds for i ∈ axes(matrix, 1), j ∈ axes(matrix, 2)
         biggest, index = findmax(vals)
         if matrix[i, j] < biggest
             arr[index] = matrix[i, j], CartesianIndex(i, j)
@@ -151,11 +150,12 @@ function minimums(matrix::Matrix, n)
     return vals, indices
 end
 
-function minimums(vec::Vector, n)
+function minimums(vec::Vector, n)::Tuple{Vector{Int64}, Vector{Int64}}
     type = eltype(vec)
     vals = fill(1e9, n)
     arr = Array{Tuple{type,Int64}}(undef, n)
-    for i ∈ eachindex(vec)
+    indices = Array{Int64}(undef,n)
+    @inbounds for i ∈ eachindex(vec)
         if vec[i] ≠ -1
             biggest, index = findmax(vals)
             if vec[i] < biggest
@@ -170,11 +170,12 @@ function minimums(vec::Vector, n)
     return vals, indices
 end
 
-function maximums(matrix, n)
+function maximums(matrix, n)::Tuple{Vector{Int64}, Vector{CartesianIndex{2}}}
     type = eltype(matrix)
     vals = zeros(type, n)
+    indices = Array{Int64}(undef,n)
     arr = Array{Tuple{type,CartesianIndex}}(undef, n)
-    for i ∈ axes(matrix, 1), j ∈ axes(matrix, 2)
+    @inbounds for i ∈ axes(matrix, 1), j ∈ axes(matrix, 2)
         smallest, index = findmin(vals)
         if matrix[i, j] > smallest
             arr[index] = matrix[i, j], CartesianIndex(i, j)
@@ -193,10 +194,7 @@ function oppCostAssignment(Y, instance::Instance)
     X = copy(D)
     X .= 0
     B = instance.B
-    S = instance.S
-    unavez = true
-    minimos = P
-
+    count = 0
     not_assigned_y = findall(y -> y == 0, Y)
     for j in not_assigned_y
         D[j, :] .= -1
@@ -204,57 +202,43 @@ function oppCostAssignment(Y, instance::Instance)
     diff = copy(D)
     for i in 1:B
         minimal = 0
-        minimals, idxs = minimums(D[:, i], minimos)
-        for j in eachindex(idxs)
-            if idxs[j] ∉ not_assigned_y
-                minimal = minimals[j]
-                break
-            else
-                println("No deberia pasar esto")
-            end
-        end
+        minimals, _ = minimums(D[:, i], 1)
+        minimal = minimals[1]
         diff[:, i] .= D[:, i] .- minimal
     end
     todos = false
     n = trunc(Int, P / 4)
     while !todos
-        _, indices = maximums(diff, n)
+        _, indices::Vector{CartesianIndex{2}} = maximums(diff, n)
         constraints = Int64[]
-        for indice in indices
+        for indice::CartesianIndex in indices
             X_copy = copy(X)
             col = indice[2]
-            row = findall(x -> x == 0, diff[:, col])
-            if length(row) ≠ 0
-                row = row[1]
-            else
-                println("NO SE")
-            end
+            row = findall(x -> x == 0, diff[:, col])[1]
             X_copy[row, col] = 1
-            constraints_v = restricciones(X_copy, Y, instance; verbose=false)
+            constraints_v = restricciones(X_copy, Y, instance; verbose=true)
             push!(constraints, constraints_v)
         end
-        primero = constraints[1]
-        picked = CartesianIndex(1, 1)
+        picked = CartesianIndex(1, 1)::CartesianIndex{2}
         if all(x -> x == 0, constraints) # si no se violan constraints, agarra el 0 de la columna del costo maximo
-            indice = indices[1]
-            col = indice[2]
-            row = findall(x -> x == 0, diff[:, col])[1]
+            indice = indices[1]::CartesianIndex{2}
+            col = indice[2]::Int64
+            row = findfirst(x -> x == 0, diff[:, col])[1]
             picked = CartesianIndex(row, col)
         else
             if all(x -> x ≠ 0, constraints) # si todas violan constraints
                 original_cons, idx = findmin(constraints) # agarra el que viole menos constraints
                 indice = indices[idx]
                 col = indice[2]
-                original_row = findall(x -> x == 0, diff[:, col])[1]
+                original_row = findfirst(x -> x == 0, diff[:, col])[1]::Int64
                 # queremos buscar en esa columna el siguiente valor más cercano a 0 en diff
                 # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
-                busqueda = P # a lo mejor cambiarlo despues
-                values, idxs_inner = minimums(diff[:, col], busqueda)
+                busqueda = trunc(Int, (P/2)) # a lo mejor cambiarlo despues
+                _, idxs_inner::Array{Int64} = minimums(diff[:, col], busqueda)
                 # el primer minimo es el 0 de nuestra localizacion optima
                 # lo desechamos para darle variedad a la busqueda
-                values = values[2:end]
-                idxs_inner = idxs_inner[2:end]
-                for row in idxs_inner
+                idxs_inner2::Array{Int64} = idxs_inner[2:end]
+                for row in idxs_inner2
                     X_copy = copy(X)
                     X_copy[row, col] = 1
                     constraints_v2 = restricciones(X_copy, Y, instance; verbose = false)
@@ -262,7 +246,6 @@ function oppCostAssignment(Y, instance::Instance)
                         original_cons = constraints_v2
                         original_row = row
                     end
-                    unavez = false
                 end
                 picked = CartesianIndex(original_row, col)
             else # si hay una que no viola constraints
@@ -270,19 +253,18 @@ function oppCostAssignment(Y, instance::Instance)
                     if constraints[idx] == 0 # agarrala
                         indice = indices[idx]
                         col = indice[2]
-                        row = findall(x -> x == 0, diff[:, col])[1]
+                        row = findfirst(x -> x == 0, diff[:, col])[1]
                         picked = CartesianIndex(row, col)
                         break
                     end
                 end
             end
         end
-        # hay un bug
-        # en teoria tanto constraints como indices estan en orden del mejor costo de op al peor
         X[picked] = 1
-        column = picked[2]
+        column = picked[2]::Int64
         diff[:, column] .= -1 # "apagamos" esa columna
         todos = true
+        count += 1
         for col in eachcol(X)
             if all(x -> x == 0, col)
                 todos = false
@@ -367,7 +349,6 @@ end
 function pdisp(instance)
     P = instance.P
     s_coords = instance.S_coords
-    D = instance.D
     S = instance.S
     metric = Distances.Euclidean()
     s_distances = trunc.(Int, Distances.pairwise(metric, s_coords, dims=1))
@@ -380,27 +361,26 @@ function pdisp(instance)
         remove!(T, s)
     end
 
-    while length(S_sol) < P # extremely slow
-        distances = NamedTuple[]
+    while length(S_sol) < P
+        distances = Tuple{Int64, Int64}[]
         idx_max_dist = 0
         for i in T
             distance = 0
             for j in S
                 distance += s_distances[i, j]
             end
-            tupla = (dist=distance, idx=i)
+            tupla = (distance, i)
             push!(distances, tupla)
         end
-        distances_max = [distance[1] for distance in distances]
-        indexes = [distance[2] for distance in distances]
-        idx_max = argmax(distances_max)
+        distances_max = [distance[1] for distance in distances]::Array{Int64}
+        indexes = [distance[2] for distance in distances]::Array{Int64}
+        idx_max = argmax(distances_max)::Int64
         idx_max_dist = indexes[idx_max]
         remove!(T, idx_max_dist)
         push!(S_sol, idx_max_dist)
     end
     return S_sol
 end
-
 
 function random_init(instance)
     # tengo que agarrar los parametros para asignar una factible
@@ -410,7 +390,6 @@ function random_init(instance)
     Y = Y[1:P]
     return Y
 end
-
 
 function relax_init(instance)
     B = instance.B
