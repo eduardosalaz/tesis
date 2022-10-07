@@ -21,6 +21,25 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
     Y = Vector{Int64}[]
     D = instancia.D
     Weight = 0
+    
+    Y = localize_facs(instancia, init_method)
+    if init_method ≠ "relax"
+        Y_bool = zeros(Int, instancia.S)
+        for idx in Y
+            Y_bool[idx] = 1
+        end
+    else
+        Y_bool = Y
+    end
+    println("Y done")
+    if assign_method == "naive"
+        println("NAIVE")
+        X = naive_assign_bu(instancia, Y_bool)
+    elseif assign_method == "opp"
+        println("OPP COST")
+        X = oppCostAssignment(Y_bool, instancia)
+    end
+
     before = now()
     Y = localize_facs(instancia, init_method)
     if init_method ≠ "relax"
