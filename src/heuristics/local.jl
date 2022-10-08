@@ -73,7 +73,7 @@ function isFactible(solution::Solution, verbose=true)
 
     for i in 1:S
         for m in 1:M
-            if !(trunc(Int, Y[i] * μ[m][i] * (1 - T[m])) <= sum(X[i, j] * V[m][j] for j in 1:B))
+            if !(trunc(Int, Y[i] * μ[m][i] * (1 - 0.8)) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
                     println("μ: ", trunc(Int, Y[i] * μ[m][i] * (1 - T[m])))
@@ -152,6 +152,18 @@ function localSearch(solPath, plotPath, solution::Solution)
     solution, cons_v = interchange_bus(solution, cons_v)
     println("Intercambio terminado")
     solution, cons_v = deactivateBranch(solution, cons_v)
+    println("Desactivar terminado")
+    solution, cons_v = deactivateBranch2(solution, cons_v)
+    println("Desactivar terminado por asignacion")
+
+    solution, cons_v = simple_move_bu(solution, cons_v)
+    println("Simple terminado 2")
+    solution, cons_v = interchange_bus(solution, cons_v)
+    println("Intercambio terminado 2")
+    solution, cons_v = deactivateBranch(solution, cons_v)
+    println("Desactivar terminado 2")
+    solution, cons_v = deactivateBranch2(solution, cons_v)
+    println("Desactivar terminado por asignacion 2")
     after = now()
     delta = after - before
     secs = round(delta, Second)
@@ -168,7 +180,7 @@ function localSearch(solPath, plotPath, solution::Solution)
     weight_now = newSol.Weight
     X_now = newSol.X
     Y_now = newSol.Y
-    instance = newSol.instance
+    instance = newSol.Instance
     newTime = oldTime + time
 
     lsSol = Solution(instance, X_now, Y_now, weight_now, newTime)
@@ -178,7 +190,6 @@ function localSearch(solPath, plotPath, solution::Solution)
     Types.plot_solution(lsSol, plotPath)
     return newSol
 end
-
 
 struct interchangeMove
     newConstraints::Int64
@@ -213,9 +224,9 @@ function interchange_bus(solution::Types.Solution, cons_v;) # en este movimiento
         Xs = []
         for j in 1:B
             moves = interchangeMove[]
-            i_original = findall(x -> x == 1, original_X[:, j])
-            if length(i_original) > 0
-                i_original = i_original[1]
+            i_original = findfirst(x -> x == 1, original_X[:, j])
+            if i_original ≠ Nothing
+                i_original = i_original
             else
                 continue
             end
@@ -225,9 +236,9 @@ function interchange_bus(solution::Types.Solution, cons_v;) # en este movimiento
                     return solution, original_cons
                 end
                 if j ≠ j2
-                    j_original = findall(x -> x == 1, original_X[:, j2])
-                    if length(j_original) > 0
-                        j_original = j_original[1]
+                    j_original = findfirst(x -> x == 1, original_X[:, j2])
+                    if j_original ≠ Nothing
+                        j_original = j_original
                     else
                         continue
                     end
@@ -278,9 +289,9 @@ function interchange_bus(solution::Types.Solution, cons_v;) # en este movimiento
         Xs = []
         for j in 1:B
             moves = interchangeMove[]
-            i_original = findall(x -> x == 1, original_X[:, j])
-            if length(i_original) > 0
-                i_original = i_original[1]
+            i_original = findfirst(x -> x == 1, original_X[:, j])
+            if typeof(i_original) ≠ Nothing
+                i_original = i_original
             else
                 continue
             end
@@ -290,9 +301,9 @@ function interchange_bus(solution::Types.Solution, cons_v;) # en este movimiento
                     return solution, original_cons
                 end
                 if j ≠ j2
-                    j_original = findall(x -> x == 1, original_X[:, j2])
-                    if length(j_original) > 0
-                        j_original = j_original[1]
+                    j_original = findfirst(x -> x == 1, original_X[:, j2])
+                    if typeof(j_original) != Nothing
+                        j_original = j_original
                     else
                         continue
                     end
@@ -351,6 +362,194 @@ struct deactivatedMove
     deactivated_branch::Int64
     activated_branch::Int64
     weight::Int64
+end
+
+function minimums(vec::Vector, n)::Tuple{Vector{Int64}, Vector{Int64}}
+    type = eltype(vec)
+    vals = fill(1e9, n)
+    arr = Array{Tuple{type,Int64}}(undef, n)
+    indices = Array{Int64}(undef,n)
+    @inbounds for i ∈ eachindex(vec)
+        if vec[i] ≠ -1
+            biggest, index = findmax(vals)
+            if vec[i] < biggest
+                arr[index] = vec[i], i
+                vals[index] = vec[i]
+            end
+        end
+    end
+    arr = sort(arr, by=x -> x[1])
+    vals = [x[1] for x in arr]
+    indices = [x[2] for x in arr]
+    return vals, indices
+end
+
+# en esta funcion hacemos una asignacion distinta
+
+function deactivateBranch2(solution::Types.Solution, cons_v)
+    original_solution = solution
+    original_X = original_solution.X
+    original_Y = original_solution.Y
+    Y = copy(original_Y)
+    X = copy(original_X)
+    original_w = original_solution.Weight
+    original_cons = cons_v
+    instance = original_solution.Instance
+    factible = false
+    if cons_v == 0
+        factible = true
+    end
+    S = instance.S
+    B = instance.B
+    D = instance.D
+    P = instance.P
+    max_iters = 400
+    busqueda = trunc(Int, (P/2))
+    iter = 0
+    Ys = []
+    while !factible
+        if iter > max_iters
+            break
+        end
+        I = findall(y -> y == 1, Y)
+        for i in I
+            iter += 1
+            if iter > max_iters
+                break
+            end
+            moves = []
+            J = findall(y -> y == 0, Y)
+            D2 = copy(solution.Instance.D)
+            for turn in J
+                D2[turn,:] .= -1
+            end
+            bus = findall(x -> x == 1, X[i, :])
+            for j in J
+                D2[i,:] .= -1
+                D2[j,:] .= solution.Instance.D[j,:]
+                iter += 1
+                Y2 = copy(Y)
+                Y2[i] = 0
+                Y2[j] = 1
+                if Y2 ∉ Ys
+                    push!(Ys, Y2)
+                else
+                    break
+                end
+                X2 = copy(X)
+                X2[i, :] .= 0
+                for bu in bus
+                    _, indices = minimums(D2[:,bu], busqueda)
+                    constraints = Int64[]
+                    for indice::Int64 in indices
+                        X_copy = Matrix{Int64}(undef, S, B)
+                        unsafe_copyto!(X_copy,1,X2,1, S*B)
+                        idx = CartesianIndex(indice, bu)
+                        X_copy[idx] = 1
+                        solu = Solution(instance, X_copy, Y2, original_w, 0)
+                        constraints_v2,_ = isFactible(solu, false)
+                        push!(constraints, constraints_v2)
+                    end
+                    idx = argmin(constraints)
+                    row = indices[idx]
+                    col = bu
+                    X2[row,col] = 1
+                end
+                Weight = evalWeight(X2, D)
+                newSol = Types.Solution(instance, X2, Y2, Weight, original_solution.Time)
+                factible, cons_v = isFactible(newSol, false)
+                deactivatedmove = deactivatedMove(cons_v, newSol, i, j, Weight)
+                push!(moves, deactivatedmove)
+            end
+            sort!(moves, by=move -> move.newConstraints) # ordena en base a las menores constraints violadas
+            if length(moves) == 0
+                return solution, original_cons
+            else
+                bestMove = moves[1] # obten el mejor movimiento
+                if bestMove.newConstraints < original_cons
+                    X = bestMove.newSolution.X # actualizamos la X
+                    Y = bestMove.newSolution.Y
+                    original_cons = bestMove.newConstraints
+                    solution = bestMove.newSolution
+                    println(bestMove.newConstraints)
+                    if bestMove.newConstraints == 0 # empezamos a minimizar entonces el valor de la funcion objetivo
+                        @info "Factible solution"
+                        factible = true
+                    end
+                end
+            end
+        end
+    end
+    iter = 1
+    row = 0
+    col = 0
+    if !factible
+        return solution, original_cons
+    end
+    for iter in 1:max_iters
+        I = findall(y -> y == 1, Y)
+        for i in I
+            moves = []
+            J = findall(y -> y == 0, Y)
+            D2 = copy(solution.Instance.D)
+            for turn in J
+                D2[turn,:] .= -1
+            end
+            bus = findall(x -> x == 1, X[i, :])
+            for j in J
+                D2[i,:] .= -1
+                D2[j,:] .= solution.Instance.D[j,:]
+                iter += 1
+                Y2 = copy(Y)
+                Y2[i] = 0
+                Y2[j] = 1
+                X2 = copy(X)
+                X2[i, :] .= 0
+                for bu in bus
+                    _, indices = minimums(D2[:,bu], busqueda)
+                    println(indices)
+                    constraints = Int64[]
+                    for indice::Int64 in indices
+                        X_copy = Matrix{Int64}(undef, S, B)
+                        unsafe_copyto!(X_copy,1,X2,1, S*B)
+                        idx = CartesianIndex(indice, bu)
+                        X_copy[idx] = 1
+                        solu = Solution(instance, X_copy, Y2, original_w, 0)
+                        constraints_v2,_ = isFactible(solu, false)
+                        push!(constraints, constraints_v2)
+                    end
+                    idx = argmin(constraints)
+                    row = indices[idx]
+                    col = bu
+                    X2[row,col] = 1
+                end
+                Weight = evalWeight(X2, D)
+                newSol = Types.Solution(instance, X2, Y2, Weight, original_solution.Time)
+                factible, cons_v = isFactible(newSol, false)
+                if factible
+                    deactivatedmove = deactivatedMove(cons_v, newSol, i, j, Weight)
+                push!(moves, deactivatedmove)
+                end
+            end
+            sort!(moves, by=move -> move.weight) # ordena en base al peso
+            if length(moves) == 0
+                return solution, original_cons
+            else
+                bestMove = moves[1] # obten el mejor movimiento
+                if bestMove.newConstraints < original_w
+                    w = bestMove.weight
+                    @info "Pasando a una mejor solucion con peso:" w
+                    println(isFactible(bestMove.newSolution, false))
+                    X = bestMove.newSolution.X # actualizamos la X
+                    Y = bestMove.newSolution.Y
+                    original_w = bestMove.weight
+                    solution = bestMove.newSolution
+                end
+            end
+        end
+    end
+
+    return solution, original_cons
 end
 
 # en este movimiento hay que apagar una branch completa y prender otra
@@ -493,20 +692,19 @@ function simple_move_bu(solution::Types.Solution, cons_v)
     end
     S = instance.S
     B = instance.B
-    max_iters = 250
+    max_iters = 1000
     iter = 0
     while !factible
-        println("No es factible")
         if iter > max_iters
             break
         end
         for j in 1:B
-            println(iter)            
+            iter += 1   
             if iter > max_iters
                 break
             end
             moves = simpleMove[]
-            i_original = findall(x -> x == 1, original_X[:, j])[1] # el nodo asociado inicialmente a la BU
+            i_original = findfirst(x -> x == 1, original_X[:, j]) # el nodo asociado inicialmente a la BU
             for i in 1:S
                 if i ≠ i_original
                     new_cons_v, new_sol = move_bu(solution, j, i_original, i)
@@ -535,7 +733,7 @@ function simple_move_bu(solution::Types.Solution, cons_v)
     for iter in 1:max_iters
         for j in 1:B
             moves = simpleMove[]
-            i_original = findall(x -> x == 1, original_X[:, j])[1] # el nodo asociado inicialmente a la BU
+            i_original = findfirst(x -> x == 1, original_X[:, j]) # el nodo asociado inicialmente a la BU
             for i in 1:S
                 if i ≠ i_original
                     iter += 1

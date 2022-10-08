@@ -32,7 +32,7 @@ function generate_solve(size)
     if !isdir(plot_inst_dir_path)
         mkdir(plot_inst_dir_path)
     end
-    for i in 1:300
+    for i in 1:40
         BU_coords, S_coords = generate_coords(B, S)
         dist_mat = generate_dist(BU_coords, S_coords, B, S)
         parameters = generate_params(B, S, P)

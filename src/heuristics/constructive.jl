@@ -22,6 +22,7 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
     D = instancia.D
     Weight = 0
     
+    before1 = now()
     Y = localize_facs(instancia, init_method)
     if init_method ≠ "relax"
         Y_bool = zeros(Int, instancia.S)
@@ -39,6 +40,11 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
         println("OPP COST")
         X = oppCostAssignment(Y_bool, instancia)
     end
+    after1 = now()
+
+    delta1 = after1 - before1
+    secs1 = round(delta1, Second)
+    println(secs1)
 
     before = now()
     Y = localize_facs(instancia, init_method)

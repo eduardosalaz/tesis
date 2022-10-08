@@ -1,9 +1,9 @@
-using Gurobi, JuMP, JLD2
+using Gurobi, JuMP, JLD2, CPLEX
 using Types
 using MathOptInterface
 const MOI = MathOptInterface
 
-function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
+function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
     set_optimizer(model, solver.Optimizer)
     set_time_limit_sec(model, 300.0) # 300 seconds timeout
     if !verbose
@@ -28,6 +28,7 @@ function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
     if termination_status(model) != MOI.OPTIMAL
         @warn "Óptimo no alcanzado"
     end
+    println(time_int)
 
     return X, Y, obj_value, time_int
 end
@@ -79,7 +80,7 @@ function build_model(instance::Instance)
     @constraint(
         model,
         tol_l[i in 1:S, M in 1:m],
-        sum(x[i, j] * V[M][j] for j in 1:B) >= (y[i] * μ[M][i] * (1 - T[M])),
+        sum(x[i, j] * V[M][j] for j in 1:B) >= (y[i] * μ[M][i] * (1 - 0.8)),
     )
 
     @constraint(

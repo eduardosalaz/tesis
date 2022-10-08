@@ -42,8 +42,8 @@ function generate_instance(size::String, i::Int; write=true)
 end
 
 function generate_coords(B, S)
-    BU_coords = rand(5:3500, (B, 2))
-    S_coords = rand(5:3500, (S, 2))
+    BU_coords = rand(5:5500, (B, 2))
+    S_coords = rand(5:5500, (S, 2))
     return BU_coords, S_coords
 end
 
@@ -80,8 +80,8 @@ function generate_k(B::Int64, S::Int64)
     end
     Sk = convert(Vector{Vector{Int64}}, Sk)
     counts_k = [length(s) for s in Sk]
-    Lk_flt = [k - 0.2k for k in counts_k]
-    Uk_flt = [k + 0.4k for k in counts_k]
+    Lk_flt = [k - 0.5k for k in counts_k]
+    Uk_flt = [k + 0.6k for k in counts_k]
     Lk = trunc.(Int, Lk_flt)
     Uk = trunc.(Int, Uk_flt)
     return Sk, Lk, Uk
@@ -96,7 +96,7 @@ function generate_activities(B::Int64, S::Int64, P)
     μ = [zeros(Int64, S) for _ in 1:M]
     for i in eachindex(V)
         sum_vals = sum(V[i])
-        τ = 0.5
+        τ = 0.8
         upper = trunc(Int, (trunc(Int, (sum_vals / S) * (1 + τ))))
         μ[i] = fill(upper, S)
     end
@@ -107,7 +107,7 @@ end
 function generate_risk(B::Int64, S::Int64, P)
     R = rand(10:25, B)
     sum_R = sum(R)
-    τ = 0.8
+    τ = 0.95
     upper = trunc(Int, trunc(Int, (sum_R / S) * (1 + τ)))
     β = fill(upper, S)
     return R, β
