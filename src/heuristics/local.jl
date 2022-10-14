@@ -146,14 +146,20 @@ function localSearch(solPath, plotPath, solution::Solution)
     else
         println("Solucion no factible")
     end
+
+    x, y = @time simple_move_bu(solution, cons_v)
+    x, y = @time interchange_bus(x, y)
+    x, y = @time deactivateBranch(x, y)
+    x, y = @time deactivateBranch2(x, y)
+
     before = now()
-    solution, cons_v = simple_move_bu(solution, cons_v)
+    solution, cons_v = @time simple_move_bu(solution, cons_v)
     println("Simple terminado")
-    solution, cons_v = interchange_bus(solution, cons_v)
+    solution, cons_v = @time interchange_bus(solution, cons_v)
     println("Intercambio terminado")
-    solution, cons_v = deactivateBranch(solution, cons_v)
+    solution, cons_v = @time deactivateBranch(solution, cons_v)
     println("Desactivar terminado")
-    solution, cons_v = deactivateBranch2(solution, cons_v)
+    solution, cons_v = @time deactivateBranch2(solution, cons_v)
     println("Desactivar terminado por asignacion")
 
     solution, cons_v = simple_move_bu(solution, cons_v)
@@ -507,7 +513,6 @@ function deactivateBranch2(solution::Types.Solution, cons_v)
                 X2[i, :] .= 0
                 for bu in bus
                     _, indices = minimums(D2[:,bu], busqueda)
-                    println(indices)
                     constraints = Int64[]
                     for indice::Int64 in indices
                         X_copy = Matrix{Int64}(undef, S, B)

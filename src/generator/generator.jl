@@ -8,9 +8,9 @@ function generate_instance(size::String, i::Int; write=true)
     S = 0
     P = 0
     if size == "S"
-        B = 200
-        S = 40
-        P = 30
+        B = 15
+        S = 8
+        P = 4
     elseif size == "M"
         B = 800
         S = 80
@@ -33,17 +33,19 @@ function generate_instance(size::String, i::Int; write=true)
         mkdir(dir_path)
     end
     file_name = "inst_" * string(i) * ".jld2"
+    plot_name = replace(file_name, ".jld2" => ".png")
     full_path = dir_path * file_name
+    full_plot = dir_path * plot_name
     if write
         write_instance(instance, full_path)
-        println(full_path)
+        plot_instance(instance, full_plot)
     end
     return instance
 end
 
 function generate_coords(B, S)
-    BU_coords = rand(5:5500, (B, 2))
-    S_coords = rand(5:5500, (S, 2))
+    BU_coords = rand(5:4500, (B, 2))
+    S_coords = rand(5:4500, (S, 2))
     return BU_coords, S_coords
 end
 
@@ -80,8 +82,8 @@ function generate_k(B::Int64, S::Int64)
     end
     Sk = convert(Vector{Vector{Int64}}, Sk)
     counts_k = [length(s) for s in Sk]
-    Lk_flt = [k - 0.5k for k in counts_k]
-    Uk_flt = [k + 0.6k for k in counts_k]
+    Lk_flt = [k - 0.4k for k in counts_k]
+    Uk_flt = [k + 0.5k for k in counts_k]
     Lk = trunc.(Int, Lk_flt)
     Uk = trunc.(Int, Uk_flt)
     return Sk, Lk, Uk
@@ -122,4 +124,4 @@ function main()
     @info "Done"
 end
 
-# main()
+main()

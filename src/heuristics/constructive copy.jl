@@ -6,13 +6,13 @@ using DelimitedFiles
 using Gurobi
 using Dates
 using TimerOutputs
+using BenchmarkTools
 
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
 end
 
 function constructive(instance, id, init_method, assign_method; withdir = false, dir = "")
-    
     instancia = instance
     B = instancia.B
     S = instancia.S
@@ -21,55 +21,9 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
     Y = Vector{Int64}[]
     D = instancia.D
     Weight = 0
-    
-    before1 = now()
-    time_init1 = 0
-    if init_method == "relax"
-        Y, time_init1 = localize_facs(instancia, init_method)
-        before1 = now()
-    else
-        Y = localize_facs(instancia, init_method)
-    end
-
-    if init_method ≠ "relax"
-        Y_bool = zeros(Int, instancia.S)
-        for idx in Y
-            Y_bool[idx] = 1
-        end
-    else
-        Y_bool = Y
-    end
-    after_init = now()
-    delta_init1 = after_init - before1
-    if init_method == "relax"
-        delta_init1 = time_init1
-    end
-    println("Y done with time: ", delta_init1)
-    if assign_method == "naive"
-        println("NAIVE")
-        X = naive_assign_bu(instancia, Y_bool)
-    elseif assign_method == "opp"
-        println("OPP COST")
-        X = oppCostAssignment(Y_bool, instancia)
-    end
-    after1 = now()
-    delta_assign = after1 - after_init
-    println("X done with time: ", delta_assign)
-    delta1 = after1 - before1
-    secs1 = round(delta1, Second)
-    time1 = secs1.value
-    if init_method == "relax"
-        time1 += time_init1
-    end
-    
     before = now()
-    time_init = 0
-    if init_method == "relax"   
-        Y, time_init = localize_facs(instancia, init_method)
-        before = now()  
-    else
-        Y = localize_facs(instancia, init_method)
-    end
+    Y = localize_facs(instancia, init_method)
+    Y_bool = zeros(Int, instancia.S)
     if init_method ≠ "relax"
         Y_bool = zeros(Int, instancia.S)
         for idx in Y
@@ -78,45 +32,31 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
     else
         Y_bool = Y
     end
-    after_init2 = now()
-    delta_init2 = after_init2 - before
-    if init_method == "relax"
-        delta_init2 = time_init
-    end
-    println("Y done with time: ", delta_init2)
+    println("Y done")
     if assign_method == "naive"
         println("NAIVE")
         X = naive_assign_bu(instancia, Y_bool)
     elseif assign_method == "opp"
         println("OPP COST")
+        println(Y_bool)
         X = oppCostAssignment(Y_bool, instancia)
     end
     after = now()
-    delta_assign2 = after - after_init2
-    println("X done with time: ", delta_assign2)
     delta = after - before
     secs = round(delta, Second)
     time = secs.value
-    if init_method == "relax"
-        time += time_init
-    end
     println("X done")
     indices = findall(x -> x == 1, X)
     for indice in indices
         Weight += D[indice]
     end
-    if time > time1
-        time = time1
-    end
 
     str_path = "sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * init_method * "_" * assign_method
     plot_str_path = str_path * ".png"
     solution_str_path = str_path * ".jld2"
-
     solution = Types.Solution(instancia, X, Y_bool, Weight, time)
     Types.plot_solution(solution, plot_str_path)
     Types.write_solution(solution, solution_str_path)
-    println(isFactible(solution, false))
     return solution
 end
 
@@ -195,7 +135,7 @@ function naive_assign_bu(instance, Y)
     return X
 end
 
-function minimums(matrix::Matrix, n)::Tuple{Vector{Int64}, Vector{CartesianIndex{2}}}
+function minimums(matrix::Matrix, n::Int64)::Tuple{Vector{Int64}, Vector{CartesianIndex{2}}}
     type = eltype(matrix)
     vals = fill(1e12, n)
     arr = Array{Tuple{type,CartesianIndex}}(undef, n)
@@ -251,13 +191,13 @@ function maximums(matrix, n)::Tuple{Vector{Int64}, Vector{CartesianIndex{2}}}
     return vals, indices
 end
 
-
 function oppCostAssignment(Y, instance::Instance)
-    D = copy(instance.D)
+    D = instance.D
     P = instance.P
-    S = instance.S
+    X = copy(D)
+    X .= 0
     B = instance.B
-    X = zeros(Int64, S, B)
+    S = instance.S
     count = 0
     not_assigned_y = findall(y -> y == 0, Y)
     for j in not_assigned_y
@@ -273,75 +213,75 @@ function oppCostAssignment(Y, instance::Instance)
     todos = false
     n = trunc(Int, P / 4)
     while !todos
-        _, indices::Vector{CartesianIndex{2}} = maximums(diff, n)
-         constraints = Int64[]
+       _, indices::Vector{CartesianIndex{2}} = maximums(diff, n)
+        constraints = Int64[]
         for indice::CartesianIndex in indices
-             X_copy = Matrix{Int64}(undef, S, B)
-             unsafe_copyto!(X_copy,1,X,1, S*B)
-             col = indice[2]
-             row = findfirst(x -> x == 0, diff[:, col])
-             X_copy[row, col] = 1
-             constraints_v = restricciones(X_copy, Y, instance; verbose=false)
-             push!(constraints, constraints_v)
-         end
-         picked = CartesianIndex(1, 1)::CartesianIndex{2}
+            X_copy = Matrix{Int64}(undef, S, B)
+            unsafe_copyto!(X_copy,1,X,1, S*B)
+            col = indice[2]
+            row = findfirst(x -> x == 0, diff[:, col])
+            X_copy[row, col] = 1
+            constraints_v = restricciones(X_copy, Y, instance; verbose=false)
+            push!(constraints, constraints_v)
+        end
+        picked = CartesianIndex(1, 1)::CartesianIndex{2}
         if all(x -> x == 0, constraints) # si no se violan constraints, agarra el 0 de la columna del costo maximo
-             indice = indices[1]::CartesianIndex{2}
-             col = indice[2]::Int64
-             row = findfirst(x -> x == 0, diff[:, col])
-             picked = CartesianIndex(row, col)
+            indice = indices[1]::CartesianIndex{2}
+            col = indice[2]::Int64
+            row = findfirst(x -> x == 0, diff[:, col])
+            picked = CartesianIndex(row, col)
         else
             if all(x -> x ≠ 0, constraints) # si todas violan constraints
-                 original_cons, idx = findmin(constraints) # agarra el que viole menos constraints
-                 indice = indices[idx]
-                 col = indice[2]
-                 original_row = findfirst(x -> x == 0, diff[:, col])::Int64
-                 # queremos buscar en esa columna el siguiente valor más cercano a 0 en diff
-                 # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
-                 busqueda = trunc(Int, (P/2)) # a lo mejor cambiarlo despues
-                 _, idxs_inner::Array{Int64} = minimums(diff[:, col], busqueda)
-                 # el primer minimo es el 0 de nuestra localizacion optima
-                 # lo desechamos para darle variedad a la busqueda
-                 idxs_inner2::Array{Int64} = idxs_inner[2:end]
-                 for row in idxs_inner2
-                     X_copy = Matrix{Int64}(undef, S, B)
-                     unsafe_copyto!(X_copy,1,X,1, S*B)
-                     X_copy[row, col] = 1
-                     constraints_v2 = restricciones(X_copy, Y, instance; verbose = false)
-                     if constraints_v2 < original_cons
-                         original_cons = constraints_v2
-                         original_row = row
-                     end
-                 end
-                 picked = CartesianIndex(original_row, col)
-             else # si hay una que no viola constraints
-                 for idx in eachindex(constraints)
-                     if constraints[idx] == 0 # agarrala
-                         indice = indices[idx]
-                         col = indice[2]
-                         row = findfirst(x -> x == 0, diff[:, col])
-                         picked = CartesianIndex(row, col)
-                         break
-                     end
-                 end
-             end
-         end
-         X[picked] = 1
-         column = picked[2]::Int64
-         diff[:, column] .= -1 # "apagamos" esa columna
-         todos = true
-         count += 1
-         for col in eachcol(X)
-             if all(x -> x == 0, col)
-                 todos = false
-                 break
-             end
-         end
-     end
+                original_cons, idx = findmin(constraints) # agarra el que viole menos constraints
+                indice = indices[idx]
+                col = indice[2]
+                original_row = findfirst(x -> x == 0, diff[:, col])::Int64
+                # queremos buscar en esa columna el siguiente valor más cercano a 0 en diff
+                # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
+                busqueda = trunc(Int, (P/2)) # a lo mejor cambiarlo despues
+                _, idxs_inner::Array{Int64} = minimums(diff[:, col], busqueda)
+                # el primer minimo es el 0 de nuestra localizacion optima
+                # lo desechamos para darle variedad a la busqueda
+                idxs_inner2::Array{Int64} = idxs_inner[2:end]
+                for row in idxs_inner2
+                    X_copy = Matrix{Int64}(undef, S, B)
+                    unsafe_copyto!(X_copy,1,X,1, S*B)
+                    X_copy[row, col] = 1
+                    constraints_v2 = restricciones(X_copy, Y, instance; verbose = false)
+                    if constraints_v2 < original_cons
+                        original_cons = constraints_v2
+                        original_row = row
+                    end
+                end
+                picked = CartesianIndex(original_row, col)
+            else # si hay una que no viola constraints
+                for idx in eachindex(constraints)
+                    if constraints[idx] == 0 # agarrala
+                        indice = indices[idx]
+                        col = indice[2]
+                        row = findfirst(x -> x == 0, diff[:, col])
+                        picked = CartesianIndex(row, col)
+                        break
+                    end
+                end
+            end
+        end
+        X[picked] = 1
+        column = picked[2]::Int64
+        diff[:, column] .= -1 # "apagamos" esa columna
+        todos = true
+        count += 1
+        for col in eachcol(X)
+            if all(x -> x == 0, col)
+                todos = false
+                break
+            end
+        end
+    end
     return X
 end
 
-function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::Instance; verbose=true)
+function restricciones(X_copy, Y_copy, instance; verbose=true)
     Sk = instance.Sk
     Lk = instance.Lk
     Uk = instance.Uk
@@ -362,7 +302,7 @@ function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::I
     V = instance.V
     number_constraints_violated = 0
 
-    counts_k = Array{Int64}(undef, K)
+    counts_k = []
     if sum(Y) > P
         if verbose
             println("Violando número de centros asignados ", sum(Y))
@@ -376,7 +316,7 @@ function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::I
                 count_k_type += 1
             end
         end
-        counts_k[k_type] =  count_k_type
+        push!(counts_k, count_k_type)
     end
 
     for k in 1:K
@@ -527,123 +467,8 @@ function relax_init(instance)
 
     JuMP.set_silent(model)
     JuMP.optimize!(model)
-    tiempo = MOI.get(model, MOI.SolveTimeSec())
-    time_int = trunc(Int, tiempo)
     Y = trunc.(Int, JuMP.value.(model[:y]))
-    return Y, time_int
-end
-
-function isFactible(solution::Solution, verbose=true)
-    number_constraints_violated = 0
-    instance = solution.Instance
-    Sk = instance.Sk
-    Lk = instance.Lk
-    Uk = instance.Uk
-    Y = solution.Y
-    X = solution.X
-    Lk = instance.Lk
-    Uk = instance.Uk
-    Sk = instance.Sk
-    μ = instance.μ
-    T = instance.T
-    M = instance.M
-    S = instance.S
-    P = instance.S
-    B = instance.B
-    β = instance.β
-    R = instance.R
-    K = instance.K
-    V = instance.V
-
-    counts_k = []
-
-    for y in eachindex(Y)
-        if Y[y] == 1
-            assignments_y = X[y, :]
-            if !any(x -> x == 1, assignments_y)
-                if verbose
-                    println("Violando asignación de Y en: $y")
-                end
-                number_constraints_violated += 1
-                # penalizar más aquí?
-            end
-        end
-    end
-
-    if sum(Y) > P
-        if verbose
-            println("Violando número de centros asignados ", sum(Y))
-        end
-        number_constraints_violated += 1
-    end
-
-    for k_type in 1:K
-        indices_k_type = Sk[k_type]
-        count_k_type = 0
-        for indice in indices_k_type
-            if Y[indice] == 1
-                count_k_type += 1
-            end
-        end
-        push!(counts_k, count_k_type)
-    end
-
-    for k in 1:K
-        if counts_k[k] < Lk[k]
-            if verbose
-                println("Violando Lk en $k")
-            end
-            number_constraints_violated += 1
-        end
-        if counts_k[k] > Uk[k]
-            if verbose
-                println("Violando Uk en $k")
-            end
-            number_constraints_violated += 1
-        end
-    end
-
-    for i in 1:S
-        for m in 1:M
-            if !(trunc(Int, Y[i] * μ[m][i] * (1 - 0.8)) <= sum(X[i, j] * V[m][j] for j in 1:B))
-                if verbose
-                    println("violando V inferior en i: $i y m: $m")
-                    println("μ: ", trunc(Int, Y[i] * μ[m][i] * (1 - T[m])))
-                    println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
-                end
-                number_constraints_violated += 1
-            end
-            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= trunc(Int, Y[i] * μ[m][i] * (1 + T[m])))
-                if verbose
-                    println("violando V superior en i: $i y m: $m")
-                    println("μ: ", trunc(Int, Y[i] * μ[m][i] * (1 + T[m])))
-                    println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
-                end
-                number_constraints_violated += 1
-            end
-        end
-    end
-
-    for i in 1:S
-        if sum(X[i, j] * R[j] for j in 1:B) > β[i]
-            if verbose
-                println("violando riesgo en $i")
-                println("β: ", β[i])
-                println("R: ", sum(X[i, j] * R[j] for j in 1:B))
-            end
-            number_constraints_violated += 1
-        end
-    end
-    # println("Restricciones violadas: $number_constraints_violated")
-    # intercambiar nodo i por nodo j 
-    # mover nodo de territorio i a territorio j
-    # apagar un branch y prender otro branch
-    # checar ILS ??
-    if number_constraints_violated ≠ 0
-        return false, number_constraints_violated
-    else
-        return true, number_constraints_violated
-    end
+    return Y
 end
 
 function main_constructive(init_method, assign_method; path = "inst", read_file = true, instance_obj = nothing, id = 0)
