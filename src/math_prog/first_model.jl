@@ -21,9 +21,9 @@ function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
     else
         obj_value = trunc(Int, objective_value(model))
         X = value.(model[:x])
-        X = trunc.(Int, X)
+        X = round.(Int, X)
         Y = value.(model[:y])
-        Y = trunc.(Int, Y)
+        Y = round.(Int, Y)
     end
     if termination_status(model) != MOI.OPTIMAL
         @warn "Óptimo no alcanzado"
@@ -80,7 +80,7 @@ function build_model(instance::Instance)
     @constraint(
         model,
         tol_l[i in 1:S, M in 1:m],
-        sum(x[i, j] * V[M][j] for j in 1:B) >= (y[i] * μ[M][i] * (1 - 0.8)),
+        sum(x[i, j] * V[M][j] for j in 1:B) >= (y[i] * μ[M][i] * (1 - 0.7)),
     )
 
     @constraint(

@@ -1,7 +1,7 @@
-using Types
 using Dates
+using Types
 
-function isFactible(solution::Solution, verbose=true)
+function isFactible(solution::Types.Solution, verbose=true)
     number_constraints_violated = 0
     instance = solution.Instance
     Sk = instance.Sk
@@ -45,6 +45,15 @@ function isFactible(solution::Solution, verbose=true)
         number_constraints_violated += 1
     end
 
+    for j in 1:B
+        if sum(X[i,j] for i in 1:S) ≠ 1
+            if verbose
+                println("Violando servicio a la BU: ", j) 
+            end
+            number_constraints_violated += 1
+        end
+    end
+
     for k_type in 1:K
         indices_k_type = Sk[k_type]
         count_k_type = 0
@@ -73,7 +82,7 @@ function isFactible(solution::Solution, verbose=true)
 
     for i in 1:S
         for m in 1:M
-            if !(trunc(Int, Y[i] * μ[m][i] * (1 - 0.8)) <= sum(X[i, j] * V[m][j] for j in 1:B))
+            if !(trunc(Int, Y[i] * μ[m][i] * (1 - 0.7)) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
                     println("μ: ", trunc(Int, Y[i] * μ[m][i] * (1 - T[m])))
@@ -135,10 +144,10 @@ function assigntounused(solution::Types.Solution) # en esta funcion agarramos la
     return newSol
 end
 
-function localSearch(solPath, plotPath, solution::Solution)
+function localSearch(solPath, plotPath, solution::Types.Solution)
     oldSol = solution
     oldTime = oldSol.Time
-    factible, cons_v = isFactible(solution, false)
+    factible, cons_v = isFactible(solution, true)
     weight_before = 1e9
     if factible
         println("Solucion Factible")
@@ -147,34 +156,20 @@ function localSearch(solPath, plotPath, solution::Solution)
         println("Solucion no factible")
     end
 
-    x, y = @time simple_move_bu(solution, cons_v)
-    x, y = @time interchange_bus(x, y)
-    x, y = @time deactivateBranch(x, y)
-    x, y = @time deactivateBranch2(x, y)
-
-    before = now()
-    solution, cons_v = @time simple_move_bu(solution, cons_v)
-    println("Simple terminado")
-    solution, cons_v = @time interchange_bus(solution, cons_v)
-    println("Intercambio terminado")
-    solution, cons_v = @time deactivateBranch(solution, cons_v)
-    println("Desactivar terminado")
-    solution, cons_v = @time deactivateBranch2(solution, cons_v)
-    println("Desactivar terminado por asignacion")
-
+    before = Dates.now()
     solution, cons_v = simple_move_bu(solution, cons_v)
-    println("Simple terminado 2")
-    solution, cons_v = interchange_bus(solution, cons_v)
-    println("Intercambio terminado 2")
-    solution, cons_v = deactivateBranch(solution, cons_v)
-    println("Desactivar terminado 2")
+    println("Simple terminado")
+    println(isFactible(solution, true))
+    solution2, cons_v = interchange_bus(solution, cons_v)
+    println("Intercambio terminado")
+    solution, cons_v = deactivateBranch(solution2, cons_v)
+    println("Desactivar terminado")
     solution, cons_v = deactivateBranch2(solution, cons_v)
-    println("Desactivar terminado por asignacion 2")
-    after = now()
+    println("Desactivar terminado por asignacion")
+    after = Dates.now()
     delta = after - before
     secs = round(delta, Second)
     time = secs.value
-    println("Desactivar y Activar terminado")
     println("Fin de Busqueda Local")
     factible, cons_v = isFactible(solution, false)
     if factible
@@ -189,7 +184,7 @@ function localSearch(solPath, plotPath, solution::Solution)
     instance = newSol.Instance
     newTime = oldTime + time
 
-    lsSol = Solution(instance, X_now, Y_now, weight_now, newTime)
+    lsSol = Types.Solution(instance, X_now, Y_now, weight_now, newTime)
     @show weight_now
     
     Types.write_solution(lsSol, solPath)
@@ -221,7 +216,7 @@ function interchange_bus(solution::Types.Solution, cons_v;) # en este movimiento
     S = instance.S
     B = instance.B
     D = instance.D
-    max_iters = 300
+    max_iters = 50
     iter = 0
     while !factible
         if iter > max_iters
@@ -280,7 +275,7 @@ function interchange_bus(solution::Types.Solution, cons_v;) # en este movimiento
                     original_X = bestMove.newSolution.X # actualizamos la X
                     original_cons = bestMove.newConstraints
                     solution = bestMove.newSolution
-                    println(bestMove.newConstraints)
+                    # println(bestMove.newConstraints)
                     if bestMove.newConstraints == 0 # empezamos a minimizar entonces el valor de la funcion objetivo
                         @info "Factible solution"
                         factible = true
@@ -291,9 +286,18 @@ function interchange_bus(solution::Types.Solution, cons_v;) # en este movimiento
     end
     original_w = solution.Weight
     iter = 1
-    for iter in 1:max_iters
+    println("Entrando a intercambio")
+    max_iters = 10
+    while iter < max_iters
+        if iter > max_iters
+            break
+        end
         Xs = []
         for j in 1:B
+            iter += 1
+            if iter > max_iters
+                break
+            end
             moves = interchangeMove[]
             i_original = findfirst(x -> x == 1, original_X[:, j])
             if typeof(i_original) ≠ Nothing
@@ -302,7 +306,6 @@ function interchange_bus(solution::Types.Solution, cons_v;) # en este movimiento
                 continue
             end
             for j2 in 1:B
-                iter += 1
                 if iter > max_iters
                     return solution, original_cons
                 end
@@ -331,8 +334,11 @@ function interchange_bus(solution::Types.Solution, cons_v;) # en este movimiento
                         Weight = evalWeight(X_copy, D)
                         newSol = Types.Solution(instance, X_copy, Y_copy, Weight, original_solution.Time)
                         factible, cons_v = isFactible(newSol, false)
+                        #println(factible)
                         interchangedMove = interchangeMove(cons_v, newSol, j, j2, i_original, j_original, Weight)
-                        push!(moves, interchangedMove)
+                        if factible
+                            push!(moves, interchangedMove)
+                        end
                     end
                 end
             end
@@ -343,17 +349,21 @@ function interchange_bus(solution::Types.Solution, cons_v;) # en este movimiento
                 canMove = false
                 while !canMove
                     bestMove = moves[1] # obten el mejor movimiento
-                    canMove, _ = isFactible(bestMove.newSolution, false)
+                    canMove, values = isFactible(bestMove.newSolution, false)
+                    # println("restricciones: ", values)
                     if bestMove.weight < original_w && canMove
-                        println(bestMove.weight)
-                        println(original_w)
+                        #println(bestMove.weight)
                         w = bestMove.weight
-                        @info "Pasando a una mejor solucion con peso:" w
+                        # @info "Pasando a una mejor solucion con peso en intercambio:" w
                         original_X = bestMove.newSolution.X # actualizamos la X
+                        # println(isFactible(bestMove.newSolution, false))
                         original_w = bestMove.weight
                         solution = bestMove.newSolution
                     else
                         popfirst!(moves) # si no es factible el movimiento, quitalo y busca el siguiente
+                        if iter > max_iters
+                            break
+                        end
                     end
                 end  
             end
@@ -376,7 +386,7 @@ function minimums(vec::Vector, n)::Tuple{Vector{Int64}, Vector{Int64}}
     arr = Array{Tuple{type,Int64}}(undef, n)
     indices = Array{Int64}(undef,n)
     @inbounds for i ∈ eachindex(vec)
-        if vec[i] ≠ -1
+        if vec[i] > 0
             biggest, index = findmax(vals)
             if vec[i] < biggest
                 arr[index] = vec[i], i
@@ -409,8 +419,8 @@ function deactivateBranch2(solution::Types.Solution, cons_v)
     B = instance.B
     D = instance.D
     P = instance.P
-    max_iters = 400
-    busqueda = trunc(Int, (P/2))
+    max_iters = 40
+    busqueda = trunc(Int, (P/4))
     iter = 0
     Ys = []
     while !factible
@@ -452,7 +462,7 @@ function deactivateBranch2(solution::Types.Solution, cons_v)
                         unsafe_copyto!(X_copy,1,X2,1, S*B)
                         idx = CartesianIndex(indice, bu)
                         X_copy[idx] = 1
-                        solu = Solution(instance, X_copy, Y2, original_w, 0)
+                        solu = Types.Solution(instance, X_copy, Y2, original_w, 0)
                         constraints_v2,_ = isFactible(solu, false)
                         push!(constraints, constraints_v2)
                     end
@@ -477,7 +487,7 @@ function deactivateBranch2(solution::Types.Solution, cons_v)
                     Y = bestMove.newSolution.Y
                     original_cons = bestMove.newConstraints
                     solution = bestMove.newSolution
-                    println(bestMove.newConstraints)
+                    # println(bestMove.newConstraints)
                     if bestMove.newConstraints == 0 # empezamos a minimizar entonces el valor de la funcion objetivo
                         @info "Factible solution"
                         factible = true
@@ -492,9 +502,16 @@ function deactivateBranch2(solution::Types.Solution, cons_v)
     if !factible
         return solution, original_cons
     end
-    for iter in 1:max_iters
+    while iter < max_iters
+        if iter > max_iters
+            break
+        end
         I = findall(y -> y == 1, Y)
         for i in I
+            iter += 1
+            if iter > max_iters
+                break
+            end
             moves = []
             J = findall(y -> y == 0, Y)
             D2 = copy(solution.Instance.D)
@@ -519,7 +536,7 @@ function deactivateBranch2(solution::Types.Solution, cons_v)
                         unsafe_copyto!(X_copy,1,X2,1, S*B)
                         idx = CartesianIndex(indice, bu)
                         X_copy[idx] = 1
-                        solu = Solution(instance, X_copy, Y2, original_w, 0)
+                        solu = Types.Solution(instance, X_copy, Y2, original_w, 0)
                         constraints_v2,_ = isFactible(solu, false)
                         push!(constraints, constraints_v2)
                     end
@@ -543,8 +560,8 @@ function deactivateBranch2(solution::Types.Solution, cons_v)
                 bestMove = moves[1] # obten el mejor movimiento
                 if bestMove.newConstraints < original_w
                     w = bestMove.weight
-                    @info "Pasando a una mejor solucion con peso:" w
-                    println(isFactible(bestMove.newSolution, false))
+                    # @info "Pasando a una mejor solucion con peso:" w
+                    #println(isFactible(bestMove.newSolution, false))
                     X = bestMove.newSolution.X # actualizamos la X
                     Y = bestMove.newSolution.Y
                     original_w = bestMove.weight
@@ -559,6 +576,7 @@ end
 
 # en este movimiento hay que apagar una branch completa y prender otra
 function deactivateBranch(solution::Types.Solution, cons_v)
+    println("Entrando a desactivar naive con constraints: ", cons_v)
     original_solution = solution
     original_X = original_solution.X
     original_Y = original_solution.Y
@@ -571,7 +589,7 @@ function deactivateBranch(solution::Types.Solution, cons_v)
     S = instance.S
     B = instance.B
     D = instance.D
-    max_iters = 300
+    max_iters = 50
     iter = 0
     while !factible
         if iter > max_iters
@@ -601,6 +619,7 @@ function deactivateBranch(solution::Types.Solution, cons_v)
             end
             sort!(moves, by=move -> move.newConstraints) # ordena en base a las menores constraints violadas
             if length(moves) == 0
+                println("No hay moves ", original_cons)
                 return solution, original_cons
             else
                 bestMove = moves[1] # obten el mejor movimiento
@@ -609,26 +628,34 @@ function deactivateBranch(solution::Types.Solution, cons_v)
                     Y = bestMove.newSolution.Y
                     original_cons = bestMove.newConstraints
                     solution = bestMove.newSolution
-                    println(bestMove.newConstraints)
+                    #println("Mejora de ")
+                    #println(bestMove.newConstraints)
+                    #println(original_cons)
                     if bestMove.newConstraints == 0 # empezamos a minimizar entonces el valor de la funcion objetivo
-                        @info "Factible solution"
+                        # @info "Factible solution"
                         factible = true
                     end
                 end
             end
         end
         if !factible
-            return solution, cons_v
+            return solution, original_cons
         end
         iter = 1
-        for iter in 1:max_iters
+        while iter < max_iters
+            if iter > max_iters
+                break
+            end
             I = findall(y -> y == 1, Y)
             for i in I
+                if iter > max_iters
+                    break
+                end
+                iter += 1
                 moves = []
                 J = findall(y -> y == 0, Y)
                 bus = findall(x -> x == 1, X[i, :])
                 for j in J
-                    iter += 1
                     Y2 = copy(Y)
                     Y2[i] = 0
                     Y2[j] = 1
@@ -654,7 +681,7 @@ function deactivateBranch(solution::Types.Solution, cons_v)
                         canMove, _ = isFactible(bestMove.newSolution, false)
                         if bestMove.weight < original_w && canMove
                             w = bestMove.weight
-                            @info "Pasando a una mejor solucion con peso:" w
+                            # @info "Pasando a una mejor solucion con peso:" w
                             original_X = bestMove.newSolution.X # actualizamos la X
                             original_w = bestMove.weight
                             solution = bestMove.newSolution
@@ -697,7 +724,7 @@ function simple_move_bu(solution::Types.Solution, cons_v)
     end
     S = instance.S
     B = instance.B
-    max_iters = 1000
+    max_iters = 200
     iter = 0
     while !factible
         if iter > max_iters
@@ -723,7 +750,7 @@ function simple_move_bu(solution::Types.Solution, cons_v)
                 original_X = bestMove.newSolution.X # actualizamos la X
                 original_cons = bestMove.newConstraints
                 solution = bestMove.newSolution
-                println(bestMove.newConstraints)
+                # println(bestMove.newConstraints)
                 if bestMove.newConstraints == 0 # empezamos a minimizar entonces el valor de la funcion objetivo
                     @info "Factible solution"
                     factible = true
@@ -734,14 +761,22 @@ function simple_move_bu(solution::Types.Solution, cons_v)
     if !factible
         return solution, original_cons
     end
+    max_iters = 50
     iter = 1
-    for iter in 1:max_iters
+
+    while iter < max_iters
+        if iter > max_iters
+            break
+        end
         for j in 1:B
+            iter += 1
+            if iter > max_iters
+                break
+            end
             moves = simpleMove[]
             i_original = findfirst(x -> x == 1, original_X[:, j]) # el nodo asociado inicialmente a la BU
             for i in 1:S
                 if i ≠ i_original
-                    iter += 1
                     new_cons_v, new_sol = move_bu(solution, j, i_original, i)
                     move = simpleMove(new_cons_v, new_sol, i_original, i, j, new_sol.Weight)
                     push!(moves, move)
@@ -761,7 +796,7 @@ function simple_move_bu(solution::Types.Solution, cons_v)
                 canMove, _ = isFactible(bestMove.newSolution, false)
                 if bestMove.weight < original_w && canMove
                     w = bestMove.weight
-                    @info "Pasando a una mejor solucion con peso:" w
+                    # @info "Pasando a una mejor solucion con peso:" w
                     original_X = bestMove.newSolution.X # actualizamos la X
                     original_w = bestMove.weight
                     solution = bestMove.newSolution
@@ -818,7 +853,7 @@ function main_local(; path="inst", read_file=true, sol_obj=nothing)
     newSolPath = ""
     newPlotPath = ""
     if read_file
-        cons_solution = read_solution(path)
+        cons_solution = Types.read_solution(path)
     else
         cons_solution = sol_obj
     end

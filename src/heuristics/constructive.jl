@@ -1,4 +1,3 @@
-using Random
 using Types
 using JuMP
 using Distances
@@ -6,7 +5,10 @@ using DelimitedFiles
 using Gurobi
 using Dates
 using TimerOutputs
-
+using MathOptInterface
+const MOI = MathOptInterface
+using Dates
+using Random
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
 end
@@ -22,11 +24,11 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
     D = instancia.D
     Weight = 0
     
-    before1 = now()
+    before1 = Dates.now()
     time_init1 = 0
     if init_method == "relax"
         Y, time_init1 = localize_facs(instancia, init_method)
-        before1 = now()
+        before1 = Dates.now()
     else
         Y = localize_facs(instancia, init_method)
     end
@@ -39,20 +41,20 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
     else
         Y_bool = Y
     end
-    after_init = now()
+    after_init = Dates.now()
     delta_init1 = after_init - before1
     if init_method == "relax"
         delta_init1 = time_init1
     end
-    println("Y done with time: ", delta_init1)
+    #println("Y done with time: ", delta_init1)
     if assign_method == "naive"
-        println("NAIVE")
+        #println("NAIVE")
         X = naive_assign_bu(instancia, Y_bool)
     elseif assign_method == "opp"
-        println("OPP COST")
+        #println("OPP COST")
         X = oppCostAssignment(Y_bool, instancia)
     end
-    after1 = now()
+    after1 = Dates.now()
     delta_assign = after1 - after_init
     println("X done with time: ", delta_assign)
     delta1 = after1 - before1
@@ -62,11 +64,11 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
         time1 += time_init1
     end
     
-    before = now()
+    before = Dates.now()
     time_init = 0
     if init_method == "relax"   
         Y, time_init = localize_facs(instancia, init_method)
-        before = now()  
+        before = Dates.now()  
     else
         Y = localize_facs(instancia, init_method)
     end
@@ -78,20 +80,20 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
     else
         Y_bool = Y
     end
-    after_init2 = now()
+    after_init2 = Dates.now()
     delta_init2 = after_init2 - before
     if init_method == "relax"
         delta_init2 = time_init
     end
     println("Y done with time: ", delta_init2)
     if assign_method == "naive"
-        println("NAIVE")
+        #println("NAIVE")
         X = naive_assign_bu(instancia, Y_bool)
     elseif assign_method == "opp"
-        println("OPP COST")
+       # println("OPP COST")
         X = oppCostAssignment(Y_bool, instancia)
     end
-    after = now()
+    after = Dates.now()
     delta_assign2 = after - after_init2
     println("X done with time: ", delta_assign2)
     delta = after - before
@@ -116,20 +118,20 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
     solution = Types.Solution(instancia, X, Y_bool, Weight, time)
     Types.plot_solution(solution, plot_str_path)
     Types.write_solution(solution, solution_str_path)
-    println(isFactible(solution, false))
+    # println(isFactible(solution, false))
     return solution
 end
 
 function localize_facs(instance, method)
     # k_type = findall(x->x==1, idx_candidate .∈ Sk) # get k type of fac
     if method == "pdisp"
-        println("P-DISP")
+        #println("P-DISP")
         return pdisp(instance)
     elseif method == "random"
-        println("RANDOM")
+        #println("RANDOM")
         return random_init(instance)
     elseif method == "relax"
-        println("RELAXATION")
+        #println("RELAXATION")
         return relax_init(instance)
     end
 
@@ -170,7 +172,6 @@ function naive_assign_bu(instance, Y)
     S = instance.S
     K = instance.K
     D = instance.D
-    P = instance.P
     X = zeros(Int, S, B)
     centers_used = 0
     for j in 1:B
@@ -191,7 +192,6 @@ function naive_assign_bu(instance, Y)
         X[i_exported, j] = 1
         centers_used += 1
     end
-
     return X
 end
 
@@ -219,7 +219,7 @@ function minimums(vec::Vector, n)::Tuple{Vector{Int64}, Vector{Int64}}
     arr = Array{Tuple{type,Int64}}(undef, n)
     indices = Array{Int64}(undef,n)
     @inbounds for i ∈ eachindex(vec)
-        if vec[i] ≠ -1
+        if vec[i] > 0
             biggest, index = findmax(vals)
             if vec[i] < biggest
                 arr[index] = vec[i], i
@@ -232,6 +232,7 @@ function minimums(vec::Vector, n)::Tuple{Vector{Int64}, Vector{Int64}}
     indices = [x[2] for x in arr]
     return vals, indices
 end
+#132407
 
 function maximums(matrix, n)::Tuple{Vector{Int64}, Vector{CartesianIndex{2}}}
     type = eltype(matrix)
@@ -252,7 +253,7 @@ function maximums(matrix, n)::Tuple{Vector{Int64}, Vector{CartesianIndex{2}}}
 end
 
 
-function oppCostAssignment(Y, instance::Instance)
+function oppCostAssignment(Y, instance::Types.Instance)
     D = copy(instance.D)
     P = instance.P
     S = instance.S
@@ -260,6 +261,7 @@ function oppCostAssignment(Y, instance::Instance)
     X = zeros(Int64, S, B)
     count = 0
     not_assigned_y = findall(y -> y == 0, Y)
+    #println(not_assigned_y)
     for j in not_assigned_y
         D[j, :] .= -1
     end
@@ -271,7 +273,7 @@ function oppCostAssignment(Y, instance::Instance)
         diff[:, i] .= D[:, i] .- minimal
     end
     todos = false
-    n = trunc(Int, P / 4)
+    n = trunc(Int, P - 1)
     while !todos
         _, indices::Vector{CartesianIndex{2}} = maximums(diff, n)
          constraints = Int64[]
@@ -284,7 +286,7 @@ function oppCostAssignment(Y, instance::Instance)
              constraints_v = restricciones(X_copy, Y, instance; verbose=false)
              push!(constraints, constraints_v)
          end
-         picked = CartesianIndex(1, 1)::CartesianIndex{2}
+        picked = CartesianIndex(1, 1)::CartesianIndex{2}
         if all(x -> x == 0, constraints) # si no se violan constraints, agarra el 0 de la columna del costo maximo
              indice = indices[1]::CartesianIndex{2}
              col = indice[2]::Int64
@@ -298,7 +300,7 @@ function oppCostAssignment(Y, instance::Instance)
                  original_row = findfirst(x -> x == 0, diff[:, col])::Int64
                  # queremos buscar en esa columna el siguiente valor más cercano a 0 en diff
                  # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
-                 busqueda = trunc(Int, (P/2)) # a lo mejor cambiarlo despues
+                 busqueda = trunc(Int, (P - 1)) # a lo mejor cambiarlo despues
                  _, idxs_inner::Array{Int64} = minimums(diff[:, col], busqueda)
                  # el primer minimo es el 0 de nuestra localizacion optima
                  # lo desechamos para darle variedad a la busqueda
@@ -306,11 +308,14 @@ function oppCostAssignment(Y, instance::Instance)
                  for row in idxs_inner2
                      X_copy = Matrix{Int64}(undef, S, B)
                      unsafe_copyto!(X_copy,1,X,1, S*B)
-                     X_copy[row, col] = 1
-                     constraints_v2 = restricciones(X_copy, Y, instance; verbose = false)
-                     if constraints_v2 < original_cons
-                         original_cons = constraints_v2
-                         original_row = row
+                     try
+                        X_copy[row, col] = 1
+                        constraints_v2 = restricciones(X_copy, Y, instance; verbose = false)
+                        if constraints_v2 < original_cons
+                            original_cons = constraints_v2
+                            original_row = row
+                        end
+                     catch
                      end
                  end
                  picked = CartesianIndex(original_row, col)
@@ -341,7 +346,7 @@ function oppCostAssignment(Y, instance::Instance)
     return X
 end
 
-function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::Instance; verbose=true)
+function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::Types.Instance; verbose=true)
     Sk = instance.Sk
     Lk = instance.Lk
     Uk = instance.Uk
@@ -391,6 +396,8 @@ function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::I
         for m in 1:M
             if !(sum(X[i, j] * V[m][j] for j in 1:B) <= trunc(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
                 if verbose
+                    println(i)
+                    println(any(x->x ≠ 0,X[i,:]))
                     println("violando V superior en i: $i y m: $m")
                     println("μ: ", trunc(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
@@ -406,7 +413,7 @@ function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::I
                 println("β: ", β[i])
                 println("R: ", sum(X[i, j] * R[j] for j in 1:B))
             end
-            number_constraints_violated += 1
+            number_constraints_violated += 2
         end
     end
     return number_constraints_violated
@@ -528,12 +535,12 @@ function relax_init(instance)
     JuMP.set_silent(model)
     JuMP.optimize!(model)
     tiempo = MOI.get(model, MOI.SolveTimeSec())
-    time_int = trunc(Int, tiempo)
-    Y = trunc.(Int, JuMP.value.(model[:y]))
+    time_int = round(Int, tiempo)
+    Y = round.(Int, JuMP.value.(model[:y]))
     return Y, time_int
 end
 
-function isFactible(solution::Solution, verbose=true)
+function isFactible(solution::Types.Solution, verbose=true)
     number_constraints_violated = 0
     instance = solution.Instance
     Sk = instance.Sk
@@ -577,6 +584,16 @@ function isFactible(solution::Solution, verbose=true)
         number_constraints_violated += 1
     end
 
+    for j in 1:B
+        if sum(X[i,j] for i in 1:S) ≠ 1
+            if verbose
+                println("Violando servicio a la BU: ", j)
+                number_constraints_violated += 1
+            end
+            
+        end
+    end
+
     for k_type in 1:K
         indices_k_type = Sk[k_type]
         count_k_type = 0
@@ -605,7 +622,7 @@ function isFactible(solution::Solution, verbose=true)
 
     for i in 1:S
         for m in 1:M
-            if !(trunc(Int, Y[i] * μ[m][i] * (1 - 0.8)) <= sum(X[i, j] * V[m][j] for j in 1:B))
+            if !(trunc(Int, Y[i] * μ[m][i] * (1 - 0.7)) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
                     println("μ: ", trunc(Int, Y[i] * μ[m][i] * (1 - T[m])))
@@ -653,7 +670,7 @@ function main_constructive(init_method, assign_method; path = "inst", read_file 
         index = findfirst(pattern, path)
         almost_number = path[index]
         _, number = split(almost_number, "_")
-        instance = read_instance(path)
+        instance = Types.read_instance(path)
     else
         instance = instance_obj
         number = id

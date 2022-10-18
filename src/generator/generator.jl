@@ -12,9 +12,9 @@ function generate_instance(size::String, i::Int; write=true)
         S = 8
         P = 4
     elseif size == "M"
-        B = 800
-        S = 80
-        P = 60
+        B = 200
+        S = 40
+        P = 20
     elseif size == "L"
         B = 1500
         S = 120
@@ -82,8 +82,8 @@ function generate_k(B::Int64, S::Int64)
     end
     Sk = convert(Vector{Vector{Int64}}, Sk)
     counts_k = [length(s) for s in Sk]
-    Lk_flt = [k - 0.4k for k in counts_k]
-    Uk_flt = [k + 0.5k for k in counts_k]
+    Lk_flt = [k - 0.65k for k in counts_k]
+    Uk_flt = [k - 0.05k for k in counts_k]
     Lk = trunc.(Int, Lk_flt)
     Uk = trunc.(Int, Uk_flt)
     return Sk, Lk, Uk
@@ -98,7 +98,7 @@ function generate_activities(B::Int64, S::Int64, P)
     μ = [zeros(Int64, S) for _ in 1:M]
     for i in eachindex(V)
         sum_vals = sum(V[i])
-        τ = 0.8
+        τ = 2.6
         upper = trunc(Int, (trunc(Int, (sum_vals / S) * (1 + τ))))
         μ[i] = fill(upper, S)
     end
@@ -109,7 +109,7 @@ end
 function generate_risk(B::Int64, S::Int64, P)
     R = rand(10:25, B)
     sum_R = sum(R)
-    τ = 0.95
+    τ = 2.6
     upper = trunc(Int, trunc(Int, (sum_R / S) * (1 + τ)))
     β = fill(upper, S)
     return R, β
@@ -124,4 +124,4 @@ function main()
     @info "Done"
 end
 
-main()
+#main()
