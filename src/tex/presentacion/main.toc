@@ -1,4 +1,0 @@
-\beamer@sectionintoc {1}{Problem statement and motivation}{3}{0}{1}
-\beamer@sectionintoc {2}{Proposed heuristic}{10}{0}{2}
-\beamer@sectionintoc {3}{Empirical work}{15}{0}{3}
-\beamer@sectionintoc {4}{Wrap-up}{20}{0}{4}
