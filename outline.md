@@ -2,12 +2,10 @@ Pendientes:
  - [x] Terminar el generador de instancias
  - [x] Programar el modelo exacto usando JuMP o otra API de CPLEX (Renovar licencia de Gurobi)
  - [x] Visualizar resultado del modelo
- - [ ] Mover el formato de las instancias a JSON
  - [x] Refactorear el generador de instancias para tomar en cuenta factibilidad entre los parámetros
  - [x] Leer de ~~stdin~~ **tamaños predefinidos** datos para el generador
  - [x] Crear un tipo específico para las instancias
- - [ ] Mover a Julia 1.8 cuando salga para crear sysimages rápidas [#41936](https://github.com/JuliaLang/julia/pull/41936)
+ - [x] Mover a Julia 1.8 cuando salga para crear sysimages rápidas [#41936](https://github.com/JuliaLang/julia/pull/41936)
  - [ ] Docstrings
- - [ ] Seguir probando si las restricciones son demasiado estrictas
- - [ ] Callbacks para probear resultado del MIP 
- - [ ] Probar con Cbc por qué a veces se saltan constraints
+ - [x] Seguir probando si las restricciones son demasiado estrictas
+ - [x] Callbacks para probear resultado del MIP 
