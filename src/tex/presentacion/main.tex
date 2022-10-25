@@ -93,14 +93,13 @@
 \end{frame}
 
 \begin{frame}{Motivation and Purpose}
-    The model described in this work is motivated by a previous model described in \cite{jimo2020}. However, there are several differences between both. In this model, the risk balancing is modelled as a constraint whereas the other model presents it as part of the objective function. Moreover, the other model was applied to an existing territorial design so the objective function also contained a term related to keeping as much as possible of the original design. Our model does not take into account the adjacency of BUs as neither a constraint or parameter. \\
+    The model described in this work is motivated by a previous model described in \cite{jimo2020}. In this model, the risk balancing is modelled as a constraint whereas the other model presents it as part of the objective function. Moreover, the other model was applied to an existing territorial design so the objective function also contained a term related to keeping as much as possible of the original design. \\
     This model can be viewed as a vertex p-center problem with multiple capacity constraints, given that even the uncapacitated vertex p-center problem is NP-hard \cite{eswa2016}, our TDP is also NP-hard \, therefore the perceived usefulness of heuristic approaches for solving it.
 \end{frame}
 
 \begin{frame}{Combinatorial model}
     \framesubtitle{Problem formulation}
-    \begin{itemize}
-        \item Sets and parameters
+        Sets and parameters
         \begin{itemize}
             \item $S = \{1, 2, ..., s\}$, set of possible territory centers
             \item $B = \{1, 2, ..., b\}$, set of possible BUs
@@ -115,13 +114,18 @@
             \item $P$ = Number of centers to be used
         \end{itemize}
         
-        \item Variables sets
+\end{frame}
+
+\begin{frame}{Combinatorial model}
+    \framesubtitle{Problem formulation}
+        Variables sets
         \begin{itemize}
             \item \small $Y_i$, binary variable vector where $Y_i$ = 1 if the center $i$ is used, 0 if not.
             \item \small $X_{ij}$, binary variable matrix where $X_{ij}$ = 1 if the BU $j$ is assigned to center $i$.
         \end{itemize}
-    \end{itemize}
 \end{frame}
+
+        
 
 
 \begin{frame}{Mathematical programming}
@@ -207,14 +211,14 @@
 \begin{frame}{Construction phase}
     \framesubtitle{Location heuristics}
     \begin{itemize}
-        \item P-dispersion problem
+        \item $P$-dispersion problem
         \item Relaxation of integer constraints
         \item Randomization
     \end{itemize}
 \end{frame}
 
 \begin{frame}{Construction phase}
-    \framesubtitle{Location heuristics: P-Dispersion Problem}
+    \framesubtitle{Location heuristics: $P$-Dispersion Problem}
 \scalebox{0.8}{
     \begin{minipage}{1.8\linewidth}
         \begin{algorithmic}[1]
@@ -236,7 +240,7 @@
                 \STATE $T \gets T \setminus max$
             \ENDWHILE
             \STATE $Y = zeros(S)$
-            \STATE $Y \gets Y[idx] = 1, \forall_idx \in T$
+            \STATE $Y \gets Y[idx] = 1, \forall idx \in T$
             \RETURN Y
         \end{algorithmic}
     \end{minipage}%
@@ -335,55 +339,39 @@
     \end{figure}
 \end{frame}
 
-
-\begin{frame}{Cost of opportunity}
-    \scalebox{0.41}{
+\begin{frame}{Cost of opportunity Matrix}
+    \scalebox{1}{
     \begin{minipage}{1.8\linewidth}
         \begin{algorithmic}[1]
-            \REQUIRE $D, P, Y, S, B, n $, Instance
-            \ENSURE $X$ := binary decision variable
+            \REQUIRE $D, P, Y, B$
+            \ENSURE $C$ := cost of opportunity matrix
             \STATE $C \gets D$
             \STATE $N \gets [i, \forall i \in Y_i == 0]$
             \FORALL{$j \in B$}
                 \STATE $i' \gets$ argmin$(D[:,i]), i \notin N$
                 \STATE $C[i,j] \gets D[i,j] - D[i',j], \forall i \in 1...S $
             \ENDFOR
-            \STATE DONE $ \gets FALSE$
-            \WHILE {NOT DONE}
-                \STATE $CONS \gets [  ] $
-                \STATE IDXS $\gets$ argmax$(C, n)$
+            \RETURN $C$
+        \end{algorithmic}
+    \end{minipage}%
+    }
+\end{frame}
+
+\begin{frame}{Search across the Cost Matrix}
+        \begin{algorithmic}[1]
+            \REQUIRE $C, n, X, Instance$
+            \ENSURE $CONS$ := Vector of constraints violated by possible asignation in X and information
+            \STATE IDXS $\gets$ argmax$(C, n)$
                 \FORALL{IDX $\in$ IDXS}
                 \IF{IDX $\notin N$}
                     \STATE ROW $\gets$ find$(C[:, IDX] = 0)$
                     \STATE $X' \gets X$
                     \STATE $X'[ROW, IDX] \gets 1$
-                    \STATE $CONS \gets \left( ROW, IDX, constraints(Instance, X') \right)$
+                    \STATE $CONS \gets \left( ROW, IDX, constraintsCheck(Instance, X') \right)$
                 \ENDIF
-                \STATE $i* \gets$ argmin(CONS)
-                \IF{CONS[i*] = 0}
-                    \STATE $ROW, COL \gets CONS[i*]$
-                    \STATE $X[ROW, COL] \gets 1$
-                \ELSE
-                    \STATE $Candidates \gets argmin(C[:,i*], P/4)$
-                    \STATE $CONS\_INNER \gets [ ]$
-                    \FOR{Candidate $\in$ Candidates}
-                        \STATE $X* \gets X$
-                        \STATE $X*[Candidate, i*] \gets 1$
-                        \STATE $CONS\_INNER \gets \left( ROW, IDX, constraints(Instance, X*) \right)$
-                    \ENDFOR
-                    \STATE $j* \gets argmin(CONS\_INNER)$
-                    \STATE $ROW \gets CONS\_INNER[j*]$
-                    \STATE $COL \gets CONS[i*]$
-                    \STATE $X[ROW,COL] \gets 1$
-                \ENDIF
-                \STATE $D[:,COL] \gets \emptyset$
-                \ENDFOR
-                \STATE DONE $\gets$ Are All BUs Assigned?
-            \ENDWHILE
-            \RETURN $X$
+            \ENDFOR
+            \RETURN $CONS$
         \end{algorithmic}
-    \end{minipage}%
-    }
 \end{frame}
 
 \begin{frame}{Upper Constraints Check}
@@ -404,7 +392,41 @@
     }
 \end{frame}
 
-
+\begin{frame}{Cost of opportunity}
+    \scalebox{0.6}{
+    \begin{minipage}{1.8\linewidth}
+        \begin{algorithmic}[1]
+            \REQUIRE $D, P, Y, S, B, n $, Instance
+            \ENSURE $X$ := binary decision variable
+            \STATE $C \gets GenerateCostMatrix(D, Y, B)$
+            \STATE DONE $ \gets FALSE$
+            \WHILE {NOT DONE}
+                \STATE $CONS \gets SearchCost(C, n, X, Instance)$
+                \STATE $i* \gets$ argmin(CONS)
+                \IF{CONS[i*] = 0}
+                    \STATE $ROW, COL \gets CONS[i*]$
+                    \STATE $X[ROW, COL] \gets 1$
+                \ELSE
+                    \STATE $Candidates \gets argmin(C[:,i*], n)$
+                    \STATE $CONS\_INNER \gets [ ]$
+                    \FOR{Candidate $\in$ Candidates}
+                        \STATE $X* \gets X$
+                        \STATE $X*[Candidate, i*] \gets 1$
+                        \STATE $CONS\_INNER \gets \left( ROW, IDX, constraints(Instance, X*) \right)$
+                    \ENDFOR
+                    \STATE $j* \gets argmin(CONS\_INNER)$
+                    \STATE $ROW \gets CONS\_INNER[j*]$
+                    \STATE $COL \gets CONS[i*]$
+                    \STATE $X[ROW,COL] \gets 1$
+                \ENDIF
+                \STATE $D[:,COL] \gets \emptyset$
+                \STATE DONE $\gets$ Are All BUs Assigned?
+            \ENDWHILE
+            \RETURN $X$
+        \end{algorithmic}
+    \end{minipage}%
+    }
+\end{frame}
 
 \begin{frame}{Local search}
     \scriptsize Taking into consideration that the solution provided by the Constructive Heuristic needs to be "repaired", the local search moves first try to minimize constraints violated.
@@ -453,17 +475,17 @@
     \begin{table}
         \centering
         \scalebox{0.67}{
-        \begin{tabular}{c|c|c|c|c|c|c|c|c|c|c|c|}
+        \begin{tabular}{c|c|c|c|c|c|c|c|c|}
             \hline
-            \multicolumn{3}{c}{Inst.} &
-            \multicolumn{1}{c}{Loc.} &
+            \multicolumn{1}{c}{Dataset} &
+            \multicolumn{1}{c}{Location h.} &
             \multicolumn{2}{c}{Avg. constraints} &
             \multicolumn{2}{c}{\% Factible sols.} &
             \multicolumn{2}{c}{Avg. time alloc. (s)} &
             \multicolumn{1}{c}{Avg. time loc. (s)} \\ \hline
-            $B$ & $S$ & $P$ & & N & C & N & C & N & C & \\ \hline
-            \multirow{3}{*}{310} & \multirow{3}{*}{60} & \multirow{3}{*}{20} & Rlx & 5.92 & 0.08 & 0 & 96 & 0.004 & 2.05 & 1.2\\ & & & Pdp & 42.2 & 8.44 & 0 & 0 & 0.005 & 1.114 & 0.0006 \\ & & & Rnd & 21.76 & 4.92 & 0 & 0 & 0.004 & 0.954 & 0 \\ \hline
-            \multirow{3}{*}{800} & \multirow{3}{*}{150} & \multirow{3}{*}{50} & Rlx & 12.4 & 0 & 0 & 100 & 0.014 & 47.7 & 16.6\\ & & & Pdp & 102.4 & 19.4 & 0 & 0 & 0.016 & 69.54 & 0.0009 \\ & & & Rnd & 43.5 & 8.9 & 0 & 0 & 0.013 & 56.84 & 0 \\ \hline
+            & & M & C & M & C & M & C & \\ \hline
+            \multirow{3}{*}{1} & Rlx & 5.92 & 0.08 & 0 & 96 & 0.004 & 2.05 & 1.2\\& Pdp & 42.2 & 8.44 & 0 & 0 & 0.005 & 1.114 & 0.0006 \\ & Rnd & 21.76 & 4.92 & 0 & 0 & 0.004 & 0.954 & 0 \\ \hline
+            \multirow{3}{*}{2} & Rlx & 12.4 & 0 & 0 & 100 & 0.014 & 47.7 & 16.6\\ & Pdp & 102.4 & 19.4 & 0 & 0 & 0.016 & 69.54 & 0.0009 \\ & Rnd & 43.5 & 8.9 & 0 & 0 & 0.013 & 56.84 & 0 \\ \hline
         \end{tabular}}
         \caption{Summary of the experiment results}
         \label{tab:constructive_exp}
@@ -518,7 +540,7 @@
         \caption{Summary of the experiment results}
         \label{tab:ls_improv_exp}
     \end{table}
-    Each Move had a fixed number of iterations, for the first dataset, $max\_iters = 1000:1500$ but we suspect there is a bug somewhere, as for the same number of iterations, the second dataset would OOM the procedure, so $max\_iters$ had to be lowered to $200:250$.
+    Each Move had a fixed number of iterations, for the first dataset, $max\_iters = 1000:1500$ but we suspect there is a bug somewhere, as for the same number of iterations, the second dataset would exhaust the memory, so $max\_iters$ had to be lowered to $200:250$.
     Based on these results, it was decided to use BU\_Simple and BU\_Interchange moves in the GRASP procedure with around 200 iterations for each move.
 \end{frame}
 
@@ -561,45 +583,42 @@
         \end{algorithmic}
 \end{frame}
 
+\begin{frame}{GRASP Location}
+\begin{algorithmic}[1]
+    \REQUIRE $P, \gamma,$, Instance
+        \ENSURE $Y$ = binary decision variable
+        \STATE $Y \gets IntegerRelaxation(Instance)$
+        \STATE $Y' \gets$ Perturbate Y (turn off $\gamma$ centers previously on and turn on $\gamma$ centers previously off)
+        \RETURN $Y'$
+\end{algorithmic}
+    
+\end{frame}
+
 \begin{frame}{Construct Pseudocode}
-\scalebox{0.33}{
+\scalebox{0.45}{
 \begin{minipage}{1.5\linewidth}
 \begin{algorithmic}[1]
         \REQUIRE $P, \alpha, \gamma,$, Instance
         \ENSURE $X,Y$ = binary decision variables
-        \STATE $Y \gets IntegerRelaxation(Instance)$
-        \STATE $Y' \gets$ Perturbate Y (turn off $\gamma$ centers previously on and turn on $\gamma$ centers previously off)
-        \STATE $C \gets D$
-            \STATE $N \gets [i, \forall i \in Y_i == 0]$
-            \FORALL{$j \in B$}
-                \STATE $i' \gets$ argmin$(D[:,i]), i \notin N$
-                \STATE $C[i,j] \gets D[i,j] - D[i',j], \forall i \in 1...S $
-            \ENDFOR
+        \STATE $Y' \gets$Location($P, \gamma, Instance$)
+        \STATE $C \gets GenerateCostMatrix(D, Y, B)$
             \STATE DONE $ \gets FALSE$
             \WHILE {NOT DONE}
-                \STATE $CONS \gets [  ] $
-                \STATE IDXS $\gets$ argmax$(C, n)$
-                \FORALL{IDX $\in$ IDXS}
-                \IF{IDX $\notin N$}
-                    \STATE ROW $\gets$ find$(C[:, IDX] = 0)$
-                    \STATE $X' \gets X$
-                    \STATE $X'[ROW, IDX] \gets 1$
-                    \STATE $CONS \gets \left( ROW, IDX, constraints(Instance, X') \right)$
-                \ENDIF
+                \STATE $CONS \gets SearchCost(C, n, X, Instance)$
                 \STATE $i* \gets$ argmin(CONS)
                 \IF{CONS[i*] = 0}
                     \STATE $ROW, COL \gets CONS[i*]$
                     \STATE $BestVal \gets C[ROW, COL]$
                     \STATE $Cutoff \gets (BestVal + (BestVal * \alpha))$
-                    \STATE $RCL \gets [IDX if C[IDX] <= Cutoff]$
+                    \STATE $RCL \gets [IDX, if C[IDX] <= Cutoff]$
                     \STATE $ROW, COL \gets Rand(RCL)$ 
                     \STATE $X[ROW,COL] \gets 1$
                 \ELSE
                     \STATE $BestVal \gets C[ROW, COL]$
                     \STATE $Cutoff \gets (BestVal + (BestVal * \alpha))$
-                    \STATE $RCL \gets [IDX if C[IDX] <= Cutoff]$
+                    \STATE $RCL \gets [IDX, if C[IDX] <= Cutoff]$
                     \STATE $i* \gets Rand(RCL)$
-                    \STATE $Candidates \gets argmin(C[:,i*], P/4)$
+                    \STATE $Candidates \gets argmin(C[:,i*], n)$
                     \STATE $CONS\_INNER \gets [ ]$
                     \FOR{Candidate $\in$ Candidates}
                         \STATE $X* \gets X$
@@ -612,10 +631,36 @@
                     \STATE $X[ROW,COL] \gets 1$
                 \ENDIF
                 \STATE $D[:,COL] \gets \emptyset$
-                \ENDFOR
                 \STATE DONE $\gets$ Are All BUs Assigned?
             \ENDWHILE
             \RETURN X, Y
+        \end{algorithmic}
+        \end{minipage}%
+        }
+\end{frame}
+
+\begin{frame}{LocalSearch Pseudocode}
+\scalebox{0.8}{
+\begin{minipage}{1.5\linewidth}
+\begin{algorithmic}[1]
+        \REQUIRE $Instance, X, Y$
+        \ENSURE $X',Y'$ = binary decision variables
+        \STATE $Fac \gets$ isFactible($X, Y, Instance$)
+        \IF{$Fac = false$}
+            \STATE $X', Y' \gets $ BU\_Simple($X, Y, Instance, Repair$)
+            \STATE $Fac' \gets$ isFactible($X', Y', Instance$)
+            \IF{$Fac' = false$}
+                \STATE $X', Y' \gets$ BU\_Interchange($X', Y', Instance, Repair$)
+                \STATE $Fac* \gets$ isFactible($X', Y', Instance)$
+            \ENDIF
+        \ENDIF
+        \IF{$Fac* = false$}
+            \STATE Skip iteration
+        \ELSE
+            \STATE $X', Y' \gets$ BU\_Simple($X, Y, Instance, Improve$)
+            \STATE $X', Y' \gets$ BU\_Interchange($X', Y', Instance, Improve$)
+        \ENDIF
+            \RETURN $X', Y'$
         \end{algorithmic}
         \end{minipage}%
         }
@@ -673,6 +718,7 @@
     \scriptsize
     \begin{itemize}
         \item Explore the usage of P-Dispersion as the Location Phase instead of Relaxation.
+        \item Model the risk as an uncertainty measure.
         \item Optimize code, profile performance, detect bottlenecks and memory leaks
         \item Improve the algorithm data structures to reduce running times
         \item Explore other location phase heuristics
