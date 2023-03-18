@@ -3,9 +3,9 @@ using Types
 using MathOptInterface
 const MOI = MathOptInterface
 
-function optimize_model(model::Model; verbose=true, solver=CPLEX::Module)
+function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
     set_optimizer(model, solver.Optimizer)
-    set_time_limit_sec(model, 300.0) # 300 seconds timeout
+    set_time_limit_sec(model, 1800.0) # 30 minutos
     if !verbose
         set_silent(model)
     end
