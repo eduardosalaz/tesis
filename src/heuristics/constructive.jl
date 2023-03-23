@@ -13,8 +13,8 @@ function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
 end
 
-function constructive(instance, id, init_method, assign_method; withdir = false, dir = "")
-    
+function constructive(instance, id, init_method, assign_method; withdir=false, dir="")
+
     instancia = instance
     B = instancia.B
     S = instancia.S
@@ -23,7 +23,7 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
     Y = Vector{Int64}[]
     D = instancia.D
     Weight = 0
-    
+
     before1 = Dates.now()
     time_init1 = 0
     if init_method == "relax"
@@ -63,12 +63,12 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
     if init_method == "relax"
         time1 += time_init1
     end
-    
+
     before = Dates.now()
     time_init = 0
-    if init_method == "relax"   
+    if init_method == "relax"
         Y, time_init = localize_facs(instancia, init_method)
-        before = Dates.now()  
+        before = Dates.now()
     else
         Y = localize_facs(instancia, init_method)
     end
@@ -90,7 +90,7 @@ function constructive(instance, id, init_method, assign_method; withdir = false,
         #println("NAIVE")
         X = naive_assign_bu(instancia, Y_bool)
     elseif assign_method == "opp"
-       # println("OPP COST")
+        println("OPP COST")
         X = oppCostAssignment(Y_bool, instancia)
     end
     after = Dates.now()
@@ -134,7 +134,6 @@ function localize_facs(instance, method)
         #println("RELAXATION")
         return relax_init(instance)
     end
-
 end
 
 function smarter_assign_bu(instance, Y)
@@ -195,11 +194,11 @@ function naive_assign_bu(instance, Y)
     return X
 end
 
-function minimums(matrix::Matrix, n)::Tuple{Vector{Int64}, Vector{CartesianIndex{2}}}
+function minimums(matrix::Matrix, n)::Tuple{Vector{Int64},Vector{CartesianIndex{2}}}
     type = eltype(matrix)
     vals = fill(1e12, n)
     arr = Array{Tuple{type,CartesianIndex}}(undef, n)
-    indices = Array{Int64}(undef,n)
+    indices = Array{Int64}(undef, n)
     @inbounds for i ∈ axes(matrix, 1), j ∈ axes(matrix, 2)
         biggest, index = findmax(vals)
         if matrix[i, j] < biggest
@@ -213,11 +212,11 @@ function minimums(matrix::Matrix, n)::Tuple{Vector{Int64}, Vector{CartesianIndex
     return vals, indices
 end
 
-function minimums(vec::Vector, n)::Tuple{Vector{Int64}, Vector{Int64}}
+function minimums(vec::Vector, n)::Tuple{Vector{Int64},Vector{Int64}}
     type = eltype(vec)
     vals = fill(1e9, n)
     arr = Array{Tuple{type,Int64}}(undef, n)
-    indices = Array{Int64}(undef,n)
+    indices = Array{Int64}(undef, n)
     @inbounds for i ∈ eachindex(vec)
         if vec[i] > 0
             biggest, index = findmax(vals)
@@ -234,10 +233,10 @@ function minimums(vec::Vector, n)::Tuple{Vector{Int64}, Vector{Int64}}
 end
 #132407
 
-function maximums(matrix, n)::Tuple{Vector{Int64}, Vector{CartesianIndex{2}}}
+function maximums(matrix, n)::Tuple{Vector{Int64},Vector{CartesianIndex{2}}}
     type = eltype(matrix)
     vals = zeros(type, n)
-    indices = Array{Int64}(undef,n)
+    indices = Array{Int64}(undef, n)
     arr = Array{Tuple{type,CartesianIndex}}(undef, n)
     @inbounds for i ∈ axes(matrix, 1), j ∈ axes(matrix, 2)
         smallest, index = findmin(vals)
@@ -249,6 +248,16 @@ function maximums(matrix, n)::Tuple{Vector{Int64}, Vector{CartesianIndex{2}}}
     arr = sort(arr, by=x -> x[1], rev=true)
     vals = [x[1] for x in arr]
     indices = [x[2] for x in arr]
+    return vals, indices
+end
+
+function maximums2(M, n)
+    v = vec(M)
+    l = length(v)
+    ix = [1:l;]
+    partialsortperm!(ix, v, (l-n+1):l, initialized=true)
+    vals = v[ix[(l-n+1):l]]
+    indices = CartesianIndices(M)[ix[(l-n+1):l]]
     return vals, indices
 end
 
@@ -273,76 +282,76 @@ function oppCostAssignment(Y, instance::Types.Instance)
         diff[:, i] .= D[:, i] .- minimal
     end
     todos = false
-    n = trunc(Int, P - 1)
+    n = P - 5 # falta tweakear
     while !todos
-        _, indices::Vector{CartesianIndex{2}} = maximums(diff, n)
-         constraints = Int64[]
+        _, indices::Vector{CartesianIndex{2}} = maximums2(diff, n)
+        constraints = Int64[]
         for indice::CartesianIndex in indices
-             X_copy = Matrix{Int64}(undef, S, B)
-             unsafe_copyto!(X_copy,1,X,1, S*B)
-             col = indice[2]
-             row = findfirst(x -> x == 0, diff[:, col])
-             X_copy[row, col] = 1
-             constraints_v = restricciones(X_copy, Y, instance; verbose=false)
-             push!(constraints, constraints_v)
-         end
+            X_copy = Matrix{Int64}(undef, S, B)
+            unsafe_copyto!(X_copy, 1, X, 1, S * B)
+            col = indice[2]
+            row = findfirst(x -> x == 0, diff[:, col])
+            X_copy[row, col] = 1
+            constraints_v = restricciones(X_copy, Y, instance; verbose=false)
+            push!(constraints, constraints_v)
+        end
         picked = CartesianIndex(1, 1)::CartesianIndex{2}
         if all(x -> x == 0, constraints) # si no se violan constraints, agarra el 0 de la columna del costo maximo
-             indice = indices[1]::CartesianIndex{2}
-             col = indice[2]::Int64
-             row = findfirst(x -> x == 0, diff[:, col])
-             picked = CartesianIndex(row, col)
+            indice = indices[1]::CartesianIndex{2}
+            col = indice[2]::Int64
+            row = findfirst(x -> x == 0, diff[:, col])
+            picked = CartesianIndex(row, col)
         else
             if all(x -> x ≠ 0, constraints) # si todas violan constraints
-                 original_cons, idx = findmin(constraints) # agarra el que viole menos constraints
-                 indice = indices[idx]
-                 col = indice[2]
-                 original_row = findfirst(x -> x == 0, diff[:, col])::Int64
-                 # queremos buscar en esa columna el siguiente valor más cercano a 0 en diff
-                 # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
-                 busqueda = trunc(Int, (P - 1)) # a lo mejor cambiarlo despues
-                 _, idxs_inner::Array{Int64} = minimums(diff[:, col], busqueda)
-                 # el primer minimo es el 0 de nuestra localizacion optima
-                 # lo desechamos para darle variedad a la busqueda
-                 idxs_inner2::Array{Int64} = idxs_inner[2:end]
-                 for row in idxs_inner2
-                     X_copy = Matrix{Int64}(undef, S, B)
-                     unsafe_copyto!(X_copy,1,X,1, S*B)
-                     try
+                original_cons, idx = findmin(constraints) # agarra el que viole menos constraints
+                indice = indices[idx]
+                col = indice[2]
+                original_row = findfirst(x -> x == 0, diff[:, col])::Int64
+                # queremos buscar en esa columna el siguiente valor más cercano a 0 en diff
+                # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
+                busqueda = trunc(Int, (P - 1)) # a lo mejor cambiarlo despues
+                _, idxs_inner::Array{Int64} = minimums(diff[:, col], busqueda)
+                # el primer minimo es el 0 de nuestra localizacion optima
+                # lo desechamos para darle variedad a la busqueda
+                idxs_inner2::Array{Int64} = idxs_inner[2:end]
+                for row in idxs_inner2
+                    X_copy = Matrix{Int64}(undef, S, B)
+                    unsafe_copyto!(X_copy, 1, X, 1, S * B)
+                    try
                         X_copy[row, col] = 1
-                        constraints_v2 = restricciones(X_copy, Y, instance; verbose = false)
+                        constraints_v2 = restricciones(X_copy, Y, instance; verbose=false)
                         if constraints_v2 < original_cons
                             original_cons = constraints_v2
                             original_row = row
                         end
-                     catch
-                     end
-                 end
-                 picked = CartesianIndex(original_row, col)
-             else # si hay una que no viola constraints
-                 for idx in eachindex(constraints)
-                     if constraints[idx] == 0 # agarrala
-                         indice = indices[idx]
-                         col = indice[2]
-                         row = findfirst(x -> x == 0, diff[:, col])
-                         picked = CartesianIndex(row, col)
-                         break
-                     end
-                 end
-             end
-         end
-         X[picked] = 1
-         column = picked[2]::Int64
-         diff[:, column] .= -1 # "apagamos" esa columna
-         todos = true
-         count += 1
-         for col in eachcol(X)
-             if all(x -> x == 0, col)
-                 todos = false
-                 break
-             end
-         end
-     end
+                    catch
+                    end
+                end
+                picked = CartesianIndex(original_row, col)
+            else # si hay una que no viola constraints
+                for idx in eachindex(constraints)
+                    if constraints[idx] == 0 # agarrala
+                        indice = indices[idx]
+                        col = indice[2]
+                        row = findfirst(x -> x == 0, diff[:, col])
+                        picked = CartesianIndex(row, col)
+                        break
+                    end
+                end
+            end
+        end
+        X[picked] = 1
+        column = picked[2]::Int64
+        diff[:, column] .= -1 # "apagamos" esa columna
+        todos = true
+        count += 1
+        for col in eachcol(X)
+            if all(x -> x == 0, col)
+                todos = false
+                break
+            end
+        end
+    end
     return X
 end
 
@@ -381,7 +390,7 @@ function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::T
                 count_k_type += 1
             end
         end
-        counts_k[k_type] =  count_k_type
+        counts_k[k_type] = count_k_type
     end
 
     for k in 1:K
@@ -397,7 +406,7 @@ function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::T
             if !(sum(X[i, j] * V[m][j] for j in 1:B) <= trunc(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
                 if verbose
                     println(i)
-                    println(any(x->x ≠ 0,X[i,:]))
+                    println(any(x -> x ≠ 0, X[i, :]))
                     println("violando V superior en i: $i y m: $m")
                     println("μ: ", trunc(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
@@ -435,7 +444,7 @@ function pdisp(instance)
     end
 
     while length(S_sol) < P
-        distances = Tuple{Int64, Int64}[]
+        distances = Tuple{Int64,Int64}[]
         idx_max_dist = 0
         for i in T
             distance = 0
@@ -585,12 +594,12 @@ function isFactible(solution::Types.Solution, verbose=true)
     end
 
     for j in 1:B
-        if sum(X[i,j] for i in 1:S) ≠ 1
+        if sum(X[i, j] for i in 1:S) ≠ 1
             if verbose
                 println("Violando servicio a la BU: ", j)
                 number_constraints_violated += 1
             end
-            
+
         end
     end
 
@@ -663,7 +672,7 @@ function isFactible(solution::Types.Solution, verbose=true)
     end
 end
 
-function main_constructive(init_method, assign_method; path = "inst", read_file = true, instance_obj = nothing, id = 0)
+function main_constructive(init_method, assign_method; path="inst", read_file=true, instance_obj=nothing, id=0)
     instance = 1 # para traerlo al scope
     if read_file
         pattern = Regex("[t][_]\\d{1,3}")
@@ -675,11 +684,12 @@ function main_constructive(init_method, assign_method; path = "inst", read_file 
         instance = instance_obj
         number = id
     end
-    
+
     solution = constructive(instance, number, init_method, assign_method)
+    write_solution(solution, "sol_300_60_20_1_viejomaximums.jld2")
     return solution
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    main_constructive(ARGS[2], ARGS[3]; path = ARGS[1])
+    main_constructive(ARGS[2], ARGS[3]; path=ARGS[1])
 end
