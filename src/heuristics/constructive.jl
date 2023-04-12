@@ -14,7 +14,6 @@ function remove!(V, item)
 end
 
 function constructive(instance, id, init_method, assign_method; withdir=false, dir="")
-
     instancia = instance
     B = instancia.B
     S = instancia.S
@@ -118,7 +117,7 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
     solution = Types.Solution(instancia, X, Y_bool, Weight, time)
     Types.plot_solution(solution, plot_str_path)
     Types.write_solution(solution, solution_str_path)
-    # println(isFactible(solution, false))
+    println(isFactible(solution, true))
     return solution
 end
 
@@ -261,12 +260,69 @@ function maximums2(M, n)
     return vals, indices
 end
 
+function maximums3(M, n)
+    v = vec(M)
+    l = length(v)
+    ix = [1:l;]
+    partialsortperm!(ix, v, (l-n+1):l, initialized=true)
+    indices = CartesianIndices(M)[ix[(l-n+1):l]]
+    return indices
+end
+
+function calculate_target(instance)
+    M = instance.M
+    μ = instance.μ
+    T = instance.T
+    targets = Vector{Int64}(undef, M)
+    for m in 1:M
+        targets[m] = round(Int, (1 * μ[m][1] * (1 + T[m])))
+    end
+    return targets
+end
+
+function start_constraints(X, instance, values_matrix, risk_vec)
+    S = instance.S
+    B = instance.B
+    M = instance.M
+    V = instance.V
+    R = instance.R
+    for i in 1:S
+        for m in 1:M
+            values_matrix[i,m] = sum(X[i,j] * V[m][j] for j in 1:B)
+        end
+        risk_vec[i] = sum(X[i,j] * R[j] for j in 1:B)
+    end
+    return values_matrix, risk_vec
+end
+
+function update_constraints(instance, i, j, values_matrix, risk_vec, targets, β)
+    M = instance.M
+    V = instance.V
+    R = instance.R
+
+    constraints = 0
+    for m in 1:M
+        values_matrix[i,m] += V[m][j]
+        if values_matrix[i,m] > targets[m]
+            constraints += 1
+        end
+    end
+
+    risk_vec[i] += R[j]
+    if risk_vec[i] > β
+        constraints += 1
+    end
+    return constraints
+end
+
 
 function oppCostAssignment(Y, instance::Types.Instance)
     D = copy(instance.D)
     P = instance.P
     S = instance.S
     B = instance.B
+    M = instance.M
+    β = instance.β[1]
     X = zeros(Int64, S, B)
     count = 0
     not_assigned_y = findall(y -> y == 0, Y)
@@ -274,43 +330,50 @@ function oppCostAssignment(Y, instance::Types.Instance)
     for j in not_assigned_y
         D[j, :] .= -1
     end
-    diff = copy(D)
+    oppMatrix = copy(D)
     for i in 1:B
         minimal = 0
         minimals, _ = minimums(D[:, i], 1)
         minimal = minimals[1]
-        diff[:, i] .= D[:, i] .- minimal
+        oppMatrix[:, i] .= D[:, i] .- minimal
     end
     todos = false
+    targets = calculate_target(instance)
+    values_matrix = Matrix{Int64}(undef, S, M)
+    risk_vec = Vector{Int64}(undef, S)
     n = P - 5 # falta tweakear
     while !todos
-        _, indices::Vector{CartesianIndex{2}} = maximums2(diff, n)
+        indices::Vector{CartesianIndex{2}} = maximums3(oppMatrix, n)
+        values_matrix, risk_vec = start_constraints(X, instance, values_matrix, risk_vec)
         constraints = Int64[]
+        # aqui calculamos inicialmente las constraints
+        # vjm <= μim para cada i en 1:S, para cada m en 1:3, son S*3 constraints
+        # Rj > βi para cada i en 1:S, S constraints
         for indice::CartesianIndex in indices
             X_copy = Matrix{Int64}(undef, S, B)
             unsafe_copyto!(X_copy, 1, X, 1, S * B)
             col = indice[2]
-            row = findfirst(x -> x == 0, diff[:, col])
+            row = findfirst(x -> x == 0, oppMatrix[:, col])
             X_copy[row, col] = 1
-            constraints_v = restricciones(X_copy, Y, instance; verbose=false)
+            constraints_v = update_constraints(instance, col, row, values_matrix, risk_vec, targets, β)
             push!(constraints, constraints_v)
         end
         picked = CartesianIndex(1, 1)::CartesianIndex{2}
         if all(x -> x == 0, constraints) # si no se violan constraints, agarra el 0 de la columna del costo maximo
             indice = indices[1]::CartesianIndex{2}
             col = indice[2]::Int64
-            row = findfirst(x -> x == 0, diff[:, col])
+            row = findfirst(x -> x == 0, oppMatrix[:, col])
             picked = CartesianIndex(row, col)
         else
             if all(x -> x ≠ 0, constraints) # si todas violan constraints
                 original_cons, idx = findmin(constraints) # agarra el que viole menos constraints
                 indice = indices[idx]
                 col = indice[2]
-                original_row = findfirst(x -> x == 0, diff[:, col])::Int64
-                # queremos buscar en esa columna el siguiente valor más cercano a 0 en diff
+                original_row = findfirst(x -> x == 0, oppMatrix[:, col])::Int64
+                # queremos buscar en esa columna el siguiente valor más cercano a 0 en oppMatrix
                 # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
-                busqueda = trunc(Int, (P - 1)) # a lo mejor cambiarlo despues
-                _, idxs_inner::Array{Int64} = minimums(diff[:, col], busqueda)
+                busqueda = trunc(Int, (P / 2)) # a lo mejor cambiarlo despues
+                _, idxs_inner::Array{Int64} = minimums(oppMatrix[:, col], busqueda)
                 # el primer minimo es el 0 de nuestra localizacion optima
                 # lo desechamos para darle variedad a la busqueda
                 idxs_inner2::Array{Int64} = idxs_inner[2:end]
@@ -319,12 +382,13 @@ function oppCostAssignment(Y, instance::Types.Instance)
                     unsafe_copyto!(X_copy, 1, X, 1, S * B)
                     try
                         X_copy[row, col] = 1
-                        constraints_v2 = restricciones(X_copy, Y, instance; verbose=false)
+                        constraints_v2 = update_constraints(instance, col, row, values_matrix, risk_vec, targets, β)
                         if constraints_v2 < original_cons
                             original_cons = constraints_v2
                             original_row = row
                         end
                     catch
+                        # no se porque hay un try catch aqui
                     end
                 end
                 picked = CartesianIndex(original_row, col)
@@ -333,7 +397,7 @@ function oppCostAssignment(Y, instance::Types.Instance)
                     if constraints[idx] == 0 # agarrala
                         indice = indices[idx]
                         col = indice[2]
-                        row = findfirst(x -> x == 0, diff[:, col])
+                        row = findfirst(x -> x == 0, oppMatrix[:, col])
                         picked = CartesianIndex(row, col)
                         break
                     end
@@ -342,7 +406,7 @@ function oppCostAssignment(Y, instance::Types.Instance)
         end
         X[picked] = 1
         column = picked[2]::Int64
-        diff[:, column] .= -1 # "apagamos" esa columna
+        oppMatrix[:, column] .= -1 # "apagamos" esa columna
         todos = true
         count += 1
         for col in eachcol(X)
@@ -405,11 +469,13 @@ function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::T
         for m in 1:M
             if !(sum(X[i, j] * V[m][j] for j in 1:B) <= trunc(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
                 if verbose
+                    #=
                     println(i)
                     println(any(x -> x ≠ 0, X[i, :]))
                     println("violando V superior en i: $i y m: $m")
                     println("μ: ", trunc(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
+                    =#
                 end
                 number_constraints_violated += 1
             end
@@ -418,9 +484,11 @@ function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::T
     for i in 1:S
         if sum(X[i, j] * R[j] for j in 1:B) > β[i]
             if verbose
+                #=
                 println("violando riesgo en $i")
                 println("β: ", β[i])
                 println("R: ", sum(X[i, j] * R[j] for j in 1:B))
+                =#
             end
             number_constraints_violated += 2
         end
