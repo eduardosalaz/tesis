@@ -9,6 +9,7 @@ using MathOptInterface
 const MOI = MathOptInterface
 using Dates
 using Random
+
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
 end
@@ -109,6 +110,7 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
     if time > time1
         time = time1
     end
+    println(time)
 
     str_path = "sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * init_method * "_" * assign_method
     plot_str_path = str_path * ".png"
@@ -307,7 +309,6 @@ function update_constraints(instance, i, j, values_matrix, risk_vec, targets, β
             constraints += 1
         end
     end
-
     risk_vec[i] += R[j]
     if risk_vec[i] > β
         constraints += 1
@@ -355,7 +356,7 @@ function oppCostAssignment(Y, instance::Types.Instance)
             col = indice[2]
             row = findfirst(x -> x == 0, oppMatrix[:, col])
             X_copy[row, col] = 1
-            constraints_v = update_constraints(instance, col, row, values_matrix, risk_vec, targets, β)
+            constraints_v = update_constraints(instance, row, col, values_matrix, risk_vec, targets, β)
             push!(constraints, constraints_v)
         end
         picked = CartesianIndex(1, 1)::CartesianIndex{2}
@@ -372,7 +373,7 @@ function oppCostAssignment(Y, instance::Types.Instance)
                 original_row = findfirst(x -> x == 0, oppMatrix[:, col])::Int64
                 # queremos buscar en esa columna el siguiente valor más cercano a 0 en oppMatrix
                 # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
-                busqueda = trunc(Int, (P / 2)) # a lo mejor cambiarlo despues
+                busqueda = trunc(Int, (P - 1)) # a lo mejor cambiarlo despues
                 _, idxs_inner::Array{Int64} = minimums(oppMatrix[:, col], busqueda)
                 # el primer minimo es el 0 de nuestra localizacion optima
                 # lo desechamos para darle variedad a la busqueda
@@ -382,10 +383,11 @@ function oppCostAssignment(Y, instance::Types.Instance)
                     unsafe_copyto!(X_copy, 1, X, 1, S * B)
                     try
                         X_copy[row, col] = 1
-                        constraints_v2 = update_constraints(instance, col, row, values_matrix, risk_vec, targets, β)
+                        constraints_v2 = update_constraints(instance, row, col, values_matrix, risk_vec, targets, β)
                         if constraints_v2 < original_cons
                             original_cons = constraints_v2
                             original_row = row
+                            break
                         end
                     catch
                         # no se porque hay un try catch aqui
@@ -419,82 +421,6 @@ function oppCostAssignment(Y, instance::Types.Instance)
     return X
 end
 
-function restricciones(X_copy::Matrix{Int64}, Y_copy::Vector{Int64}, instance::Types.Instance; verbose=true)
-    Sk = instance.Sk
-    Lk = instance.Lk
-    Uk = instance.Uk
-    Y = Y_copy
-    X = X_copy
-    Lk = instance.Lk
-    Uk = instance.Uk
-    Sk = instance.Sk
-    μ = instance.μ
-    T = instance.T
-    M = instance.M
-    S = instance.S
-    P = instance.S
-    B = instance.B
-    β = instance.β
-    R = instance.R
-    K = instance.K
-    V = instance.V
-    number_constraints_violated = 0
-
-    counts_k = Array{Int64}(undef, K)
-    if sum(Y) > P
-        if verbose
-            println("Violando número de centros asignados ", sum(Y))
-        end
-    end
-    for k_type in 1:K
-        indices_k_type = Sk[k_type]
-        count_k_type = 0
-        for indice in indices_k_type
-            if Y[indice] == 1
-                count_k_type += 1
-            end
-        end
-        counts_k[k_type] = count_k_type
-    end
-
-    for k in 1:K
-        if counts_k[k] > Uk[k]
-            if verbose
-                println("Violando Uk en $k")
-            end
-            number_constraints_violated += 1
-        end
-    end
-    for i in 1:S
-        for m in 1:M
-            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= trunc(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
-                if verbose
-                    #=
-                    println(i)
-                    println(any(x -> x ≠ 0, X[i, :]))
-                    println("violando V superior en i: $i y m: $m")
-                    println("μ: ", trunc(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
-                    println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
-                    =#
-                end
-                number_constraints_violated += 1
-            end
-        end
-    end
-    for i in 1:S
-        if sum(X[i, j] * R[j] for j in 1:B) > β[i]
-            if verbose
-                #=
-                println("violando riesgo en $i")
-                println("β: ", β[i])
-                println("R: ", sum(X[i, j] * R[j] for j in 1:B))
-                =#
-            end
-            number_constraints_violated += 2
-        end
-    end
-    return number_constraints_violated
-end
 
 function pdisp(instance)
     P = instance.P
@@ -707,10 +633,10 @@ function isFactible(solution::Types.Solution, verbose=true)
                 end
                 number_constraints_violated += 1
             end
-            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= trunc(Int, Y[i] * μ[m][i] * (1 + T[m])))
+            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= round(Int, Y[i] * μ[m][i] * (1 + T[m])))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
-                    println("μ: ", trunc(Int, Y[i] * μ[m][i] * (1 + T[m])))
+                    println("μ: ", round(Int, Y[i] * μ[m][i] * (1 + T[m])))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
@@ -754,10 +680,12 @@ function main_constructive(init_method, assign_method; path="inst", read_file=tr
     end
 
     solution = constructive(instance, number, init_method, assign_method)
-    write_solution(solution, "sol_300_60_20_1_viejomaximums.jld2")
+    write_solution(solution, "sol_800_150_50_2_nuevo2.jld2")
     return solution
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     main_constructive(ARGS[2], ARGS[3]; path=ARGS[1])
 end
+
+# main_constructive("relax", "opp")
