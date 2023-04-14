@@ -137,32 +137,6 @@ function localize_facs(instance, method)
     end
 end
 
-function smarter_assign_bu(instance, Y)
-    branches_used = findall(x -> x == 1, Y)
-    B = instance.B
-    S = instance.S
-    X = zeros(Int, S, B)
-
-    minimums = Tuple{Int,Tuple{Int,Int}}[]
-
-    for j in 1:B
-        minimum = 1e9
-        i_exported = 0
-        for i in 1:S
-            if i ∉ branches_used
-                continue
-            end
-            Dij = D[i, j]
-            if Dij < minimum
-                minimum = Dij
-                i_exported = i
-            end
-        end
-        min_and_index = (minimum, (i_exported, j))
-        push!(minimums, min_and_index)
-    end
-    return X
-end
 
 function naive_assign_bu(instance, Y)
     # i haven't been using Y
@@ -282,12 +256,7 @@ function calculate_target(instance)
     return targets
 end
 
-function start_constraints(X, instance, values_matrix, risk_vec)
-    S = instance.S
-    B = instance.B
-    M = instance.M
-    V = instance.V
-    R = instance.R
+function start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
     for i in 1:S
         for m in 1:M
             values_matrix[i,m] = sum(X[i,j] * V[m][j] for j in 1:B)
@@ -297,11 +266,7 @@ function start_constraints(X, instance, values_matrix, risk_vec)
     return values_matrix, risk_vec
 end
 
-function update_constraints(instance, i, j, values_matrix, risk_vec, targets, β)
-    M = instance.M
-    V = instance.V
-    R = instance.R
-
+function update_constraints(M, V, R, i, j, values_matrix, risk_vec, targets, β)
     constraints = 0
     for m in 1:M
         values_matrix[i,m] += V[m][j]
@@ -323,6 +288,9 @@ function oppCostAssignment(Y, instance::Types.Instance)
     S = instance.S
     B = instance.B
     M = instance.M
+    V = instance.V
+    M = instance.M
+    R = instance.R
     β = instance.β[1]
     X = zeros(Int64, S, B)
     count = 0
@@ -342,21 +310,21 @@ function oppCostAssignment(Y, instance::Types.Instance)
     targets = calculate_target(instance)
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
-    n = P - 5 # falta tweakear
+    n = round(Int, (P/2)) # falta tweakear
     while !todos
         indices::Vector{CartesianIndex{2}} = maximums3(oppMatrix, n)
-        values_matrix, risk_vec = start_constraints(X, instance, values_matrix, risk_vec)
+        values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
         constraints = Int64[]
         # aqui calculamos inicialmente las constraints
         # vjm <= μim para cada i en 1:S, para cada m en 1:3, son S*3 constraints
         # Rj > βi para cada i en 1:S, S constraints
         for indice::CartesianIndex in indices
-            X_copy = Matrix{Int64}(undef, S, B)
-            unsafe_copyto!(X_copy, 1, X, 1, S * B)
+            #X_copy = Matrix{Int64}(undef, S, B)
+            #unsafe_copyto!(X_copy, 1, X, 1, S * B)
             col = indice[2]
             row = findfirst(x -> x == 0, oppMatrix[:, col])
-            X_copy[row, col] = 1
-            constraints_v = update_constraints(instance, row, col, values_matrix, risk_vec, targets, β)
+            #X[row, col] = 1
+            constraints_v = update_constraints(M, V, R, row, col, values_matrix, risk_vec, targets, β)
             push!(constraints, constraints_v)
         end
         picked = CartesianIndex(1, 1)::CartesianIndex{2}
@@ -373,17 +341,17 @@ function oppCostAssignment(Y, instance::Types.Instance)
                 original_row = findfirst(x -> x == 0, oppMatrix[:, col])::Int64
                 # queremos buscar en esa columna el siguiente valor más cercano a 0 en oppMatrix
                 # al hacerlo, nos acercamos al minimo valor de la matriz de distancias
-                busqueda = trunc(Int, (P - 1)) # a lo mejor cambiarlo despues
+                busqueda = round(Int, (P / 2)) # a lo mejor cambiarlo despues
                 _, idxs_inner::Array{Int64} = minimums(oppMatrix[:, col], busqueda)
                 # el primer minimo es el 0 de nuestra localizacion optima
                 # lo desechamos para darle variedad a la busqueda
                 idxs_inner2::Array{Int64} = idxs_inner[2:end]
                 for row in idxs_inner2
-                    X_copy = Matrix{Int64}(undef, S, B)
-                    unsafe_copyto!(X_copy, 1, X, 1, S * B)
+                    #X_copy = Matrix{Int64}(undef, S, B)
+                    #unsafe_copyto!(X_copy, 1, X, 1, S * B)
                     try
-                        X_copy[row, col] = 1
-                        constraints_v2 = update_constraints(instance, row, col, values_matrix, risk_vec, targets, β)
+                        #X_copy[row, col] = 1
+                        constraints_v2 = update_constraints(M, V, R, row, col, values_matrix, risk_vec, targets, β)
                         if constraints_v2 < original_cons
                             original_cons = constraints_v2
                             original_row = row
@@ -680,7 +648,7 @@ function main_constructive(init_method, assign_method; path="inst", read_file=tr
     end
 
     solution = constructive(instance, number, init_method, assign_method)
-    write_solution(solution, "sol_800_150_50_2_nuevo2.jld2")
+    write_solution(solution, "sol_1600_300_120_1_nuevo4.jld2")
     return solution
 end
 
