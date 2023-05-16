@@ -1,4 +1,4 @@
-using Gurobi, JuMP, JLD2, CPLEX
+using Gurobi, JuMP, JLD2, CPLEX, HiGHS
 using Types
 using MathOptInterface
 const MOI = MathOptInterface
@@ -29,7 +29,6 @@ function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
         @warn "Óptimo no alcanzado"
     end
     println(time_int)
-
     return X, Y, obj_value, time_int
 end
 
@@ -53,6 +52,7 @@ function build_model(instance::Instance)
     model = Model() # THIS IS WHERE THE FUN BEGINS
 
     @variable(model, x[1:S, 1:B], Bin)
+    #@variable(model, x[1:S, 1:B], lower_bound = 0, upper_bound = 1)
     # num suc and num bu, Xᵢⱼ
 
     @variable(model, y[1:S], Bin)
@@ -80,7 +80,7 @@ function build_model(instance::Instance)
     @constraint(
         model,
         tol_l[i in 1:S, M in 1:m],
-        sum(x[i, j] * V[M][j] for j in 1:B) >= (y[i] * μ[M][i] * (1 - 0.7)),
+        sum(x[i, j] * V[M][j] for j in 1:B) >= (y[i] * μ[M][i] * (1 - T[M])),
     )
 
     @constraint(
