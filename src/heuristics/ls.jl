@@ -530,112 +530,6 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
     return newSol
 end
 
-function move_bu_improve(solution, targets_lower, targets_upper, strategy=:bf)
-    X = copy(solution.X)
-    Y = copy(solution.Y)
-    instance = solution.Instance
-    B = instance.B
-    S = instance.S
-    D = copy(instance.D)
-    M = instance.M
-    V = instance.V
-    R = instance.R
-    β = instance.β[1]
-    P = instance.P
-    Weight = solution.Weight
-    n = round(Int, (P/2))
-    not_usables_i = Set(findall(==(0), Y))
-    usables_i = Set(findall(==(1), Y))
-    values_matrix = Matrix{Int64}(undef, S, M)
-    risk_vec = Vector{Int64}(undef, S)
-
-    for j in not_usables_i
-        D[j,:] .= 1e12
-    end
-
-    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
-    for j in 1:B
-        best_improvement = 0
-        best_ĩ = 0
-        best_i = 0
-        best_j = 0
-        ĩ = findfirst(==(1), X[:,j]) # asignacion previa ij
-        min_index = argmin(D[:,j]) # minimo de j
-        if ĩ == min_index
-            continue # no tiene caso intentar mover una BU que ya tiene asignacion optima
-        end
-        usables_i_without_ĩ = setdiff(usables_i, ĩ)
-        can_do_move = true
-        neighborhood = []
-        for i in usables_i_without_ĩ
-            for m in 1:M
-                values_matrix[ĩ,m] -= V[m][j] # restale a ĩ, previo
-                values_matrix[i,m] += V[m][j] # sumale a i, nuevo
-                if values_matrix[i,m] > targets_upper[m]
-                    can_do_move = false
-                end
-                if values_matrix[i,m] < targets_lower[m]
-                    can_do_move = false
-                    
-                    # no deberia de pasar porque la infactibilidad cambia de razon entonces
-                end
-                if values_matrix[ĩ,m] < targets_lower[m]
-                    can_do_move = false
-                    # no deberia de pasar porque entonces ĩ es infactible ahora
-                end
-            end
-            risk_vec[ĩ] -= R[j] # restale a ĩ el viejo
-            risk_vec[i] += R[j] # sumale a i el nuevo
-            if risk_vec[i] > β
-                # si yo le agrego, no deberia de pasar esto porque cambia infactibilidad
-                can_do_move = false
-            end
-            if risk_vec[ĩ] > B
-                can_do_move = false
-            end
-            # revisar cuales ifs quitar
-            if can_do_move
-                newWeight = Weight - D[ĩ, j] + D[i,j]
-                abs_improvement = Weight - newWeight
-                if newWeight < Weight
-                    if strategy == :ff # first found
-                        X[ĩ, j] = 0
-                        X[i, j] = 1
-                        Weight = newWeight
-                    else
-                        if abs_improvement > best_improvement
-                            best_ĩ = ĩ
-                            best_i = i
-                            best_j = j
-                            best_improvement = abs_improvement
-                        end
-                    end
-                end
-            else
-                for m in 1:M
-                    values_matrix[ĩ,m] += V[m][j]
-                    values_matrix[i,m] -= V[m][j] # corrige la no asignacion
-                end
-                risk_vec[ĩ] += R[j]
-                risk_vec[i] -= R[j]
-            end
-        end
-        if strategy == :bf # best found
-            if best_i != 0
-                println("making moves")
-                X[best_i, best_j] = 1
-                X[best_ĩ, best_j] = 0
-            end
-        end
-    end
-    indices = findall(x -> x == 1, X)
-    Weight = 0
-    for indice in indices
-        Weight += D[indice]
-    end
-    return Solution(instance, X, Y, Weight, solution.Time)
-end
-
 function interchange_bu_improve2(solution, targets_lower, targets_upper, strategy=:bf)
     X = copy(solution.X)
     Y = copy(solution.Y)
@@ -666,86 +560,95 @@ function interchange_bu_improve2(solution, targets_lower, targets_upper, strateg
             ĩ = findfirst(==(1), X[:,j₁])
             for j₂ in j₁+1:B
                 i✶ = findfirst(==(1), X[:,j₂])
-                can_do_move = true
-                value_ĩ_1 = values_matrix[ĩ, 1] - V[1][j₁] + V[1][j₂]
-                value_ĩ_2 = values_matrix[ĩ, 2] - V[2][j₁] + V[2][j₂]
-                value_ĩ_3 = values_matrix[ĩ, 3] - V[3][j₁] + V[3][j₂]
-                value_i✶_1 = values_matrix[i✶, 1] + V[1][j₁] - V[1][j₂]
-                value_i✶_2 = values_matrix[i✶, 2] + V[2][j₁] - V[2][j₂]
-                value_i✶_3 = values_matrix[i✶, 3] + V[3][j₁] - V[3][j₂]
-                if value_ĩ_1 > targets_upper[1]
-                    can_do_move = false
-                end
-                if value_ĩ_2 > targets_upper[2]
-                    can_do_move = false
-                end
-                if value_ĩ_3 > targets_upper[3]
-                    can_do_move = false
-                end
-                if value_i✶_1 > targets_upper[1]
-                    can_do_move = false
-                end
-                if value_i✶_2 > targets_upper[2]
-                    can_do_move = false
-                end
-                if value_i✶_3 > targets_upper[3]
-                    can_do_move = false
-                end
-                if value_ĩ_1 < targets_lower[1]
-                    can_do_move = false
-                end
-                if value_ĩ_2 < targets_lower[2]
-                    can_do_move = false
-                end
-                if value_ĩ_3 < targets_lower[3]
-                    can_do_move = false
-                end
-                if value_i✶_1 < targets_lower[1]
-                    can_do_move = false
-                end
-                if value_i✶_2 < targets_lower[2]
-                    can_do_move = false
-                end
-                if value_i✶_3 < targets_lower[3]
-                    can_do_move = false
-                end
-                risk_ĩ = risk_vec[ĩ] - R[j₁] + R[j₂]
-                risk_i✶ = risk_vec[i✶] + R[j₁] - R[j₂]
-                if risk_ĩ > β
-                    # si yo le agrego, no deberia de pasar esto porque cambia infactibilidad
-                    can_do_move = false
-                end
-                if risk_i✶ > β
-                    can_do_move = false
-                end
-                if can_do_move
-                    newWeight = Weight - D[ĩ, j₁] - D[i✶, j₂] + D[ĩ, j₂] + D[i✶, j₁] # nuevo peso
-                    abs_improvement = Weight - newWeight
-                    if newWeight < Weight
-                        if strategy == :ff
-                            X[ĩ, j₁] = 0
-                            X[i✶, j₂] = 0
-                            X[ĩ, j₂] = 1
-                            X[i✶, j₁] = 1
-                            improvement = true
-                            Weight = newWeight
-                            for m in 1:M
-                                values_matrix[ĩ,m] -= V[m][j₁] # restale a ĩ, previo
-                                values_matrix[i✶,m] -= V[m][j₂] # restale a i✶, previo
-                                values_matrix[ĩ,m] += V[m][j₂] # sumale a ĩ, nuevo
-                                values_matrix[i✶,m] += V[m][j₁] # sumale a i✶, nuevo
-                            end
-                            risk_vec[ĩ] -= R[j₁] # restale a ĩ el viejo
-                            risk_vec[i✶] -= R[j₂] # restale a i✶ el viejo
-                            risk_vec[ĩ] += R[j₂] # sumale a i✶ el nuevo
-                            risk_vec[i✶] += R[j₁] # sumale a ĩ el nuevo
-                        else
-                            if abs_improvement > best_improvement
-                                best_ĩ = ĩ
-                                best_i✶ = i✶
-                                best_j₁ = j₁
-                                best_j₂ = j₂
-                                best_improvement = abs_improvement
+                weight_diff = -D[ĩ, j₁] - D[i✶, j₂] + D[ĩ, j₂] + D[i✶, j₁]
+                if weight_diff < 0 # si el peso mejora, revisa el estado del movimiento
+                    can_do_move = true
+                    value_ĩ_1 = values_matrix[ĩ, 1] - V[1][j₁] + V[1][j₂]
+                    value_ĩ_2 = values_matrix[ĩ, 2] - V[2][j₁] + V[2][j₂]
+                    value_ĩ_3 = values_matrix[ĩ, 3] - V[3][j₁] + V[3][j₂]
+                    value_i✶_1 = values_matrix[i✶, 1] + V[1][j₁] - V[1][j₂]
+                    value_i✶_2 = values_matrix[i✶, 2] + V[2][j₁] - V[2][j₂]
+                    value_i✶_3 = values_matrix[i✶, 3] + V[3][j₁] - V[3][j₂]
+                    if value_ĩ_1 > targets_upper[1]
+                        can_do_move = false
+                    end
+                    if value_ĩ_2 > targets_upper[2]
+                        can_do_move = false
+                    end
+                    if value_ĩ_3 > targets_upper[3]
+                        can_do_move = false
+                    end
+                    if value_i✶_1 > targets_upper[1]
+                        can_do_move = false
+                    end
+                    if value_i✶_2 > targets_upper[2]
+                        can_do_move = false
+                    end
+                    if value_i✶_3 > targets_upper[3]
+                        can_do_move = false
+                    end
+                    if value_ĩ_1 < targets_lower[1]
+                        can_do_move = false
+                    end
+                    if value_ĩ_2 < targets_lower[2]
+                        can_do_move = false
+                    end
+                    if value_ĩ_3 < targets_lower[3]
+                        can_do_move = false
+                    end
+                    if value_i✶_1 < targets_lower[1]
+                        can_do_move = false
+                    end
+                    if value_i✶_2 < targets_lower[2]
+                        can_do_move = false
+                    end
+                    if value_i✶_3 < targets_lower[3]
+                        can_do_move = false
+                    end
+                    risk_ĩ = risk_vec[ĩ] - R[j₁] + R[j₂]
+                    risk_i✶ = risk_vec[i✶] + R[j₁] - R[j₂]
+                    if risk_ĩ > β
+                        # si yo le agrego, no deberia de pasar esto porque cambia infactibilidad
+                        can_do_move = false
+                    end
+                    if risk_i✶ > β
+                        can_do_move = false
+                    end
+                    if can_do_move
+                        newWeight = Weight + weight_diff
+                        abs_improvement = -weight_diff #inviertele el signo para hacerlo positivo
+                        if newWeight < Weight
+                            if strategy == :ff
+                                #println("Intercambiando $ĩ por $i✶ la j $j₁ por la j $j₂")
+                                X[ĩ, j₁] = 0
+                                X[i✶, j₂] = 0
+                                X[ĩ, j₂] = 1
+                                X[i✶, j₁] = 1
+                                improvement = true
+                                Weight = newWeight
+                                for m in 1:M
+                                    values_matrix[ĩ,m] -= V[m][j₁] # restale a ĩ, previo
+                                    values_matrix[i✶,m] -= V[m][j₂] # restale a i✶, previo
+                                    values_matrix[ĩ,m] += V[m][j₂] # sumale a ĩ, nuevo
+                                    values_matrix[i✶,m] += V[m][j₁] # sumale a i✶, nuevo
+                                end
+                                risk_vec[ĩ] -= R[j₁] # restale a ĩ el viejo
+                                risk_vec[i✶] -= R[j₂] # restale a i✶ el viejo
+                                risk_vec[ĩ] += R[j₂] # sumale a i✶ el nuevo
+                                risk_vec[i✶] += R[j₁] # sumale a ĩ el nuevo
+                                aux = ĩ
+                                ĩ = i✶
+                                i✶ = aux
+                                #newSol = Solution(instance, X, Y, Weight, solution.Time)
+                                #println(isFactible(newSol, true))
+                            else
+                                if abs_improvement > best_improvement
+                                    best_ĩ = ĩ
+                                    best_i✶ = i✶
+                                    best_j₁ = j₁
+                                    best_j₂ = j₂
+                                    best_improvement = abs_improvement
+                                end
                             end
                         end
                     end
@@ -775,7 +678,6 @@ function interchange_bu_improve2(solution, targets_lower, targets_upper, strateg
                 risk_vec[best_i✶] -= R[best_j₂] # restale a i✶ el viejo
                 risk_vec[best_ĩ] += R[best_j₂] # sumale a i✶ el nuevo
                 risk_vec[best_i✶] += R[best_j₁] # sumale a ĩ el nuevo
-                newSol = Solution(instance, X, Y, Weight, solution.Time)
             end
         end
     end
@@ -787,151 +689,7 @@ function interchange_bu_improve2(solution, targets_lower, targets_upper, strateg
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
-function interchange_bu_improve(solution, targets_lower, targets_upper, strategy=:ff)
-    X = copy(solution.X)
-    Y = copy(solution.Y)
-    instance = solution.Instance
-    B = instance.B
-    S = instance.S
-    D = copy(instance.D)
-    M = instance.M
-    V = instance.V
-    R = instance.R
-    β = instance.β[1]
-    P = instance.P
-    Weight = solution.Weight
-    not_usables_i = Set(findall(==(0), Y))
-    values_matrix = Matrix{Int64}(undef, S, M)
-    risk_vec = Vector{Int64}(undef, S)
-
-    for j in not_usables_i
-        D[j,:] .= 1e9
-    end
-
-    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
-    improvement = true
-    while improvement
-        println("entrando a un nuevo ciclo")
-        improvement = false
-        best_improvement = 0
-        best_ĩ = 0
-        best_i✶ = 0
-        best_j₁ = 0
-        best_j₂ = 0
-        for j₁ in 1:B
-            ĩ = findfirst(==(1), X[:,j₁]) # original assignment of j
-            for j₂ in j₁+1:B
-                i✶ = findfirst(==(1), X[:,j₂])
-                can_do_move = true
-                for m in 1:M
-                    values_matrix[ĩ,m] -= V[m][j₁] # restale a ĩ, previo
-                    values_matrix[i✶,m] -= V[m][j₂] # restale a i✶, previo
-                    values_matrix[ĩ,m] += V[m][j₂] # sumale a ĩ, nuevo
-                    values_matrix[i✶,m] += V[m][j₁] # sumale a i✶, nuevo
-                    if values_matrix[ĩ,m] > targets_upper[m]
-                        can_do_move = false
-                    end
-                    if values_matrix[i✶,m] > targets_upper[m]
-                        can_do_move = false
-                        # no deberia de pasar porque la infactibilidad cambia de razon entonces
-                    end
-                    if values_matrix[ĩ,m] < targets_lower[m]
-                        can_do_move = false
-                        # no deberia de pasar porque entonces ĩ es infactible ahora
-                    end
-                    if values_matrix[i✶,m] < targets_lower[m]
-                        can_do_move = false
-                        # no deberia de pasar porque entonces ĩ es infactible ahora
-                    end
-                end
-                risk_vec[ĩ] -= R[j₁] # restale a ĩ el viejo
-                risk_vec[i✶] -= R[j₂] # restale a i✶ el viejo
-                risk_vec[i✶] += R[j₂] # sumale a i✶ el nuevo
-                risk_vec[ĩ] += R[j₁] # sumale a ĩ el nuevo
-                if risk_vec[ĩ] > β
-                    # si yo le agrego, no deberia de pasar esto porque cambia infactibilidad
-                    can_do_move = false
-                end
-                if risk_vec[i✶] > β
-                    can_do_move = false
-                end
-                if can_do_move
-                    newWeight = Weight - D[ĩ, j₁] - D[i✶, j₂] + D[ĩ, j₂] + D[i✶, j₁] # nuevo peso
-                    abs_improvement = Weight - newWeight
-                    if newWeight < Weight
-                        # println("improvement")
-                        if strategy == :ff # first found
-                            X[ĩ, j₁] = 0
-                            X[i✶, j₂] = 0
-                            X[ĩ, j₂] = 1
-                            X[i✶, j₁] = 1
-                            improvement = true
-                        else
-                            if abs_improvement > best_improvement
-                                best_ĩ = ĩ
-                                best_i✶ = i✶
-                                best_j₁ = j₁
-                                best_j₂ = j₂
-                                best_improvement = abs_improvement
-                            else
-                                for m in 1:M
-                                    values_matrix[ĩ,m] += V[m][j₁] # restale a ĩ, previo
-                                    values_matrix[i✶,m] += V[m][j₂] # restale a i✶, previo
-                                    values_matrix[ĩ,m] -= V[m][j₂] # sumale a ĩ, nuevo
-                                    values_matrix[i✶,m] -= V[m][j₁] # sumale a i✶, nuevo
-                                end
-                                risk_vec[ĩ] += R[j₁] # restale a ĩ el viejo
-                                risk_vec[i✶] += R[j₂] # restale a i✶ el viejo
-                                risk_vec[i✶] -= R[j₂] # sumale a i✶ el nuevo
-                                risk_vec[ĩ] -= R[j₁] # sumale a ĩ el nuevo
-                            end
-                        end
-                    else
-                        for m in 1:M
-                            values_matrix[ĩ,m] += V[m][j₁] # restale a ĩ, previo
-                            values_matrix[i✶,m] += V[m][j₂] # restale a i✶, previo
-                            values_matrix[ĩ,m] -= V[m][j₂] # sumale a ĩ, nuevo
-                            values_matrix[i✶,m] -= V[m][j₁] # sumale a i✶, nuevo
-                        end
-                        risk_vec[ĩ] += R[j₁] # restale a ĩ el viejo
-                        risk_vec[i✶] += R[j₂] # restale a i✶ el viejo
-                        risk_vec[i✶] -= R[j₂] # sumale a i✶ el nuevo
-                        risk_vec[ĩ] -= R[j₁] # sumale a ĩ el nuevo
-                    end
-                else
-                    for m in 1:M
-                        values_matrix[ĩ,m] += V[m][j₁] # restale a ĩ, previo
-                        values_matrix[i✶,m] += V[m][j₂] # restale a i✶, previo
-                        values_matrix[ĩ,m] -= V[m][j₂] # sumale a ĩ, nuevo
-                        values_matrix[i✶,m] -= V[m][j₁] # sumale a i✶, nuevo
-                    end
-                    risk_vec[ĩ] += R[j₁] # restale a ĩ el viejo
-                    risk_vec[i✶] += R[j₂] # restale a i✶ el viejo
-                    risk_vec[i✶] -= R[j₂] # sumale a i✶ el nuevo
-                    risk_vec[ĩ] -= R[j₁] # sumale a ĩ el nuevo
-                end
-            end
-        end
-        if strategy == :bf
-            if best_ĩ != 0
-                X[best_ĩ, best_j₁] = 0
-                X[best_i✶, best_j₂] = 0
-                X[best_ĩ, best_j₂] = 1
-                X[best_i✶, best_j₁] = 1
-                println("making moves")
-                improvement = true
-            else
-                improvement = false
-            end
-        end
-    end
-    
-    indices = findall(x -> x == 1, X)
-    Weight = 0
-    for indice in indices
-        Weight += D[indice]
-    end
-    return Solution(instance, X, Y, Weight, solution.Time)
+function deactivate_center_improve(solution, targets_lower, targets_upper, strategy=:bf)
 end
 
 function move_bu_improve2(solution, targets_lower, targets_upper, strategy=:bf)
@@ -975,87 +733,89 @@ function move_bu_improve2(solution, targets_lower, targets_upper, strategy=:bf)
             end
             usables_i_without_ĩ = setdiff(usables_i, ĩ)
             for i in usables_i_without_ĩ
-                can_do_move = true
-                value_ĩ_1 = values_matrix[ĩ, 1] - V[1][j]
-                value_ĩ_2 = values_matrix[ĩ, 2] - V[2][j]
-                value_ĩ_3 = values_matrix[ĩ, 3] - V[3][j]
-                value_i_1 = values_matrix[i, 1] + V[1][j]
-                value_i_2 = values_matrix[i, 2] + V[2][j]
-                value_i_3 = values_matrix[i, 3] + V[3][j]
-                if value_ĩ_1 > targets_upper[1]
-                    can_do_move = false
-                end
-                if value_ĩ_2 > targets_upper[2]
-                    can_do_move = false
-                end
-                if value_ĩ_3 > targets_upper[3]
-                    can_do_move = false
-                end
-                if value_i_1 > targets_upper[1]
-                    can_do_move = false
-                end
-                if value_i_2 > targets_upper[2]
-                    can_do_move = false
-                end
-                if value_i_3 > targets_upper[3]
-                    can_do_move = false
-                end
-                if value_ĩ_1 < targets_lower[1]
-                    can_do_move = false
-                end
-                if value_ĩ_2 < targets_lower[2]
-                    can_do_move = false
-                end
-                if value_ĩ_3 < targets_lower[3]
-                    can_do_move = false
-                end
-                if value_i_1 < targets_lower[1]
-                    can_do_move = false
-                end
-                if value_i_2 < targets_lower[2]
-                    can_do_move = false
-                end
-                if value_i_3 < targets_lower[3]
-                    can_do_move = false
-                end
-                risk_ĩ = risk_vec[ĩ] - R[j]
-                risk_i = risk_vec[i] + R[j]
-                if risk_ĩ > β
-                    # si yo le agrego, no deberia de pasar esto porque cambia infactibilidad
-                    can_do_move = false
-                end
-                if risk_i > β
-                    can_do_move = false
-                end
-
-                if can_do_move
-                    newWeight = Weight - D[ĩ, j] + D[i, j]
-                    abs_improvement = Weight - newWeight
-                    if newWeight < Weight
-                        if strategy == :ff # first found
-                            X[ĩ, j] = 0
-                            X[i, j] = 1
-                            improvement = true
-                            for m in 1:M
-                                values_matrix[ĩ,m] -= V[m][j] # restale a ĩ, previo
-                                values_matrix[i,m] += V[m][j] # restale a i✶, previo
-                            end
-                            risk_vec[ĩ] -= R[j] # restale a ĩ el viejo
-                            risk_vec[i] += R[j] # restale a i✶ el viejo
-                            Weight = newWeight
-                        elseif strategy == :bf
-                            if abs_improvement > best_improvement
-                                best_new_i = i
-                                best_old_i = ĩ
-                                best_j = j
-                                best_improvement = abs_improvement
+                weight_diff = -D[ĩ, j] + D[i, j]
+                if weight_diff < 0 # si el peso mejora, revisa el estado del movimiento
+                    can_do_move = true
+                    value_ĩ_1 = values_matrix[ĩ, 1] - V[1][j]
+                    value_ĩ_2 = values_matrix[ĩ, 2] - V[2][j]
+                    value_ĩ_3 = values_matrix[ĩ, 3] - V[3][j]
+                    value_i_1 = values_matrix[i, 1] + V[1][j]
+                    value_i_2 = values_matrix[i, 2] + V[2][j]
+                    value_i_3 = values_matrix[i, 3] + V[3][j]
+                    if value_ĩ_1 > targets_upper[1]
+                        can_do_move = false
+                    end
+                    if value_ĩ_2 > targets_upper[2]
+                        can_do_move = false
+                    end
+                    if value_ĩ_3 > targets_upper[3]
+                        can_do_move = false
+                    end
+                    if value_i_1 > targets_upper[1]
+                        can_do_move = false
+                    end
+                    if value_i_2 > targets_upper[2]
+                        can_do_move = false
+                    end
+                    if value_i_3 > targets_upper[3]
+                        can_do_move = false
+                    end
+                    if value_ĩ_1 < targets_lower[1]
+                        can_do_move = false
+                    end
+                    if value_ĩ_2 < targets_lower[2]
+                        can_do_move = false
+                    end
+                    if value_ĩ_3 < targets_lower[3]
+                        can_do_move = false
+                    end
+                    if value_i_1 < targets_lower[1]
+                        can_do_move = false
+                    end
+                    if value_i_2 < targets_lower[2]
+                        can_do_move = false
+                    end
+                    if value_i_3 < targets_lower[3]
+                        can_do_move = false
+                    end
+                    risk_ĩ = risk_vec[ĩ] - R[j]
+                    risk_i = risk_vec[i] + R[j]
+                    if risk_ĩ > β
+                        # si yo le agrego, no deberia de pasar esto porque cambia infactibilidad
+                        can_do_move = false
+                    end
+                    if risk_i > β
+                        can_do_move = false
+                    end
+                    if can_do_move
+                        newWeight = Weight + weight_diff
+                        abs_improvement = -weight_diff
+                        if newWeight < Weight
+                            if strategy == :ff # first found
+                                X[ĩ, j] = 0
+                                X[i, j] = 1
+                                improvement = true
+                                for m in 1:M
+                                    values_matrix[ĩ,m] -= V[m][j] # restale a ĩ, previo
+                                    values_matrix[i,m] += V[m][j] # restale a i✶, previo
+                                end
+                                risk_vec[ĩ] -= R[j] # restale a ĩ el viejo
+                                risk_vec[i] += R[j] # restale a i✶ el viejo
+                                Weight = newWeight
+                                ĩ = i # duh
+                            elseif strategy == :bf
+                                if abs_improvement > best_improvement
+                                    best_new_i = i
+                                    best_old_i = ĩ
+                                    best_j = j
+                                    best_improvement = abs_improvement
+                                end
                             end
                         end
                     end
                 end
             end
         end
-       
         if strategy == :bf
             if best_new_i != 0
                 X[best_new_i, best_j] = 1
@@ -1072,7 +832,6 @@ function move_bu_improve2(solution, targets_lower, targets_upper, strategy=:bf)
             end
         end
     end
-    println("yacabe :3")
     indices = findall(x -> x == 1, X)
     Weight = 0
     for indice in indices
@@ -1081,10 +840,13 @@ function move_bu_improve2(solution, targets_lower, targets_upper, strategy=:bf)
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
-function mainLocal(;path = "something")
+
+
+function mainLocal(;path = "sol_1_1250_155_62_pdisp_opp_pdispnew.jld2")
     solution = read_solution(path)
     newSolution = @time localSearch(solution)
-    write_solution(newSolution, "sol_ls_1_1250pdisp.jld2")
+    write_solution(newSolution, "sol_ls_1_1250pdisp_2ff.jld2")
+    plot_solution(newSolution, "plot_sol_1_1250_ls_2ff.png")
     return newSolution
 end
 
@@ -1126,4 +888,6 @@ end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     mainLocal(;path = ARGS[1])
+else
+    mainLocal()
 end
