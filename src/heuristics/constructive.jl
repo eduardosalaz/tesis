@@ -117,8 +117,8 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
     solution_str_path = str_path * ".jld2"
 
     solution = Types.Solution(instancia, X, Y_bool, Weight, time)
-    Types.plot_solution(solution, plot_str_path)
-    Types.write_solution(solution, solution_str_path)
+    #Types.plot_solution(solution, plot_str_path)
+    #Types.write_solution(solution, solution_str_path)
     println(isFactible(solution, true))
     return solution
 end
@@ -528,7 +528,6 @@ function oppCostAssignment(Y, instance::Types.Instance)
         column = picked[2]::Int64
         oppMatrix[:, column] .= -1 # "apagamos" esa columna
         todos = true
-        count += 1
         for col in eachcol(X)
             if all(x -> x == 0, col)
                 todos = false
@@ -756,10 +755,10 @@ function isFactible(solution::Types.Solution, verbose=true)
 
     for i in 1:S
         for m in 1:M
-            if !(trunc(Int, Y[i] * μ[m][i] * (1 - T[m])) <= sum(X[i, j] * V[m][j] for j in 1:B))
+            if !(round(Int, Y[i] * μ[m][i] * (1 - T[m])) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
-                    println("μ: ", trunc(Int, Y[i] * μ[m][i] * (1 - T[m])))
+                    println("μ: ", round(Int, Y[i] * μ[m][i] * (1 - T[m])))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1

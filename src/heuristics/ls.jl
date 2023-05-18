@@ -857,7 +857,6 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                     if can_do_move
                         X[i, j] = 1
                         j_assigned = true
-                        println("asignamos $j")
                         weight_new_branch += D[i,j]
                     else
                         # si no puedo hacer el movimiento, restaura el valor de la ev parcial
@@ -871,13 +870,12 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
 
 
             if weight_new_branch < weight_old_branch && useful
-                println("poggerinos")
+                # arreglar esto
             else
                 useful = false
             end
 
             if useful
-                println("conviene movimiento")
                 Y[i✶] = 1
                 Y[ĩ] = 0
                 delete!(not_usables_i, i✶)
@@ -890,9 +888,6 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                 for indice in indices
                     Weight += instance.D[indice]
                 end
-                println(Weight)
-                solu = Solution(instance, X, Y, Weight, solution.Time)
-                println(isFactible(solu, true))
                 aux = ĩ
                 ĩ = i✶
                 i✶ = aux
@@ -1121,15 +1116,15 @@ function localSearch(solution)
             println("hmmmmmmmm")
         end
     end
-    #newSol2 = move_bu_improve2(oldSol, targets_lower, targets_upper)
-    #println(isFactible(newSol2, true))
-    #println("nueva solucion2: ")
-    #println(newSol2.Weight)
-    #newSol3 = interchange_bu_improve2(newSol2, targets_lower, targets_upper)
-    #println(isFactible(newSol3, true))
-    #println("nueva solucion3: ")
-    #println(newSol3.Weight)
-    newSol4 = deactivate_center_improve(oldSol, targets_lower, targets_upper)
+    newSol2 = move_bu_improve2(oldSol, targets_lower, targets_upper)
+    println(isFactible(newSol2, true))
+    println("nueva solucion2: ")
+    println(newSol2.Weight)
+    newSol3 = interchange_bu_improve2(newSol2, targets_lower, targets_upper)
+    println(isFactible(newSol3, true))
+    println("nueva solucion3: ")
+    println(newSol3.Weight)
+    newSol4 = deactivate_center_improve(newSol3, targets_lower, targets_upper)
     println(isFactible(newSol4, true))
     println("nueva solucion5: ")
     println(newSol4.Weight)
