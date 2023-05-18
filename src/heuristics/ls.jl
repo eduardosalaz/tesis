@@ -790,10 +790,12 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                     if values_matrix[i✶,m] < targets_lower[m]
                         factible_yet = false
                     end
-                    if values_matrix[i_old,m] < targets_lower[m]
-                        factible_yet = false
-                        can_do_move = false
-                        # no deberia de pasar porque entonces i_old es infactible ahora
+                    if i_old != ĩ
+                        if values_matrix[i_old,m] < targets_lower[m]
+                            factible_yet = false
+                            can_do_move = false
+                            # no deberia de pasar porque entonces i_old es infactible ahora
+                        end
                     end
                 end
                 risk_vec[i_old] -= R[j] # restale a ĩ el viejo
