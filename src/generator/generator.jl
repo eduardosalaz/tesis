@@ -44,8 +44,8 @@ function generate_instance(size::String, i::Int; write=true)
 end
 
 function generate_coords(B, S)
-    BU_coords = rand(5:15000, (B, 2))
-    S_coords = rand(5:15000, (S, 2))
+    BU_coords = rand(5:10000, (B, 2))
+    S_coords = rand(5:10000, (S, 2))
     return BU_coords, S_coords
 end
 
