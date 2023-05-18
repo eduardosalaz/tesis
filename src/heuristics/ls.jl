@@ -326,17 +326,6 @@ function isFactible4(solution::Types.Solution, targets_lower, targets_upper, ver
     end
 end
 
-struct move_bu2
-    ĩ::Int64
-    i::Int64
-    j::Int64
-    weight::Int64
-end
-
-function get_weight(var::move_bu2)
-    return var.weight
-end
-
 # seguir agregando o quitando hasta que sea factible+
 
 function minimums(v, n)
@@ -385,7 +374,6 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
 
-    println(isFactible(solution, false))
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
     println("entrando a remover BUs")
     
@@ -402,8 +390,6 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
             j = popfirst!(candidates_bus)[1] # arreglar el indice
             if length(candidates_bus) == 1
                 newSol = Solution(instance, X, Y, 0, solution.Time)
-                println(isFactible(newSol, false))
-                println("unu")
             end
             # cuales is podemos agarrar? las n mas cercanas? probamos todas? 
             # agarramos las n iₛ mas cercanas a j
@@ -451,7 +437,7 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
                     #println("no es factible porque se pasa el otro risk: ", risk_vec[i])
                     factible_yet = false
                 end
-                if risk_vec[ĩ] > B
+                if risk_vec[ĩ] > β
                     #println("no es factible porque se baja el risk")
                     factible_yet = false
                 end
@@ -473,6 +459,7 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
     end
     newSol3 = Solution(instance, X, Y, solution.Weight, solution.Time)
     println(isFactible(newSol3, false))
+    println("entrando a agregar BUs")
     for i in add
         prev_assigned_bus = findall(==(1), X[i,:]) #indices de las bus asignadas previamente
         Dᵢ = D[i,:]
@@ -483,6 +470,9 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
         candidates_bus = minimums(Dᵢ, B) #indices de las bus mas cercanas al centro i
         factible_yet = false
         while !factible_yet
+            solmamada = Solution(instance, X, Y, solution.Weight, solution.Time)
+            algo, cons = isFactible(solmamada, false)
+            inicializar = []
             j = popfirst!(candidates_bus)[1]
             ĩ = findfirst(==(1), X[:,j]) # obten la asignacion previa de cada j
             factible_yet = true
@@ -534,7 +524,6 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
         Weight += instance.D[indice]
     end
     newSol = Solution(instance, X, Y, Weight, solution.Time)
-    println(isFactible(solution, false))
     println(isFactible(newSol, false))
     return newSol
 end
@@ -556,7 +545,6 @@ function interchange_bu_improve2(solution, targets_lower, targets_upper, strateg
     risk_vec = Vector{Int64}(undef, S)
 
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
-    println(isFactible(solution, false))
     improvement = true
     while improvement
         improvement = false
@@ -743,7 +731,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     end
 
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
-    count = count_k(Y, Sk)
+    count = count_k(usables_i, Sk)
     improvement = true
 
     while improvement
@@ -752,6 +740,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
 
     for ĩ in usables_i
         for i✶ in not_usables_i
+            ij_prev_assignments = []
             useful = true
             ĩₖ = node_type(ĩ, Sk)
             i✶ₖ = node_type(i✶, Sk)
@@ -766,8 +755,9 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
             # tenemos que mantener cuales son las asignaciones de ĩ antes de apagarlas
             # para esto las guardo en un arreglo mejor
             js_assigned = findall(==(1), X[ĩ,:])
+            X[ĩ,:] .= 0
             js_assigned_set = Set(js_assigned)
-            weight_old_branch = D[ĩ, js_assigned] # peso total representado por la rama
+            weight_old_branch = sum(D[ĩ, js_assigned]) # peso total representado por la rama
             weight_new_branch = 0
             D[i✶, :] .= instance.D[i✶,:] 
             D[ĩ, :] .= 1e12
@@ -778,8 +768,15 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
             end
             risk_vec[ĩ] = 0
             while !factible_yet
+                if length(candidates_BUs) == 0
+                    useful = false
+                    break
+                end
                 j = popfirst!(candidates_BUs)[1]
                 i_old = findfirst(==(1), X[:,j]) # asignacion previa de esta j
+                if i_old === nothing
+                    i_old = ĩ
+                end
                 factible_yet = true
                 can_do_move = true
                 for m in 1:M
@@ -799,9 +796,9 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                         # no deberia de pasar porque entonces i_old es infactible ahora
                     end
                 end
-                risk_vec[ĩ] -= R[j] # restale a ĩ el viejo
-                risk_vec[i] += R[j] # sumale a i el nuevo
-                if risk_vec[i] > β
+                risk_vec[i_old] -= R[j] # restale a ĩ el viejo
+                risk_vec[i✶] += R[j] # sumale a i el nuevo
+                if risk_vec[i✶] > β
                     # si yo le agrego, no deberia de pasar esto porque cambia infactibilidad
                     can_do_move = false
                     factible_yet = false
@@ -809,8 +806,12 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                 if can_do_move
                     X[i✶, j] = 1
                     X[i_old, j] = 0
+                    if j ∉ js_assigned
+                        push!(ij_prev_assignments, (i_old, j))
+                    else
+                        delete!(js_assigned_set, j) # ya la asignamos
+                    end
                     weight_new_branch += D[i✶,j]
-                    delete!(js_assigned_set, j) # ya la asignamos
                 else
                     for m in 1:M
                         values_matrix[i_old,m] += V[m][j] # corrige el valor de la NO asignacion
@@ -820,6 +821,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                     risk_vec[i✶] -= R[j]
                 end
             end
+
 
             for j in js_assigned_set # para las js que aun queden sin asignar
                 candidates_is = minimums(D[:,j], n)
@@ -853,6 +855,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                     if can_do_move
                         X[i, j] = 1
                         j_assigned = true
+                        println("asignamos $j")
                         weight_new_branch += D[i,j]
                     else
                         # si no puedo hacer el movimiento, restaura el valor de la ev parcial
@@ -864,7 +867,10 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                 end
             end
 
-            if weight_new_branch < weight_old_branch
+
+            if weight_new_branch < weight_old_branch && useful
+                println("poggerinos")
+            else
                 useful = false
             end
 
@@ -876,6 +882,18 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                 delete!(usables_i, ĩ)
                 push!(usables_i, i✶)
                 push!(not_usables_i, ĩ)
+                weight_old_branch = weight_new_branch
+                indices = findall(x -> x == 1, X)
+                Weight = 0
+                for indice in indices
+                    Weight += instance.D[indice]
+                end
+                println(Weight)
+                solu = Solution(instance, X, Y, Weight, solution.Time)
+                println(isFactible(solu, true))
+                aux = ĩ
+                ĩ = i✶
+                i✶ = aux
             else
                 # restaurar el valor de values_matrix y risk_vec
                 # devolver el valor de las demas afectadas
@@ -885,14 +903,27 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                 risk_vec[ĩ] = sum(R[js_assigned])
                 for j in js_assigned
                     i = findfirst(==(1), X[:,j])
+                    if i === nothing
+                        i = ĩ
+                    end
                     for m in 1:M
                         values_matrix[i,m] -= V[m][j]
                     end
                     risk_vec[i] -= R[j]
+                    X[:,j] .= 0 # deshacemos asignaciones de los clientes
                 end
-                for j in js_assigned
-                    X[:,j] .= 0 # deshaz cualquier asignacion hecha
+
+                X[i✶,:] .= 0 #deshaz cualquier asignacion al nuevo centro
+
+                for (i_old, j_old) in ij_prev_assignments
+                    X[i_old, j_old] = 1 # pon la asignacion previa de vuelta
                 end
+
+                for m in 1:M
+                    values_matrix[i✶, m] = 0
+                end
+                risk_vec[i✶] = 0
+                
                 X[ĩ, js_assigned] .= 1 # haz la asignacion vieja de nuevo
                 D[i✶, :] .= 1e12
                 D[ĩ, :] .= instance.D[ĩ, :]
@@ -1057,11 +1088,11 @@ end
 
 
 
-function mainLocal(;path = "sol_1_1250_155_62_pdisp_opp_pdispnew.jld2")
+function mainLocal(;path = "sol_ls_1_625relax_bfls.jld2")
     solution = read_solution(path)
     newSolution = @time localSearch(solution)
-    write_solution(newSolution, "sol_ls_1_1250pdisp_2ff.jld2")
-    plot_solution(newSolution, "plot_sol_1_1250_ls_2ff.png")
+    #write_solution(newSolution, "sol_ls_1_625relax_bfls5.jld2")
+    #plot_solution(newSolution, "plot_sol_1_625relax_bfls5.png")
     return newSolution
 end
 
@@ -1079,7 +1110,6 @@ function localSearch(solution)
     else
         oldSol = move_bu_repair(oldSol, constraints, targets_lower, targets_upper, remove, add)
         factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
-        println(constraints)
         if factible
             println(oldSol.Weight)
             println("ok ok")
@@ -1089,16 +1119,20 @@ function localSearch(solution)
             println("hmmmmmmmm")
         end
     end
-    newSol2 = move_bu_improve2(oldSol, targets_lower, targets_upper)
-    println(isFactible(newSol2, true))
-    println("nueva solucion2: ")
-    println(newSol2.Weight)
-    newSol3 = interchange_bu_improve2(newSol2, targets_lower, targets_upper)
-    println(isFactible(newSol3, true))
-    println("nueva solucion3: ")
-    println(newSol3.Weight)
+    #newSol2 = move_bu_improve2(oldSol, targets_lower, targets_upper)
+    #println(isFactible(newSol2, true))
+    #println("nueva solucion2: ")
+    #println(newSol2.Weight)
+    #newSol3 = interchange_bu_improve2(newSol2, targets_lower, targets_upper)
+    #println(isFactible(newSol3, true))
+    #println("nueva solucion3: ")
+    #println(newSol3.Weight)
+    newSol4 = deactivate_center_improve(oldSol, targets_lower, targets_upper)
+    println(isFactible(newSol4, true))
+    println("nueva solucion5: ")
+    println(newSol4.Weight)
     println("\a")
-    return newSol2
+    return newSol4
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
