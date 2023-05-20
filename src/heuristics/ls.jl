@@ -1126,10 +1126,22 @@ function localSearch(solution)
     println(newSol3.Weight)
     newSol4 = deactivate_center_improve(newSol3, targets_lower, targets_upper)
     println(isFactible(newSol4, true))
-    println("nueva solucion5: ")
+    println("nueva solucion4: ")
     println(newSol4.Weight)
+    newSol5 = move_bu_improve2(newSol4, targets_lower, targets_upper)
+    println(isFactible(newSol5, true))
+    println("nueva solucion5: ")
+    println(newSol5.Weight)
+    newSol6 = interchange_bu_improve2(newSol5, targets_lower, targets_upper)
+    println(isFactible(newSol6, true))
+    println("nueva solucion6: ")
+    println(newSol6.Weight)
+    newSol7 = deactivate_center_improve(newSol6, targets_lower, targets_upper)
+    println(isFactible(newSol7, true))
+    println("nueva solucion7: ")
+    println(newSol7.Weight)
     println("\a")
-    return newSol4
+    return newSol7
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
