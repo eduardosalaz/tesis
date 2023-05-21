@@ -299,8 +299,8 @@ function naive_assign_bu(instance, Y)
     X = zeros(Int, S, B)
     centers_used = 0
     for j in 1:B
-        minimum = 1e9
-        second_minimum = 1e9
+        minimum = 10000000000000
+        second_minimum = 10000000000000
         i_exported = 0
         for i in 1:S
             if i ∉ branches_used
@@ -321,7 +321,7 @@ end
 
 function minimums(matrix::Matrix, n)::Tuple{Vector{Int64},Vector{CartesianIndex{2}}}
     type = eltype(matrix)
-    vals = fill(1e12, n)
+    vals = fill(10000000000000, n)
     arr = Array{Tuple{type,CartesianIndex}}(undef, n)
     indices = Array{Int64}(undef, n)
     @inbounds for i ∈ axes(matrix, 1), j ∈ axes(matrix, 2)
@@ -339,7 +339,7 @@ end
 
 function minimums(vec::Vector, n)::Tuple{Vector{Int64},Vector{Int64}}
     type = eltype(vec)
-    vals = fill(1e9, n)
+    vals = fill(10000000000000, n)
     arr = Array{Tuple{type,Int64}}(undef, n)
     indices = Array{Int64}(undef, n)
     @inbounds for i ∈ eachindex(vec)
@@ -392,7 +392,7 @@ function maximums3(M, n)
     ix = [1:l;]
     partialsortperm!(ix, v, (l-n+1):l, initialized=true)
     indices = CartesianIndices(M)[ix[(l-n+1):l]]
-    return indices
+    return reverse!(indices)
 end
 
 function calculate_target(instance)
@@ -813,8 +813,8 @@ function main_constructive(init_method, assign_method; path="inst", read_file=tr
     S = instance.S
 
     solution = constructive(instance, number, init_method, assign_method)
-    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_pdispnew.jld2"
-    #write_solution(solution, sol_path)
+    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_sirev.jld2"
+    write_solution(solution, sol_path)
     println("\a")
     return solution
 end
