@@ -117,8 +117,8 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
     solution_str_path = str_path * ".jld2"
 
     solution = Types.Solution(instancia, X, Y_bool, Weight, time)
-    #Types.plot_solution(solution, plot_str_path)
-    #Types.write_solution(solution, solution_str_path)
+    Types.plot_solution(solution, plot_str_path)
+    Types.write_solution(solution, solution_str_path)
     println(isFactible(solution, true))
     return solution
 end
@@ -128,13 +128,13 @@ function remove!(V, item)
 end
 
 function pdisp_simple(d, p, N)
-    maxdist  = 0
+    maxdist = 0
     bestpair = (0, 1)
     for i in 1:N
         for j in i+1:N
-            if d[i,j]>maxdist
-                maxdist = d[i,j]
-                bestpair = (i,j)
+            if d[i, j] > maxdist
+                maxdist = d[i, j]
+                bestpair = (i, j)
             end
         end
     end
@@ -151,8 +151,8 @@ function pdisp_simple(d, p, N)
             end
             mindist = Inf
             for vprime in P
-                if d[v,vprime] < mindist
-                    mindist = d[v,vprime]
+                if d[v, vprime] < mindist
+                    mindist = d[v, vprime]
                 end
             end
             if mindist > maxdist
@@ -161,7 +161,7 @@ function pdisp_simple(d, p, N)
             end
         end
         if vbest != 0 && !(vbest in P)
-            
+
             push!(P, vbest)
         end
     end
@@ -218,18 +218,18 @@ function pdisp_2(instance)
     s_coords = instance.S_coords
     metric = Distances.Euclidean()
     d = trunc.(Int, Distances.pairwise(metric, s_coords, dims=1))
-    coords_S1 = s_coords[Sk[1],:]
-    coords_S2 = s_coords[Sk[2],:]
-    coords_S3 = s_coords[Sk[3],:]
-    coords_S4 = s_coords[Sk[4],:]
-    coords_S5 = s_coords[Sk[5],:]
-    
+    coords_S1 = s_coords[Sk[1], :]
+    coords_S2 = s_coords[Sk[2], :]
+    coords_S3 = s_coords[Sk[3], :]
+    coords_S4 = s_coords[Sk[4], :]
+    coords_S5 = s_coords[Sk[5], :]
+
     d1 = trunc.(Int, Distances.pairwise(metric, coords_S1, dims=1))
     d2 = trunc.(Int, Distances.pairwise(metric, coords_S2, dims=1))
     d3 = trunc.(Int, Distances.pairwise(metric, coords_S3, dims=1))
     d4 = trunc.(Int, Distances.pairwise(metric, coords_S4, dims=1))
     d5 = trunc.(Int, Distances.pairwise(metric, coords_S5, dims=1))
-    N1 = length(Sk[1]) 
+    N1 = length(Sk[1])
     N2 = length(Sk[2])
     N3 = length(Sk[3])
     N4 = length(Sk[4])
@@ -268,7 +268,7 @@ function pdisp_2(instance)
                 if count[k] >= Uk[k]
                     continue
                 end
-                dist = minimum([d[v,vprime] for vprime in pdisp_ok])
+                dist = minimum([d[v, vprime] for vprime in pdisp_ok])
                 if dist > maxdist
                     maxdist = dist
                     vbest = v
@@ -409,9 +409,9 @@ end
 function start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
     for i in 1:S
         for m in 1:M
-            values_matrix[i,m] = sum(X[i,j] * V[m][j] for j in 1:B)
+            values_matrix[i, m] = sum(X[i, j] * V[m][j] for j in 1:B)
         end
-        risk_vec[i] = sum(X[i,j] * R[j] for j in 1:B)
+        risk_vec[i] = sum(X[i, j] * R[j] for j in 1:B)
     end
     return values_matrix, risk_vec
 end
@@ -419,8 +419,8 @@ end
 function update_constraints(M, V, R, i, j, values_matrix, risk_vec, targets, β)
     constraints = 0
     for m in 1:M
-        values_matrix[i,m] += V[m][j]
-        if values_matrix[i,m] > targets[m]
+        values_matrix[i, m] += V[m][j]
+        if values_matrix[i, m] > targets[m]
             constraints += 1
         end
     end
@@ -441,7 +441,7 @@ function oppCostAssignment(Y, instance::Types.Instance)
     V = instance.V
     M = instance.M
     R = instance.R
-    β = instance.β[1] + 300
+    β = instance.β[1]
     X = zeros(Int64, S, B)
     count = 0
     not_assigned_y = findall(y -> y == 0, Y)
@@ -460,7 +460,7 @@ function oppCostAssignment(Y, instance::Types.Instance)
     targets = calculate_target(instance)
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
-    n = round(Int, (P/2)) # falta tweakear
+    n = round(Int, (P / 2)) # falta tweakear
     while !todos
         indices::Vector{CartesianIndex{2}} = maximums3(oppMatrix, n)
         values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
@@ -605,7 +605,7 @@ function relax_init(instance)
     if solver_name(model) == "Gurobi"
         MOI.set(model, MOI.RawOptimizerAttribute("SolutionLimit"), 1) # retorna la primera factible encontrada, solo funciona para gurobi    
     end
-    
+
     JuMP.@variable(model, x[1:S, 1:B], lower_bound = 0, upper_bound = 1)
     # num suc and num bu, Xᵢⱼ
     JuMP.@variable(model, y[1:S], Bin)
@@ -718,9 +718,9 @@ function isFactible(solution::Types.Solution, verbose=true)
 
         end
     end
-    
+
     for j in 1:B
-        assigned = findfirst(==(1), X[:,j])
+        assigned = findfirst(==(1), X[:, j])
         if assigned ∉ usables_i
             println("Violando $j asignada a una y no abierta $assigned")
             number_constraints_violated += 1
