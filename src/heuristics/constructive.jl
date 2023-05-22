@@ -813,8 +813,8 @@ function main_constructive(init_method, assign_method; path="inst", read_file=tr
     S = instance.S
 
     solution = constructive(instance, number, init_method, assign_method)
-    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_sirev.jld2"
-    write_solution(solution, sol_path)
+    #sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_sirev.jld2"
+    #write_solution(solution, sol_path)
     println("\a")
     return solution
 end
