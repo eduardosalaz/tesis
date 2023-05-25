@@ -8,9 +8,7 @@ function main_test()
     arr_ls = []
     contador = 1
     for entrada in entradas
-        contador += 1
         path = ARGS[1] * entrada
-        println(path)
         instancia = read_instance(path)
         instance = instancia
         pattern = Regex("[t][_]\\d{1,3}")
@@ -36,7 +34,7 @@ function main_test()
         alloc_methods = ["opp"]
         for location_method in location_methods, alloc_method in alloc_methods
             time_loc = 1000
-            if location_method == "relax"   
+            if location_method == "relax"
                 Y, time_loc = localize_facs(instancia, location_method)
                 if time_loc == 0
                     time_loc = 1000
@@ -71,7 +69,7 @@ function main_test()
             indices = findall(x -> x == 1, X)
             for indice in indices
                 Weight += D[indice]
-            end    
+            end
             if !isdir("pruebas")
                 mkdir("pruebas")
             end
@@ -87,147 +85,142 @@ function main_test()
             oldSol = solution
             oldTime = oldSol.Time
             targets_lower, targets_upper = calculate_targets(instance)
-            
+
+
             factible_old, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
             to_remove = length(remove)
             to_add = length(add)
-            println("--------------------------------")
             really_cons_old = constraints
             weight_really_before = oldSol.Weight
             weight_before = 1000000000
             valor_previo = 0
             repair_delta = 0
-            if factible_old
-                #println("Solucion Factible")
-                weight_before = solution.Weight
-                valor_previo = weight_before
-                repair_delta = 0
+
+            instance = solution.Instance
+            factible_after_repair = false
+            targets_lower, targets_upper = calculate_targets(instance)
+            factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
+            repaired = oldSol
+            original_weight = 10000000000000
+            weight_before = 0
+            before_repair = Dates.now()
+            if factible
+                println("Factible")
+                original_weight = solution.Weight
+                weight_before = original_weight
+                factible_after_repair = true
             else
-                before_repair = Dates.now()
-                oldSol = repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
-                factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
-                if factible
-                    weight_before = oldSol.Weight
-                    valor_previo = weight_before
+                println("Reparando")
+                repaired_1 = repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
+                fac_repaired_1, cons = isFactible(repaired_1, false)
+                if !fac_repaired_1
+                    repaired_2 = repair_solution2(oldSol, constraints, targets_lower, targets_upper, remove, add)
+                    fac_repaired_2, cons = isFactible(repaired_2, false)
+                    if fac_repaired_2
+                        factible_after_repair = true
+                        repaired = repaired_2
+                    end
+                else
+                    repaired = repaired_1
+                    factible_after_repair = true
                 end
-                after_repair = Dates.now()
-                repair_delta_time = after_repair - before_repair
-                repair_delta = round(repair_delta_time, Millisecond)
+                if factible_after_repair
+                    original_weight = repaired.Weight
+                    weight_before = repaired.Weight
+                    println("Reparada")
+                end
             end
-            println("Reparada")
-
+            after_repair = Dates.now()
+            repair_delta_time = after_repair - before_repair
+            repair_delta = round(repair_delta_time, Millisecond)
+            delta_ls_value = 0
+            weight_after = 10000000
+            counter = 0
+            counter_improve_simple = 0
+            counter_improve_interchange = 0
+            counter_improve_deactivate = 0
+            if !factible_after_repair
+                @error "INFACTIBLE"
+            else
+                oldSol = repaired
+                oldSol2 = repaired
+                improvement = true
+                before_ls = Dates.now()
+                while improvement
+                    counter += 1
+                    improvement = false
+                    prev_weight = oldSol.Weight
+                    sol_moved_bu = simple_bu_improve(oldSol, targets_lower, targets_upper, :bf)
+                    new_weight_moved = sol_moved_bu.Weight
+                    if new_weight_moved < prev_weight
+                        improvement = true
+                        prev_weight = new_weight_moved
+                        counter_improve_simple += 1
+                    end
+                    sol_interchanged_bu = interchange_bu_improve(sol_moved_bu, targets_lower, targets_upper, :bf)
+                    new_weight_moved = sol_interchanged_bu.Weight
+                    if new_weight_moved < prev_weight
+                        improvement = true
+                        prev_weight = new_weight_moved
+                        counter_improve_interchange += 1
+                    end
+                    sol_deactivated_center = deactivate_center_improve(sol_interchanged_bu, targets_lower, targets_upper)
+                    new_weight_moved = sol_deactivated_center.Weight
+                    if new_weight_moved < prev_weight
+                        improvement = true
+                        prev_weight = new_weight_moved
+                        counter_improve_deactivate += 1
+                    end
+                    oldSol = sol_deactivated_center
+                end
+                after_ls = Dates.now()
+                delta_ls = after_ls - before_ls
+                delta_ls_millis = round(delta_ls, Millisecond)
+                delta_ls_value = delta_ls_millis.value
+                weight_after = oldSol.Weight
+                str_path = "out\\solutions\\625_78_32\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * location_method * "_" * alloc_method * "_lsbf"
+                plot_str_path = str_path * ".png"
+                solution_str_path = str_path * ".jld2"
+                total_time = time_cons + repair_delta.value + delta_ls_value
+                solution = Types.Solution(instancia, oldSol.X, oldSol.Y, weight_after, total_time)
+                Types.plot_solution(solution, plot_str_path)
+                Types.write_solution(solution, solution_str_path)
+            end
             gap_repaired = (1 - (weight_exac / weight_before)) * 100
-
-            before_simple_bf = Dates.now()
-            solution_moved_bf = simple_bu_improve(oldSol, targets_lower, targets_upper, :bf)
-            after_simple_bf = Dates.now()
-            simple_delta_time_bf = after_simple_bf - before_simple_bf
-            simple_delta_bf = round(simple_delta_time_bf, Millisecond)
-            weight_move_bf = solution_moved_bf.Weight
-
-            abs_improve_moved_bf = weight_before - weight_move_bf
-            rel_improve_moved_bf = (1 - (weight_move_bf / weight_before)) * 100
-            gap_moved_bf = (1 - (weight_exac / weight_move_bf)) * 100
-
-
-            before_interchange_bf = Dates.now()
-            solution_interchanged_bf = interchange_bu_improve(oldSol, targets_lower, targets_upper, :bf)
-            after_interchange_bf = Dates.now()
-            interchange_delta_time_bf = after_interchange_bf - before_interchange_bf
-            interchange_delta_bf = round(interchange_delta_time_bf, Millisecond)
-            weight_interchange_bf = solution_interchanged_bf.Weight
-
-            abs_improve_interchanged_bf = weight_before - weight_interchange_bf
-            rel_improve_interchanged_bf = (1 - (weight_interchange_bf / weight_before)) * 100
-            gap_interchanged_bf = (1 - (weight_exac / weight_interchange_bf)) * 100
-
-
-            before_deactivate_ff = Dates.now()
-            solution_deactivated_ff = deactivate_center_improve(oldSol, targets_lower, targets_upper)
-            after_deactivate_ff = Dates.now()
-            deactivate_delta_time_ff = after_deactivate_ff - before_deactivate_ff
-            deactivate_delta_ff = round(deactivate_delta_time_ff, Millisecond)
-            weight_deactivate_ff = solution_deactivated_ff.Weight
-          
-            abs_improve_deactivated_ff = weight_before - weight_deactivate_ff
-            rel_improve_deactivated_ff = (1 - (weight_deactivate_ff / weight_before)) * 100
-            gap_deactivated_ff = (1 - (weight_exac / weight_deactivate_ff)) * 100
-
-
-            before_simple_ff = Dates.now()
-            solution_moved_ff = simple_bu_improve(oldSol, targets_lower, targets_upper, :ff)
-            after_simple_ff = Dates.now()
-            simple_delta_time_ff = after_simple_ff - before_simple_ff
-            simple_delta_ff = round(simple_delta_time_ff, Millisecond)
-            weight_move_ff = solution_moved_ff.Weight
-
-            abs_improve_moved_ff = weight_before - weight_move_ff
-            rel_improve_moved_ff = (1 - (weight_move_ff / weight_before)) * 100
-            gap_moved_ff = (1 - (weight_exac / weight_move_ff)) * 100
-
-            before_interchange_ff = Dates.now()
-            solution_interchanged_ff = interchange_bu_improve(oldSol, targets_lower, targets_upper, :ff)
-            after_interchange_ff = Dates.now()
-            interchange_delta_time_ff = after_interchange_ff - before_interchange_ff
-            interchange_delta_ff = round(interchange_delta_time_ff, Millisecond)
-            weight_interchange_ff = solution_interchanged_ff.Weight
-        
-            abs_improve_interchanged_ff = weight_before - weight_interchange_ff
-            rel_improve_interchanged_ff = (1 - (weight_interchange_ff / weight_before)) * 100
-            gap_interchanged_ff = (1 - (weight_exac / weight_interchange_ff)) * 100
-
+            gap_improved = (1 - (weight_exac / weight_after)) * 100
+            abs_improved = weight_before - weight_after
+            rel_improved = ((abs_improved) / weight_after) * 100
             
-            #=
-            str_path = "out\\solutions\\625_78_32\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * location_method * "_" * alloc_method * "_ls"
-            plot_str_path = str_path * ".png"
-            solution_str_path = str_path * ".jld2"
-            solution = Types.Solution(instancia, sol_ls.X, sol_ls.Y, final_weight, total_time)
-
-            Types.plot_solution(solution, plot_str_path)
-            Types.write_solution(solution, solution_str_path)
-            =#
-            row_cons = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P"=> P, "Loc" => location_method, "Alloc" => alloc_method, "TimeLoc" => delta_loc_milli, 
-            "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "Value" =>weight_really_before, "TotalTimeCons"=> time_cons, "Factible" => factible_old, 
-            "Add" => to_add, "Remove" => to_remove, "Optim" => weight_exac, "TimeOptim" => time_exac)
+            counter = counter - 1
+            row_cons = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P" => P, "Loc" => location_method, "Alloc" => alloc_method, "TimeLoc" => delta_loc_milli,
+                "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "Value" => weight_really_before, "TotalTimeCons" => time_cons, "Factible" => factible_old,
+                "Add" => to_add, "Remove" => to_remove, "ValueOptim" => weight_exac, "TimeOptim" => time_exac*1000)
             push!(arr_constructive, row_cons)
 
-            row_ls_moved_bf = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P"=> P, "Loc" => location_method, "Alloc" => alloc_method, "TimeLoc" => delta_loc_milli, 
-            "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "ValueCons" =>weight_really_before, "TotalTimeCons"=> time_cons, "Factible" => factible_old, 
-            "Add" => to_add, "Remove" => to_remove, "TimeRepair" => repair_delta.value, "ValueRepair"=>weight_before, "Move"=> "Simple", "Strategy" => "BF", "AbsImproveMove" => abs_improve_moved_bf,
-            "RelImproveMove" => rel_improve_moved_bf, "GapRepair" => gap_repaired, "GapMove" => gap_moved_bf, "TimeMove" => simple_delta_bf.value, "Optim" => weight_exac, "TimeOptim" => time_exac, "ValueLS" => weight_move_bf)
-            
-            row_ls_interchanged_bf = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P"=> P, "Loc" => location_method, "Alloc" => alloc_method, "TimeLoc" => delta_loc_milli, 
-            "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "ValueCons" =>weight_really_before, "TotalTimeCons"=> time_cons, "Factible" => factible_old, 
-            "Add" => to_add, "Remove" => to_remove, "TimeRepair" => repair_delta.value, "ValueRepair"=>weight_before, "Move"=> "Interchange", "Strategy" => "BF", "AbsImproveMove" => abs_improve_interchanged_bf,
-            "RelImproveMove" => rel_improve_interchanged_bf, "GapRepair" => gap_repaired, "GapMove" => gap_interchanged_bf, "TimeMove" => interchange_delta_bf.value, "Optim" => weight_exac, "TimeOptim" => time_exac, "ValueLS" => weight_interchange_bf)
-
-
-            row_ls_moved_ff = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P"=> P, "Loc" => location_method, "Alloc" => alloc_method, "TimeLoc" => delta_loc_milli, 
-            "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "ValueCons" =>weight_really_before, "TotalTimeCons"=> time_cons, "Factible" => factible_old, 
-            "Add" => to_add, "Remove" => to_remove, "TimeRepair" => repair_delta.value, "ValueRepair"=>weight_before, "Move"=> "Simple", "Strategy" => "FF", "AbsImproveMove" => abs_improve_moved_ff,
-            "RelImproveMove" => rel_improve_moved_ff, "GapRepair" => gap_repaired, "GapMove" => gap_moved_ff, "TimeMove" => simple_delta_ff.value, "Optim" => weight_exac, "TimeOptim" => time_exac, "ValueLS" => weight_move_ff)
-            
-            row_ls_interchanged_ff = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P"=> P, "Loc" => location_method, "Alloc" => alloc_method, "TimeLoc" => delta_loc_milli, 
-            "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "ValueCons" =>weight_really_before, "TotalTimeCons"=> time_cons, "Factible" => factible_old, 
-            "Add" => to_add, "Remove" => to_remove, "TimeRepair" => repair_delta.value, "ValueRepair"=>weight_before, "Move"=> "Interchange", "Strategy" => "FF", "AbsImproveMove" => abs_improve_interchanged_ff,
-            "RelImproveMove" => rel_improve_interchanged_ff, "GapRepair" => gap_repaired, "GapMove" => gap_interchanged_ff, "TimeMove" => interchange_delta_ff.value, "Optim" => weight_exac, "TimeOptim" => time_exac, "ValueLS" => weight_interchange_ff)
-
-            row_ls_deactivated_ff = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P"=> P, "Loc" => location_method, "Alloc" => alloc_method, "TimeLoc" => delta_loc_milli, 
-            "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "ValueCons" =>weight_really_before, "TotalTimeCons"=> time_cons, "Factible" => factible_old, 
-            "Add" => to_add, "Remove" => to_remove, "TimeRepair" => repair_delta.value, "ValueRepair"=>weight_before, "Move"=> "Deactivate", "Strategy"=> "FF", "AbsImproveMove" => abs_improve_deactivated_ff,
-            "RelImproveMove" => rel_improve_deactivated_ff, "GapRepair" => gap_repaired, "GapMove" => gap_deactivated_ff, "TimeMove" => deactivate_delta_ff.value, "Optim" => weight_exac, "TimeOptim" => time_exac, "ValueLS" => weight_deactivate_ff)
-            
-            push!(arr_ls, row_ls_interchanged_ff)
-            push!(arr_ls, row_ls_deactivated_ff)
-            push!(arr_ls, row_ls_moved_ff)
-            push!(arr_ls, row_ls_moved_bf)
-            push!(arr_ls, row_ls_interchanged_bf)
+            if factible_after_repair
+                row_ls_factible = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P" => P, "Loc" => location_method, "Alloc" => alloc_method, "TimeLoc" => delta_loc_milli,
+                    "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "ValueCons" => weight_really_before, "TimeCons" => time_cons, "Factible" => factible_old,
+                    "Add" => to_add, "Remove" => to_remove, "TimeRepair" => repair_delta.value, "ValueRepair" => weight_before, "Strategy" => "BF", "ImproveAbsLS" => abs_improved,
+                    "ImproveRelLS" => rel_improved, "GapRepair" => gap_repaired, "GapLS" => gap_improved, "TimeLS" => delta_ls_value, "ValueOptim" => weight_exac, "TimeOptim" => time_exac*1000,
+                    "CyclesLS" => counter, "SimpleImprovedTimes" => counter_improve_simple, "InterchangeImprovedTimes" => counter_improve_interchange, "DeactivateImprovedTimes" => counter_improve_deactivate)
+                push!(arr_ls, row_ls_factible)
+            else
+                row_ls_infactible = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P" => P, "Loc" => location_method, "Alloc" => alloc_method, "TimeLoc" => delta_loc_milli,
+                    "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "ValueCons" => weight_really_before, "TimeCons" => time_cons, "Factible" => factible_old,
+                    "Add" => to_add, "Remove" => to_remove, "TimeRepair" => repair_delta.value, "ValueRepair" => 10000000, "Strategy" => "BF", "ImproveAbsLS" => 0,
+                    "ImproveRelLS" => 0, "GapRepair" => 0, "GapLS" => 0, "TimeLS" => 0, "ValueOptim" => weight_exac, "TimeOptim" => time_exac*1000,
+                    "CyclesLS" => 0, "SimpleImprovedTimes" => 0, "InterchangeImprovedTimes" => 0, "DeactivateImprovedTimes" => 0)
+                push!(arr_ls, row_ls_infactible)
             end
         end
-    df1 = vcat(DataFrame.(arr_constructive)...)
-    df2 = vcat(DataFrame.(arr_ls)...)
-    CSV.write("df_cons_625.csv", df1)
-    CSV.write("df_ls_625.csv", df2)
+        df1 = vcat(DataFrame.(arr_constructive)...)
+        df2 = vcat(DataFrame.(arr_ls)...)
+        df1 = df1[:, sortperm(names(df1))]
+        df2 = df2[:, sortperm(names(df2))]
+        CSV.write("df_cons_625.csv", df1)
+        CSV.write("df_ls_625_bf.csv", df2)
+        println("\a")
+    end
 end
 
 main_test()
