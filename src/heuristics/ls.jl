@@ -437,7 +437,7 @@ function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
 end
 
-function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, add)
+function repair_solution1(solution, cons, targets_lower, targets_upper, remove, add)
     X = copy(solution.X)
     Y = copy(solution.Y)
     instance = solution.Instance
@@ -456,11 +456,12 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
     risk_vec = Vector{Int64}(undef, S)
 
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
-    println("entrando a remover BUs")
     current_constraints_value = get_magnitude_contraints(usables_i, B, M, V, R, X, values_matrix, risk_vec, targets_lower, targets_upper, β)
-    println(current_constraints_value)
-    
+    cant_fix = false    
     for ĩ in remove
+        if cant_fix
+            break
+        end
         values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
         # aqui el chiste es quitar las bus ASIGNADAS MAS LEJANAS
         # para asegurar que solo son las asignadas, multiplicamos la D por X
@@ -470,10 +471,11 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
         factible_yet = false
         while !factible_yet
             factible_yet = true
-            j = popfirst!(candidates_bus)[1] # arreglar el indice
-            if length(candidates_bus) == 1
-                newSol = Solution(instance, X, Y, 0, solution.Time)
+            if length(candidates_bus) == 0
+                cant_fix = true
+                break
             end
+            j = popfirst!(candidates_bus)[1] # arreglar el indice
             # cuales is podemos agarrar? las n mas cercanas? probamos todas? 
             # agarramos las n iₛ mas cercanas a j
             distance_to_bu = copy(D[:,j])
@@ -541,11 +543,13 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
         end
     end
     newSol3 = Solution(instance, X, Y, solution.Weight, solution.Time)
-    println(isFactible(newSol3, false))
     #current_constraints_value = get_magnitude_contraints(S, B, M, V, R, X, values_matrix, risk_vec, targets_lower, targets_upper, β)
     #println(current_constraints_value)
-    println("entrando a agregar BUs")
+    cant_fix = false
     for i in add
+        if cant_fix
+            break
+        end
         prev_assigned_bus = findall(==(1), X[i,:]) #indices de las bus asignadas previamente
         Dᵢ = D[i,:]
         for prev in prev_assigned_bus
@@ -558,6 +562,10 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
             solmamada = Solution(instance, X, Y, solution.Weight, solution.Time)
             algo, cons = isFactible(solmamada, false)
             inicializar = []
+            if length(candidates_bus) == 0
+                cant_fix = true
+                break
+            end
             j = popfirst!(candidates_bus)[1]
             ĩ = findfirst(==(1), X[:,j]) # obten la asignacion previa de cada j
             factible_yet = true
@@ -599,9 +607,7 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
                 risk_vec[i] -= R[j]
             end
         end
-    end
-    
-    plot_solution(newSol3, "solucion_reparada_agregar.png")
+    end    
     
     Weight = 0
     indices = findall(x -> x == 1, X)
@@ -609,9 +615,7 @@ function move_bu_repair(solution, cons, targets_lower, targets_upper, remove, ad
         Weight += instance.D[indice]
     end
     current_constraints_value = get_magnitude_contraints(usables_i, B, M, V, R, X, values_matrix, risk_vec, targets_lower, targets_upper, β)
-    println(current_constraints_value)
     newSol = Solution(instance, X, Y, Weight, solution.Time)
-    println(isFactible(newSol, false))
     return newSol
 end
 
@@ -848,7 +852,7 @@ function move_bu_repair3(solution, cons, targets_lower, targets_upper, remove, a
     return newSol
 end
 
-function move_bu_repair2(solution, cons, targets_lower, targets_upper, remove, add)
+function repair_solution2(solution, cons, targets_lower, targets_upper, remove, add)
     X = copy(solution.X)
     Y = copy(solution.Y)
     instance = solution.Instance
@@ -871,7 +875,6 @@ function move_bu_repair2(solution, cons, targets_lower, targets_upper, remove, a
     add_vec_fixed = collect(add) |> sort!
     remove_factible = [false for i in remove_vec]
     add_factible = [false for i in add_vec]
-    println("Quitando")
 
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
     while !all(remove_factible) # mientras siga habiendo un falso en remover
@@ -899,7 +902,6 @@ function move_bu_repair2(solution, cons, targets_lower, targets_upper, remove, a
             if values_matrix[i, m] > targets_upper[m]
                 #println("no es factible por que se pasa el otro upper: ", values_matrix[i, m])
                 factible_yet = false
-                println("se pasa nuevo valor")
             end
         end
         risk_vec[ĩ] -= R[j] # restale a ĩ el viejo
@@ -909,10 +911,6 @@ function move_bu_repair2(solution, cons, targets_lower, targets_upper, remove, a
             can_do_move = false
             #println("no es factible porque se pasa el otro risk: ", risk_vec[i])
             factible_yet = false
-            println("se pasa nuevo riesgo $ĩ, $i")
-            println(R[j])
-            println(risk_vec[ĩ])
-            println(risk_vec[i])
         end
         if risk_vec[ĩ] > β
             #println("no es factible porque se baja el risk")
@@ -935,8 +933,6 @@ function move_bu_repair2(solution, cons, targets_lower, targets_upper, remove, a
             fixed_idx = findfirst(==(ĩ), remove_vec_fixed)
             remove!(remove_vec, ĩ)
             remove_factible[fixed_idx] = true
-        else
-            println(remove_vec)
         end
     end
 
@@ -947,9 +943,12 @@ function move_bu_repair2(solution, cons, targets_lower, targets_upper, remove, a
     end
 
     D = copy(instance.D)
-    println("Agregando")
+    cant_fix = false
     escrito = false
     while !all(add_factible) # mientras siga habiendo un falso en agregr
+        if cant_fix
+            break
+        end
         distances_fixed = Matrix{Int64}(undef, S, B)
         for i in 1:S
             if i ∈ add_vec
@@ -963,6 +962,10 @@ function move_bu_repair2(solution, cons, targets_lower, targets_upper, remove, a
         incumbents_vec, coords_vec = minimums(distances_fixed, B)
         assigned = false
         while !assigned
+            if length(coords_vec) == 0
+                cant_fix = true
+                break
+            end
             coords = popfirst!(coords_vec)
             col = coords[2]
             ĩ = findfirst(==(1), X[:, col])
@@ -1008,9 +1011,6 @@ function move_bu_repair2(solution, cons, targets_lower, targets_upper, remove, a
                 X[i, j] = 1
                 assigned = true
             else
-                if length(add_vec) == 14
-                    println("no papuu :'v $razon")
-                end
                 # si no puedo hacer el movimiento, restaura el valor de la ev parcial
                 for m in 1:M
                     values_matrix[ĩ, m] += V[m][j] # corrige el valor de la NO asignacion
@@ -1023,7 +1023,6 @@ function move_bu_repair2(solution, cons, targets_lower, targets_upper, remove, a
                 fixed_idx = findfirst(==(i), add_vec_fixed)
                 remove!(add_vec, i)
                 add_factible[fixed_idx] = true
-                println(i)
             end
         end
     end
@@ -1034,7 +1033,7 @@ function move_bu_repair2(solution, cons, targets_lower, targets_upper, remove, a
         Weight += instance.D[indice]
     end
     newSol = Solution(instance, X, Y, Weight, solution.Time)
-    println(isFactible(newSol, true))
+    # println(isFactible(newSol, true))
     return newSol
 end
 
@@ -1802,8 +1801,10 @@ function localSearch(solution)
     oldSol = solution
     oldTime = oldSol.Time
     instance = solution.Instance
+    factible_after_repair = false
     targets_lower, targets_upper = calculate_targets(instance)
     factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
+    repaired = oldSol
     println(remove)
     println(add)
     original_weight = 10000000000000
@@ -1811,26 +1812,38 @@ function localSearch(solution)
         println("Factible")
         original_weight = solution.Weight
         println(original_weight)
+        factible_after_repair = true
     else
         println("Reparando")
-        oldSol = move_bu_repair3(oldSol, constraints, targets_lower, targets_upper, remove, add)
+        repaired_1 = repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
+        fac_repaired_1, cons = isFactible(repaired_1, false)
+        println(fac_repaired_1)
+        if !fac_repaired_1
+            repaired_2 = repair_solution2(oldSol, constraints, targets_lower, targets_upper, remove, add)
+            fac_repaired_2, cons = isFactible(repaired_2, false)
+            if fac_repaired_2
+                factible_after_repair = true
+                repaired = repaired_2
+            end
+        else
+            repaired = repaired_1
+            factible_after_repair = true
+        end
         #println("intercambiando")
         #oldSol = interchange_bu_repair(oldSol, targets_lower, targets_upper, :bf)
         #println("simple")
         #oldSol = simple_bu_repair(oldSol, targets_lower, targets_upper, :bf)
-        
-        
-        factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
-        if factible
-            original_weight = oldSol.Weight
-            println(oldSol.Weight)
+        if factible_after_repair
+            original_weight = repaired.Weight
+            println(repaired.Weight)
             println("ok ok")
         end
     end
-    if !factible
+    if !factible_after_repair
         @error "INFACTIBLE"
         return 0
     end
+    oldSol = repaired
     improvement = true
     while improvement
         println("improving")
@@ -1870,5 +1883,5 @@ end
 if abspath(PROGRAM_FILE) == @__FILE__
     mainLocal(; path=ARGS[1])
 else
-    mainLocal()
+    #mainLocal()
 end
