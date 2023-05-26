@@ -23,6 +23,7 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
     Y = Vector{Int64}[]
     D = instancia.D
     Weight = 0
+    println("hola 4")
 
     before1 = Dates.now()
     time_init1 = 0
@@ -30,7 +31,7 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
         Y, time_init1 = localize_facs(instancia, init_method)
         before1 = Dates.now()
     else
-        Y = localize_facs(instancia, init_method)
+        Y, time = localize_facs(instancia, init_method)
     end
 
     if init_method ≠ "relax"
@@ -46,12 +47,12 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
     if init_method == "relax"
         delta_init1 = time_init1
     end
-    #println("Y done with time: ", delta_init1)
+    println("Y done with time: ", delta_init1)
     if assign_method == "naive"
         #println("NAIVE")
         X = naive_assign_bu(instancia, Y_bool)
     elseif assign_method == "opp"
-        #println("OPP COST")
+        println("OPP COST")
         X = oppCostAssignment(Y_bool, instancia)
     end
     after1 = Dates.now()
@@ -70,7 +71,7 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
         Y, time_init = localize_facs(instancia, init_method)
         before = Dates.now()
     else
-        Y = localize_facs(instancia, init_method)
+        Y, time = localize_facs(instancia, init_method)
     end
     if init_method ≠ "relax"
         Y_bool = zeros(Int, instancia.S)
@@ -190,18 +191,19 @@ end
 function localize_facs(instance, method)
     # k_type = findall(x->x==1, idx_candidate .∈ Sk) # get k type of fac
     if method == "pdisp"
-        #println("P-DISP")
+        println("P-DISP")
         return pdisp_2(instance)
     elseif method == "random"
-        #println("RANDOM")
+        println("RANDOM")
         return random_init(instance)
     elseif method == "relax"
-        #println("RELAXATION")
+        println("RELAXATION")
         return relax_init(instance)
     end
 end
 
 function pdisp_2(instance)
+    before_init = Dates.now()
     B = instance.B
     S = instance.S
     D = instance.D
@@ -276,6 +278,7 @@ function pdisp_2(instance)
             end
             # If no such node exists, stop the algorithm
             if vbest == 0
+                @error "PDISP FAILED"
                 break
             end
             # Add the node vbest to the set P and update the counts
@@ -284,8 +287,11 @@ function pdisp_2(instance)
             push!(pdisp_ok, vbest)
         end
     end
+    after_init = Dates.now()
+    delta_init = after_init - before_init
+    delta_init_milli = round(delta_init, Millisecond)
     collection = collect(pdisp_ok)
-    return collection
+    return collection, delta_init_milli.value
 end
 
 function naive_assign_bu(instance, Y)
@@ -456,6 +462,7 @@ function oppCostAssignment(Y, instance::Types.Instance)
         minimal = minimals[1]
         oppMatrix[:, i] .= D[:, i] .- minimal
     end
+    count = 0
     todos = false
     targets = calculate_target(instance)
     values_matrix = Matrix{Int64}(undef, S, M)
@@ -528,6 +535,7 @@ function oppCostAssignment(Y, instance::Types.Instance)
         column = picked[2]::Int64
         oppMatrix[:, column] .= -1 # "apagamos" esa columna
         todos = true
+        count += 1
         for col in eachcol(X)
             if all(x -> x == 0, col)
                 todos = false
@@ -679,7 +687,7 @@ function isFactible(solution::Types.Solution, verbose=true)
     T = instance.T
     M = instance.M
     S = instance.S
-    P = instance.S
+    P = instance.P
     B = instance.B
     β = instance.β
     R = instance.R
@@ -702,9 +710,9 @@ function isFactible(solution::Types.Solution, verbose=true)
         end
     end
 
-    if sum(Y) > P
+    if sum(Y) != P
         if verbose
-            println("Violando número de centros asignados ", sum(Y))
+            println("Violando número de centros asignados ", sum(Y), " $P")
         end
         number_constraints_violated += 1
     end
@@ -797,6 +805,7 @@ function isFactible(solution::Types.Solution, verbose=true)
 end
 
 function main_constructive(init_method, assign_method; path="inst", read_file=true, instance_obj=nothing, id=0)
+    println("hola 2")
     instance = 1 # para traerlo al scope
     if read_file
         pattern = Regex("[t][_]\\d{1,3}")
@@ -811,6 +820,7 @@ function main_constructive(init_method, assign_method; path="inst", read_file=tr
     B = instance.B
     P = instance.P
     S = instance.S
+    println("hola 3")
 
     solution = constructive(instance, number, init_method, assign_method)
     #sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_sirev.jld2"
@@ -820,6 +830,7 @@ function main_constructive(init_method, assign_method; path="inst", read_file=tr
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
+    println("hola")
     main_constructive(ARGS[2], ARGS[3]; path=ARGS[1])
 end
 
