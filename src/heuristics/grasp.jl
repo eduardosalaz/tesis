@@ -133,7 +133,7 @@ function oppCostAssignmentGrasp(Y, instance::Types.Instance, α)
         diff[:, i] .= D[:, i] .- minimal
     end
     todos = false
-    n = trunc(Int, P - 30)
+    n = trunc(Int, P - 10)
     while !todos
         values, indices::Vector{CartesianIndex{2}} = maximums(diff, n)
         constraints = Int64[]
@@ -230,7 +230,7 @@ function main_grasp()
     α = 0.2
     iters = 10
     solucion, peso = grasp(α, iters, instance)
-    write_solution(solucion, "solucion_grasp_02_50_1200.jld2")
+    write_solution(solucion, "solucion_grasp_multithread2threads_nuevo_1_800.jld2")
 end
 
 main_grasp()
