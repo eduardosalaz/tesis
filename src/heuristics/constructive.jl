@@ -392,13 +392,14 @@ function maximums2(M, n)
     return vals, indices
 end
 
-function maximums3(M, n)
+function maximums4(M, n)
     v = vec(M)
     l = length(v)
     ix = [1:l;]
     partialsortperm!(ix, v, (l-n+1):l, initialized=true)
     indices = CartesianIndices(M)[ix[(l-n+1):l]]
-    return reverse!(indices)
+    vals = v[ix[(l-n+1):l]]
+    return reverse!(vals), reverse!(indices)
 end
 
 function calculate_target(instance)

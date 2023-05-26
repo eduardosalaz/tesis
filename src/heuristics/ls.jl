@@ -310,10 +310,11 @@ function isFactible4(solution::Types.Solution, targets_lower, targets_upper, ver
         end
     end
 
-    if sum(Y) > P
+    if sum(Y) != P
         if verbose
             println("Violando número de centros asignados ", sum(Y))
         end
+        @error "P NO ES Y"
         number_constraints_violated += 1
     end
 
@@ -323,6 +324,7 @@ function isFactible4(solution::Types.Solution, targets_lower, targets_upper, ver
                 println("Violando servicio a la BU: ", j)
                 number_constraints_violated += 1
             end
+            @error "X NO SERVIDA"
         end
     end
 
