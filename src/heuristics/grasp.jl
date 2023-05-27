@@ -32,19 +32,103 @@ function grasp(αₗ, αₐ, iters_no_improve, instance)
             Weight += D[indice]
         end
         @show Weight
-        if X ∉ Xs
-            println("X nueva")
-            push!(Xs, X)
+        oldSol = Types.Solution(instance, X, Y, Weight, time_loc + time_alloc)
+        repair_delta = 0
+        factible_after_repair = false
+        factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
+        repaired = oldSol
+        original_weight = 10000000000000
+        weight_before = 0
+        total_time = 0
+        before_repair = Dates.now()
+        repair_algorithm = 1
+        if factible
+            println("Factible")
+            original_weight = solution.Weight
+            weight_before = original_weight
+            factible_after_repair = true
         else
-            println("X ya existente")
+            println("Reparando")
+            repaired_1 = repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
+            fac_repaired_1, cons = isFactible(repaired_1, false)
+            if !fac_repaired_1
+                repaired_2 = repair_solution2(oldSol, constraints, targets_lower, targets_upper, remove, add)
+                fac_repaired_2, cons = isFactible(repaired_2, false)
+                if fac_repaired_2
+                    repair_algorithm = 2
+                    factible_after_repair = true
+                    repaired = repaired_2
+                end
+            else
+                repaired = repaired_1
+                factible_after_repair = true
+            end
+            if factible_after_repair
+                original_weight = repaired.Weight
+                weight_before = repaired.Weight
+                println("Reparada")
+            end
         end
-        if Y ∉ Ys
-            println("Y nueva")
-            push!(Ys, Y)
+        after_repair = Dates.now()
+        repair_delta_time = after_repair - before_repair
+        repair_delta = round(repair_delta_time, Millisecond)
+        delta_ls_value = 0
+        weight_after = 10000000
+        counter = 0
+        counter_improve_simple = 0
+        counter_improve_interchange = 0
+        counter_improve_deactivate = 0
+        if !factible_after_repair
+            @error "INFACTIBLE"
         else
-            println("Y ya existente")
+            oldSol = repaired
+            oldSol2 = repaired
+            improvement = true
+            before_ls = Dates.now()
+            while improvement
+                counter += 1
+                improvement = false
+                prev_weight = oldSol.Weight
+                sol_moved_bu = simple_bu_improve(oldSol, targets_lower, targets_upper, :ff)
+                new_weight_moved = sol_moved_bu.Weight
+                if new_weight_moved < prev_weight
+                    improvement = true
+                    prev_weight = new_weight_moved
+                    counter_improve_simple += 1
+                end
+                sol_deactivated_center = deactivate_center_improve(sol_moved_bu, targets_lower, targets_upper)
+                new_weight_moved = sol_deactivated_center.Weight
+                if new_weight_moved < prev_weight
+                    improvement = true
+                    prev_weight = new_weight_moved
+                    counter_improve_deactivate += 1
+                end
+                sol_interchanged_bu = interchange_bu_improve(sol_deactivated_center, targets_lower, targets_upper, :ff)
+                new_weight_moved = sol_interchanged_bu.Weight
+                if new_weight_moved < prev_weight
+                    improvement = true
+                    prev_weight = new_weight_moved
+                    counter_improve_interchange += 1
+                end
+                oldSol = sol_interchanged_bu
+            end
+            after_ls = Dates.now()
+            delta_ls = after_ls - before_ls
+            delta_ls_millis = round(delta_ls, Millisecond)
+            delta_ls_value = delta_ls_millis.value
+            weight_after = oldSol.Weight
+            time_cons = time_loc + time_alloc
+            total_time = time_cons + repair_delta.value + delta_ls_value
+            solution = Types.Solution(instancia, oldSol.X, oldSol.Y, weight_after, total_time)
+            #Types.plot_solution(solution, plot_str_path)
+            #Types.write_solution(solution, solution_str_path)
         end
-        iters += 1
+        #gap_repaired = (1 - (weight_exac / weight_before)) * 100
+        println(weight_after)
+        #gap_improved = (1 - (weight_exac / weight_after)) * 100
+        #abs_improved = weight_before - weight_after
+        #rel_improved = ((abs_improved) / weight_after) * 100
+    iters += 1
     end
 end
 
@@ -362,8 +446,8 @@ function evalWeight(X, D)
 end
 
 function main_grasp()
-    #file_name = ARGS[1]
-    file_name = "instances\\625_78_32\\inst_1_625_78_32.jld2"
+    file_name = ARGS[1]
+    #file_name = "instances\\625_78_32\\inst_1_625_78_32.jld2"
     instance = read_instance(file_name)
     αₗ = 0.3
     αₐ = 0.1
