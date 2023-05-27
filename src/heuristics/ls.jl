@@ -286,7 +286,7 @@ function isFactible4(solution::Types.Solution, targets_lower, targets_upper, ver
     Sk = instance.Sk
     M = instance.M
     S = instance.S
-    P = instance.S
+    P = instance.P
     B = instance.B
     β = instance.β
     β₁ = β[1]
@@ -311,9 +311,8 @@ function isFactible4(solution::Types.Solution, targets_lower, targets_upper, ver
     end
 
     if sum(Y) != P
-        if verbose
-            println("Violando número de centros asignados ", sum(Y))
-        end
+        println(sum(Y))
+        println(P)
         @error "P NO ES Y"
         number_constraints_violated += 1
     end
