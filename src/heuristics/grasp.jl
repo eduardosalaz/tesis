@@ -203,7 +203,7 @@ function pdisp_simple_grasp(d, p, N, α)
                 minimal = mindist
             end
         end
-        maxdist = 0
+        maxdist = minimal
         vbest = 0
         rcl = []
         for v in 1:N
@@ -216,11 +216,8 @@ function pdisp_simple_grasp(d, p, N, α)
                     mindist = d[v, vprime]
                 end
             end
-            if mindist > maxdist
-                maxdist = mindist
-                if mindist <= round(Int, (minimal + minimal * α))
-                    push!(rcl, v)
-                end
+            if mindist >= round(Int, (maxdist - maxdist * α))
+                push!(rcl, v)
             end
         end
         selected = false
@@ -296,7 +293,6 @@ function pdisp_grasp(instance, αₗ)
             # Find the node v that maximizes the distance to its closest neighbor in P
             maxdist = 0
             vbest = 0
-            rcl = []
             best_dist = 0
             for v in 1:N
                 if v in pdisp_ok
@@ -316,6 +312,8 @@ function pdisp_grasp(instance, αₗ)
             maxdist = 0
             vbest = 0
             rcl = []
+            #println(best_dist)
+            #println(round(Int, best_dist - best_dist * αₗ))
             for v in 1:N
                 if v in pdisp_ok
                     continue
@@ -325,12 +323,13 @@ function pdisp_grasp(instance, αₗ)
                     continue
                 end
                 dist = minimum([d[v, vprime] for vprime in pdisp_ok])
-                if dist <= round(Int, best_dist + best_dist * αₗ)
+                if dist >= round(Int, best_dist - best_dist * αₗ)
                     push!(rcl, v)
                     #vbest = v
                 end
             end
             vbest = rand(rcl)
+            #println("Escogiendo $vbest")
             # If no such node exists, stop the algorithm
             if vbest == 0
                 @error "P DISP ERROR"
@@ -343,16 +342,14 @@ function pdisp_grasp(instance, αₗ)
         end
     end
     collection = collect(pdisp_ok)
+    after_init = Dates.now()
+    delta_init = after_init - before_init
+    delta_init_milli = round(delta_init, Millisecond)
     Y_bool = zeros(Int, instance.S)
     for idx in collection
         Y_bool[idx] = 1
     end
-    return Y_bool
-    after_init = Dates.now()
-    delta_init = after_init - before_init
-    delta_init_milli = round(delta_init, Millisecond)
-    collection = collect(pdisp_ok)
-    return collection, delta_init_milli.value
+    return Y_bool, delta_init_milli.value
 end
 
 function evalWeight(X, D)
@@ -365,10 +362,11 @@ function evalWeight(X, D)
 end
 
 function main_grasp()
-    file_name = ARGS[1]
+    #file_name = ARGS[1]
+    file_name = "instances\\625_78_32\\inst_1_625_78_32.jld2"
     instance = read_instance(file_name)
-    αₗ = 0.8
-    αₐ = 0.8
+    αₗ = 0.3
+    αₐ = 0.1
     iters = 20
     grasp(αₗ, αₐ, iters, instance)
     #write_solution(solucion, "solucion_grasp_multithread2threads_nuevo_1_800.jld2")
