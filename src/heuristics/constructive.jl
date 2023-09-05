@@ -2,7 +2,8 @@ using Types
 using JuMP
 using Distances
 using DelimitedFiles
-using Gurobi
+#using Gurobi
+using HiGHS
 using Dates
 using TimerOutputs
 using MathOptInterface
@@ -279,6 +280,7 @@ function pdisp_2(instance)
             # If no such node exists, stop the algorithm
             if vbest == 0
                 @error "PDISP FAILED"
+                println("*******************************************************************************************")
                 break
             end
             # Add the node vbest to the set P and update the counts
@@ -292,37 +294,6 @@ function pdisp_2(instance)
     delta_init_milli = round(delta_init, Millisecond)
     collection = collect(pdisp_ok)
     return collection, delta_init_milli.value
-end
-
-function naive_assign_bu(instance, Y)
-    # i haven't been using Y
-    branches_used = findall(x -> x == 1, Y)
-    # BUT, the entries in X must reflect the original D matrix
-    B = instance.B
-    S = instance.S
-    K = instance.K
-    D = instance.D
-    X = zeros(Int, S, B)
-    centers_used = 0
-    for j in 1:B
-        minimum = 10000000000000
-        second_minimum = 10000000000000
-        i_exported = 0
-        for i in 1:S
-            if i ∉ branches_used
-                continue
-            end
-            Dij = D[i, j]
-            if Dij < minimum
-                second_minimum = minimum
-                minimum = Dij
-                i_exported = i
-            end
-        end
-        X[i_exported, j] = 1
-        centers_used += 1
-    end
-    return X
 end
 
 function minimums(matrix::Matrix, n)::Tuple{Vector{Int64},Vector{CartesianIndex{2}}}
@@ -380,6 +351,15 @@ function maximums(matrix, n)::Tuple{Vector{Int64},Vector{CartesianIndex{2}}}
     vals = [x[1] for x in arr]
     indices = [x[2] for x in arr]
     return vals, indices
+end
+
+function maximums3(M, n)
+    v = vec(M)
+    l = length(v)
+    ix = [1:l;]
+    partialsortperm!(ix, v, (l-n+1):l, initialized=true)
+    indices = CartesianIndices(M)[ix[(l-n+1):l]]
+    return reverse!(indices)
 end
 
 function maximums2(M, n)

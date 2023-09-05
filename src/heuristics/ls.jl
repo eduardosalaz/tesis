@@ -15,7 +15,7 @@ function isFactible(solution::Types.Solution, verbose=true)
     T = instance.T
     M = instance.M
     S = instance.S
-    P = instance.S
+    P = instance.P
     B = instance.B
     β = instance.β
     R = instance.R
@@ -37,9 +37,9 @@ function isFactible(solution::Types.Solution, verbose=true)
         end
     end
 
-    if sum(Y) > P
+    if sum(Y) != P
         if verbose
-            println("Violando número de centros asignados ", sum(Y))
+            println("Violando número de centros asignados ", sum(Y), " contra ", P)
         end
         number_constraints_violated += 1
     end
@@ -127,9 +127,9 @@ function get_magnitude_contraints(usables_i, B, M, V, R, X, values_matrix, risk_
     value = 0
     for i in usables_i
         for m in 1:M
-            if values_matrix[i,m] > targets_upper[m]
+            if values_matrix[i, m] > targets_upper[m]
                 value += abs(targets_upper[m] - values_matrix[i, m])
-            elseif values_matrix[i,m] < targets_lower[m]
+            elseif values_matrix[i, m] < targets_lower[m]
                 value += abs(targets_lower[m] - values_matrix[i, m])
             end
         end
@@ -152,9 +152,9 @@ function update_magnitude_constraints_simple(usables_i, values_matrix, risk_vec,
 
     for i in usables_i
         for m in 1:M
-            if values_matrix[i,m] > targets_upper[m]
+            if values_matrix[i, m] > targets_upper[m]
                 value += abs(targets_upper[m] - values_matrix[i, m])
-            elseif values_matrix[i,m] < targets_lower[m]
+            elseif values_matrix[i, m] < targets_lower[m]
                 value += abs(targets_lower[m] - values_matrix[i, m])
             end
         end
@@ -169,17 +169,17 @@ function update_magnitude_constraints_interchange(usables_i, values_matrix, risk
     value = 0
     M = 3
     for m in 1:M
-        values_matrix[i, m] = values_matrix[i,m] + V[m][j₁] - V[m][j₂]
-        values_matrix[ĩ, m] = values_matrix[ĩ,m] + V[m][j₂] - V[m][j₁]
+        values_matrix[i, m] = values_matrix[i, m] + V[m][j₁] - V[m][j₂]
+        values_matrix[ĩ, m] = values_matrix[ĩ, m] + V[m][j₂] - V[m][j₁]
     end
     risk_vec[i] = risk_vec[i] - R[j₂] + R[j₁]
     risk_vec[ĩ] = risk_vec[i] - R[j₁] + R[j₂]
 
     for i in usables_i
         for m in 1:M
-            if values_matrix[i,m] > targets_upper[m]
+            if values_matrix[i, m] > targets_upper[m]
                 value += abs(targets_upper[m] - values_matrix[i, m])
-            elseif values_matrix[i,m] < targets_lower[m]
+            elseif values_matrix[i, m] < targets_lower[m]
                 value += abs(targets_lower[m] - values_matrix[i, m])
             end
         end
@@ -450,7 +450,7 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
     R = instance.R
     β = instance.β[1]
     P = instance.P
-    n = round(Int, (P-1))
+    n = round(Int, (P - 1))
     usables_i = findall(==(1), Y)
     not_usables_i = Set(findall(==(0), Y))
     values_matrix = Matrix{Int64}(undef, S, M)
@@ -458,7 +458,7 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
 
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
     current_constraints_value = get_magnitude_contraints(usables_i, B, M, V, R, X, values_matrix, risk_vec, targets_lower, targets_upper, β)
-    cant_fix = false    
+    cant_fix = false
     for ĩ in remove
         if cant_fix
             break
@@ -467,7 +467,7 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
         # aqui el chiste es quitar las bus ASIGNADAS MAS LEJANAS
         # para asegurar que solo son las asignadas, multiplicamos la D por X
         all_asigneds = findall(==(1), X[ĩ, :])
-        Dᵢ = copy(D[ĩ,:]) .* X[ĩ,:] # al hacer 0s los no asignados, no los agarra maximums
+        Dᵢ = copy(D[ĩ, :]) .* X[ĩ, :] # al hacer 0s los no asignados, no los agarra maximums
         vals, candidates_bus = maximums(Dᵢ, length(all_asigneds))
         factible_yet = false
         while !factible_yet
@@ -479,7 +479,7 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
             j = popfirst!(candidates_bus)[1] # arreglar el indice
             # cuales is podemos agarrar? las n mas cercanas? probamos todas? 
             # agarramos las n iₛ mas cercanas a j
-            distance_to_bu = copy(D[:,j])
+            distance_to_bu = copy(D[:, j])
             for not_usable_i in not_usables_i
                 distance_to_bu[not_usable_i] = 1e12 # a las is en Yi = 0, hacemos la distancia super grande para no fomentar su uso
             end
@@ -502,13 +502,13 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
                 #println("probando cambio en $i por $ĩ")
 
                 for m in 1:M
-                    values_matrix[ĩ,m] -= V[m][j] # restale a ĩ, previo
-                    values_matrix[i,m] += V[m][j] # sumale a i, nuevo
-                    if values_matrix[i,m] > targets_upper[m]
+                    values_matrix[ĩ, m] -= V[m][j] # restale a ĩ, previo
+                    values_matrix[i, m] += V[m][j] # sumale a i, nuevo
+                    if values_matrix[i, m] > targets_upper[m]
                         #println("no es factible por que se pasa el otro upper: ", values_matrix[i, m])
                         factible_yet = false
                     end
-                    if values_matrix[ĩ,m] < targets_lower[m]
+                    if values_matrix[ĩ, m] < targets_lower[m]
                         factible_yet = false
                         #println("no es factible por que se baja el lower: ", values_matrix[ĩ, m], " para ", targets_lower[m])
                         can_do_move = false
@@ -534,8 +534,8 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
                 else
                     # si no puedo hacer el movimiento, restaura el valor de la ev parcial
                     for m in 1:M
-                        values_matrix[ĩ,m] += V[m][j] # corrige el valor de la NO asignacion
-                        values_matrix[i,m] -= V[m][j]
+                        values_matrix[ĩ, m] += V[m][j] # corrige el valor de la NO asignacion
+                        values_matrix[i, m] -= V[m][j]
                     end
                     risk_vec[ĩ] += R[j]
                     risk_vec[i] -= R[j]
@@ -551,8 +551,8 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
         if cant_fix
             break
         end
-        prev_assigned_bus = findall(==(1), X[i,:]) #indices de las bus asignadas previamente
-        Dᵢ = D[i,:]
+        prev_assigned_bus = findall(==(1), X[i, :]) #indices de las bus asignadas previamente
+        Dᵢ = D[i, :]
         for prev in prev_assigned_bus
             Dᵢ[prev] = 1e9
         end
@@ -568,21 +568,21 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
                 break
             end
             j = popfirst!(candidates_bus)[1]
-            ĩ = findfirst(==(1), X[:,j]) # obten la asignacion previa de cada j
+            ĩ = findfirst(==(1), X[:, j]) # obten la asignacion previa de cada j
             factible_yet = true
             can_do_move = true
             for m in 1:M
-                values_matrix[ĩ,m] -= V[m][j] # restale a ĩ, previo
-                values_matrix[i,m] += V[m][j] # sumale a i, nuevo
-                if values_matrix[i,m] > targets_upper[m]
+                values_matrix[ĩ, m] -= V[m][j] # restale a ĩ, previo
+                values_matrix[i, m] += V[m][j] # sumale a i, nuevo
+                if values_matrix[i, m] > targets_upper[m]
                     # no deberia de pasar porque entonces la infactibilidad cambia de razon
                     factible_yet = false
                     can_do_move = false
                 end
-                if values_matrix[i,m] < targets_lower[m]
+                if values_matrix[i, m] < targets_lower[m]
                     factible_yet = false
                 end
-                if values_matrix[ĩ,m] < targets_lower[m]
+                if values_matrix[ĩ, m] < targets_lower[m]
                     factible_yet = false
                     can_do_move = false
                     # no deberia de pasar porque entonces ĩ es infactible ahora
@@ -601,15 +601,15 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
             else
                 # si no puedo hacer el movimiento, restaura el valor de la ev parcial
                 for m in 1:M
-                    values_matrix[ĩ,m] += V[m][j] # corrige el valor de la NO asignacion
-                    values_matrix[i,m] -= V[m][j]
+                    values_matrix[ĩ, m] += V[m][j] # corrige el valor de la NO asignacion
+                    values_matrix[i, m] -= V[m][j]
                 end
                 risk_vec[ĩ] += R[j]
                 risk_vec[i] -= R[j]
             end
         end
-    end    
-    
+    end
+
     Weight = 0
     indices = findall(x -> x == 1, X)
     for indice in indices
@@ -633,7 +633,7 @@ function move_bu_repair3(solution, cons, targets_lower, targets_upper, remove, a
     R = instance.R
     β = instance.β[1]
     P = instance.P
-    n = round(Int, (P-1))
+    n = round(Int, (P - 1))
     not_usables_i = Set(findall(==(0), Y))
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
@@ -653,7 +653,7 @@ function move_bu_repair3(solution, cons, targets_lower, targets_upper, remove, a
             # aqui el chiste es quitar las bus ASIGNADAS MAS LEJANAS
             # para asegurar que solo son las asignadas, multiplicamos la D por X
             all_asigneds = findall(==(1), X[ĩ, :])
-            Dᵢ = copy(D[ĩ,:]) .* X[ĩ,:] # al hacer 0s los no asignados, no los agarra maximums
+            Dᵢ = copy(D[ĩ, :]) .* X[ĩ, :] # al hacer 0s los no asignados, no los agarra maximums
             vals, candidates_bus = maximums(Dᵢ, length(all_asigneds))
             factible_yet = false
             while !factible_yet
@@ -666,7 +666,7 @@ function move_bu_repair3(solution, cons, targets_lower, targets_upper, remove, a
                 j = popfirst!(candidates_bus)[1] # arreglar el indice
                 # cuales is podemos agarrar? las n mas cercanas? probamos todas? 
                 # agarramos las n iₛ mas cercanas a j
-                distance_to_bu = copy(D[:,j])
+                distance_to_bu = copy(D[:, j])
                 for not_usable_i in not_usables_i
                     distance_to_bu[not_usable_i] = 1e12 # a las is en Yi = 0, hacemos la distancia super grande para no fomentar su uso
                 end
@@ -686,15 +686,15 @@ function move_bu_repair3(solution, cons, targets_lower, targets_upper, remove, a
                         can_do_move = false
                     end
                     #println("probando cambio en $i por $ĩ")
-    
+
                     for m in 1:M
-                        values_matrix[ĩ,m] -= V[m][j] # restale a ĩ, previo
-                        values_matrix[i,m] += V[m][j] # sumale a i, nuevo
-                        if values_matrix[i,m] > targets_upper[m]
+                        values_matrix[ĩ, m] -= V[m][j] # restale a ĩ, previo
+                        values_matrix[i, m] += V[m][j] # sumale a i, nuevo
+                        if values_matrix[i, m] > targets_upper[m]
                             #println("no es factible por que se pasa el otro upper: ", values_matrix[i, m])
                             factible_yet = false
                         end
-                        if values_matrix[ĩ,m] < targets_lower[m]
+                        if values_matrix[ĩ, m] < targets_lower[m]
                             factible_yet = false
                             #println("no es factible por que se baja el lower: ", values_matrix[ĩ, m], " para ", targets_lower[m])
                             can_do_move = false
@@ -720,8 +720,8 @@ function move_bu_repair3(solution, cons, targets_lower, targets_upper, remove, a
                     else
                         # si no puedo hacer el movimiento, restaura el valor de la ev parcial
                         for m in 1:M
-                            values_matrix[ĩ,m] += V[m][j] # corrige el valor de la NO asignacion
-                            values_matrix[i,m] -= V[m][j]
+                            values_matrix[ĩ, m] += V[m][j] # corrige el valor de la NO asignacion
+                            values_matrix[i, m] -= V[m][j]
                         end
                         risk_vec[ĩ] += R[j]
                         risk_vec[i] -= R[j]
@@ -744,8 +744,8 @@ function move_bu_repair3(solution, cons, targets_lower, targets_upper, remove, a
             end
         end
     end
-    
-    
+
+
     newSol3 = Solution(instance, X, Y, solution.Weight, solution.Time)
     println(isFactible(newSol3, false))
     println("entrando a agregar BUs")
@@ -760,8 +760,8 @@ function move_bu_repair3(solution, cons, targets_lower, targets_upper, remove, a
         println(add_vec)
         for i in add_vec
             println("probando la $i")
-            prev_assigned_bus = findall(==(1), X[i,:]) #indices de las bus asignadas previamente
-            Dᵢ = D[i,:]
+            prev_assigned_bus = findall(==(1), X[i, :]) #indices de las bus asignadas previamente
+            Dᵢ = D[i, :]
             for prev in prev_assigned_bus
                 Dᵢ[prev] = 1e9
             end
@@ -779,21 +779,21 @@ function move_bu_repair3(solution, cons, targets_lower, targets_upper, remove, a
                     newSol = Solution(instance, X, Y, 0, solution.Time)
                 end
                 j = popfirst!(candidates_bus)[1]
-                ĩ = findfirst(==(1), X[:,j]) # obten la asignacion previa de cada j
+                ĩ = findfirst(==(1), X[:, j]) # obten la asignacion previa de cada j
                 factible_yet = true
                 can_do_move = true
                 for m in 1:M
-                    values_matrix[ĩ,m] -= V[m][j] # restale a ĩ, previo
-                    values_matrix[i,m] += V[m][j] # sumale a i, nuevo
-                    if values_matrix[i,m] > targets_upper[m]
+                    values_matrix[ĩ, m] -= V[m][j] # restale a ĩ, previo
+                    values_matrix[i, m] += V[m][j] # sumale a i, nuevo
+                    if values_matrix[i, m] > targets_upper[m]
                         # no deberia de pasar porque entonces la infactibilidad cambia de razon
                         factible_yet = false
                         can_do_move = false
                     end
-                    if values_matrix[i,m] < targets_lower[m]
+                    if values_matrix[i, m] < targets_lower[m]
                         factible_yet = false
                     end
-                    if values_matrix[ĩ,m] < targets_lower[m]
+                    if values_matrix[ĩ, m] < targets_lower[m]
                         factible_yet = false
                         can_do_move = false
                         # no deberia de pasar porque entonces ĩ es infactible ahora
@@ -812,8 +812,8 @@ function move_bu_repair3(solution, cons, targets_lower, targets_upper, remove, a
                 else
                     # si no puedo hacer el movimiento, restaura el valor de la ev parcial
                     for m in 1:M
-                        values_matrix[ĩ,m] += V[m][j] # corrige el valor de la NO asignacion
-                        values_matrix[i,m] -= V[m][j]
+                        values_matrix[ĩ, m] += V[m][j] # corrige el valor de la NO asignacion
+                        values_matrix[i, m] -= V[m][j]
                     end
                     risk_vec[ĩ] += R[j]
                     risk_vec[i] -= R[j]
@@ -921,7 +921,7 @@ function repair_solution2(solution, cons, targets_lower, targets_upper, remove, 
             X[ĩ, j] = 0
             X[i, j] = 1
         else
-            D[i,j] = 100000000000000000
+            D[i, j] = 100000000000000000
             # si no puedo hacer el movimiento, restaura el valor de la ev parcial
             for m in 1:M
                 values_matrix[ĩ, m] += V[m][j] # corrige el valor de la NO asignacion
@@ -1064,9 +1064,9 @@ function interchange_bu_improve(solution, targets_lower, targets_upper, strategy
         best_j₂ = 0
         best_improvement = 0
         for j₁ in 1:B
-            ĩ = findfirst(==(1), X[:,j₁])
+            ĩ = findfirst(==(1), X[:, j₁])
             for j₂ in j₁+1:B
-                i✶ = findfirst(==(1), X[:,j₂])
+                i✶ = findfirst(==(1), X[:, j₂])
                 weight_diff = -D[ĩ, j₁] - D[i✶, j₂] + D[ĩ, j₂] + D[i✶, j₁]
                 if weight_diff < 0 # si el peso mejora, revisa el estado del movimiento
                     can_do_move = true
@@ -1134,10 +1134,10 @@ function interchange_bu_improve(solution, targets_lower, targets_upper, strategy
                                 improvement = true
                                 Weight = newWeight
                                 for m in 1:M
-                                    values_matrix[ĩ,m] -= V[m][j₁] # restale a ĩ, previo
-                                    values_matrix[i✶,m] -= V[m][j₂] # restale a i✶, previo
-                                    values_matrix[ĩ,m] += V[m][j₂] # sumale a ĩ, nuevo
-                                    values_matrix[i✶,m] += V[m][j₁] # sumale a i✶, nuevo
+                                    values_matrix[ĩ, m] -= V[m][j₁] # restale a ĩ, previo
+                                    values_matrix[i✶, m] -= V[m][j₂] # restale a i✶, previo
+                                    values_matrix[ĩ, m] += V[m][j₂] # sumale a ĩ, nuevo
+                                    values_matrix[i✶, m] += V[m][j₁] # sumale a i✶, nuevo
                                 end
                                 risk_vec[ĩ] -= R[j₁] # restale a ĩ el viejo
                                 risk_vec[i✶] -= R[j₂] # restale a i✶ el viejo
@@ -1176,10 +1176,10 @@ function interchange_bu_improve(solution, targets_lower, targets_upper, strategy
                 Weight = newWeight
                 improvement = true
                 for m in 1:M
-                    values_matrix[best_ĩ,m] -= V[m][best_j₁] # restale a ĩ, previo
-                    values_matrix[best_i✶,m] -= V[m][best_j₂] # restale a i✶, previo
-                    values_matrix[best_ĩ,m] += V[m][best_j₂] # sumale a ĩ, nuevo
-                    values_matrix[best_i✶,m] += V[m][best_j₁] # sumale a i✶, nuevo
+                    values_matrix[best_ĩ, m] -= V[m][best_j₁] # restale a ĩ, previo
+                    values_matrix[best_i✶, m] -= V[m][best_j₂] # restale a i✶, previo
+                    values_matrix[best_ĩ, m] += V[m][best_j₂] # sumale a ĩ, nuevo
+                    values_matrix[best_i✶, m] += V[m][best_j₁] # sumale a i✶, nuevo
                 end
                 risk_vec[best_ĩ] -= R[best_j₁] # restale a ĩ el viejo
                 risk_vec[best_i✶] -= R[best_j₂] # restale a i✶ el viejo
@@ -1226,46 +1226,46 @@ function interchange_bu_repair(solution, targets_lower, targets_upper, strategy)
         best_j₂ = 0
         best_improvement = 0
         for j₁ in 1:B
-            ĩ = findfirst(==(1), X[:,j₁])
+            ĩ = findfirst(==(1), X[:, j₁])
             for j₂ in j₁+1:B
-                i✶ = findfirst(==(1), X[:,j₂])
-                    new_magnitude_value = update_magnitude_constraints_interchange(usables_i, values_matrix, risk_vec, targets_lower, targets_upper, β, V, R, i✶, ĩ, j₁, j₂)
-                    abs_improvement = current_constraints_value - new_magnitude_value #inviertele el signo para hacerlo positivo
-                    if new_magnitude_value < current_constraints_value
-                        println("mejoranding")
-                        if strategy == :ff
-                            #println("Intercambiando $ĩ por $i✶ la j $j₁ por la j $j₂")
-                            X[ĩ, j₁] = 0
-                            X[i✶, j₂] = 0
-                            X[ĩ, j₂] = 1
-                            X[i✶, j₁] = 1
-                            improvement = true
-                            current_constraints_value = new_magnitude_value
-                            for m in 1:M
-                                values_matrix[ĩ,m] -= V[m][j₁] # restale a ĩ, previo
-                                values_matrix[i✶,m] -= V[m][j₂] # restale a i✶, previo
-                                values_matrix[ĩ,m] += V[m][j₂] # sumale a ĩ, nuevo
-                                values_matrix[i✶,m] += V[m][j₁] # sumale a i✶, nuevo
-                            end
-                            risk_vec[ĩ] -= R[j₁] # restale a ĩ el viejo
-                            risk_vec[i✶] -= R[j₂] # restale a i✶ el viejo
-                            risk_vec[ĩ] += R[j₂] # sumale a i✶ el nuevo
-                            risk_vec[i✶] += R[j₁] # sumale a ĩ el nuevo
-                            aux = ĩ
-                            ĩ = i✶
-                            i✶ = aux
-                            #newSol = Solution(instance, X, Y, Weight, solution.Time)
-                            #println(isFactible(newSol, true))
-                        else
-                            if abs_improvement > best_improvement
-                                best_ĩ = ĩ
-                                best_i✶ = i✶
-                                best_j₁ = j₁
-                                best_j₂ = j₂
-                                best_improvement = abs_improvement
-                            end
+                i✶ = findfirst(==(1), X[:, j₂])
+                new_magnitude_value = update_magnitude_constraints_interchange(usables_i, values_matrix, risk_vec, targets_lower, targets_upper, β, V, R, i✶, ĩ, j₁, j₂)
+                abs_improvement = current_constraints_value - new_magnitude_value #inviertele el signo para hacerlo positivo
+                if new_magnitude_value < current_constraints_value
+                    println("mejoranding")
+                    if strategy == :ff
+                        #println("Intercambiando $ĩ por $i✶ la j $j₁ por la j $j₂")
+                        X[ĩ, j₁] = 0
+                        X[i✶, j₂] = 0
+                        X[ĩ, j₂] = 1
+                        X[i✶, j₁] = 1
+                        improvement = true
+                        current_constraints_value = new_magnitude_value
+                        for m in 1:M
+                            values_matrix[ĩ, m] -= V[m][j₁] # restale a ĩ, previo
+                            values_matrix[i✶, m] -= V[m][j₂] # restale a i✶, previo
+                            values_matrix[ĩ, m] += V[m][j₂] # sumale a ĩ, nuevo
+                            values_matrix[i✶, m] += V[m][j₁] # sumale a i✶, nuevo
+                        end
+                        risk_vec[ĩ] -= R[j₁] # restale a ĩ el viejo
+                        risk_vec[i✶] -= R[j₂] # restale a i✶ el viejo
+                        risk_vec[ĩ] += R[j₂] # sumale a i✶ el nuevo
+                        risk_vec[i✶] += R[j₁] # sumale a ĩ el nuevo
+                        aux = ĩ
+                        ĩ = i✶
+                        i✶ = aux
+                        #newSol = Solution(instance, X, Y, Weight, solution.Time)
+                        #println(isFactible(newSol, true))
+                    else
+                        if abs_improvement > best_improvement
+                            best_ĩ = ĩ
+                            best_i✶ = i✶
+                            best_j₁ = j₁
+                            best_j₂ = j₂
+                            best_improvement = abs_improvement
                         end
                     end
+                end
             end
         end
         if strategy == :bf
@@ -1277,10 +1277,10 @@ function interchange_bu_repair(solution, targets_lower, targets_upper, strategy)
                 current_constraints_value -= best_improvement
                 improvement = true
                 for m in 1:M
-                    values_matrix[best_ĩ,m] -= V[m][best_j₁] # restale a ĩ, previo
-                    values_matrix[best_i✶,m] -= V[m][best_j₂] # restale a i✶, previo
-                    values_matrix[best_ĩ,m] += V[m][best_j₂] # sumale a ĩ, nuevo
-                    values_matrix[best_i✶,m] += V[m][best_j₁] # sumale a i✶, nuevo
+                    values_matrix[best_ĩ, m] -= V[m][best_j₁] # restale a ĩ, previo
+                    values_matrix[best_i✶, m] -= V[m][best_j₂] # restale a i✶, previo
+                    values_matrix[best_ĩ, m] += V[m][best_j₂] # sumale a ĩ, nuevo
+                    values_matrix[best_i✶, m] += V[m][best_j₁] # sumale a i✶, nuevo
                 end
                 risk_vec[best_ĩ] -= R[best_j₁] # restale a ĩ el viejo
                 risk_vec[best_i✶] -= R[best_j₂] # restale a i✶ el viejo
@@ -1428,8 +1428,8 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                             risk_vec[i✶] -= R[j]
                         end
                     end
-    
-    
+
+
                     for j in js_assigned_set # para las js que aun queden sin asignar
                         candidates_is = minimums2(D[:, j], n)
                         j_assigned = false
@@ -1472,13 +1472,13 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                             end
                         end
                     end
-    
+
                     if weight_new_branch < weight_old_branch && useful
                         # arreglar esto
                     else
                         useful = false
                     end
-    
+
                     if useful
                         Y[i✶] = 1
                         Y[ĩ] = 0
@@ -1516,13 +1516,13 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                             risk_vec[i] -= R[j]
                             X[:, j] .= 0 # deshacemos asignaciones de los clientes
                         end
-    
+
                         X[i✶, :] .= 0 #deshaz cualquier asignacion al nuevo centro
-    
+
                         for (i_old, j_old) in ij_prev_assignments
                             X[i_old, j_old] = 1 # pon la asignacion previa de vuelta
                         end
-    
+
                         for m in 1:M
                             values_matrix[i✶, m] = 0
                         end
@@ -1677,7 +1677,7 @@ function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
                     values_matrix[best_new_i, m] += V[m][best_j] # restale a i✶, previo
                 end
                 risk_vec[best_new_i] += R[best_j]
-                risk_vec[best_old_i] -= R[best_j] 
+                risk_vec[best_old_i] -= R[best_j]
                 improvement = true
             else
                 improvement = false
@@ -1773,7 +1773,7 @@ function simple_bu_repair(solution, targets_lower, targets_upper, strategy)
                     values_matrix[best_new_i, m] += V[m][best_j] # restale a i✶, previo
                 end
                 risk_vec[best_new_i] += R[best_j]
-                risk_vec[best_old_i] -= R[best_j] 
+                risk_vec[best_old_i] -= R[best_j]
                 improvement = true
                 println(improvement)
             else
@@ -1793,8 +1793,8 @@ end
 function mainLocal(; path="sol_1_625_78_32_relax_opp.jld2")
     solution = read_solution(path)
     newSolution = @time localSearch(solution)
-    #write_solution(newSolution, "sol_ls_1_625relax_bfls5.jld2")
-    #plot_solution(newSolution, "plot_sol_1_625relax_bfls5.png")
+    write_solution(newSolution, "sol_ls_1_312.jld2")
+    plot_solution(newSolution, "plot_sol_1_312.png")
     return newSolution
 end
 
@@ -1837,7 +1837,7 @@ function localSearch(solution)
         if factible_after_repair
             original_weight = repaired.Weight
             println(repaired.Weight)
-            println("ok ok")
+            println("Reparada ")
         end
     end
     if !factible_after_repair
@@ -1846,35 +1846,53 @@ function localSearch(solution)
     end
     oldSol = repaired
     improvement = true
+    loop = 0
     while improvement
-        println("improving")
-        improvement = false
+        improvement = false  # Reset the flag at the start of each loop iteration
         prev_weight = oldSol.Weight
+
+        # Array to keep track of individual improvements
+        improvements = Bool[]
+
+        # First improvement function
         sol_moved_bu = simple_bu_improve(oldSol, targets_lower, targets_upper, :bf)
         new_weight_moved = sol_moved_bu.Weight
-        if new_weight_moved < prev_weight
-            improvement = true
+        push!(improvements, new_weight_moved < prev_weight)
+        if improvements[end]
             prev_weight = new_weight_moved
+            #println("En el loop $loop el movimiento simple mejora con un $new_weight_moved")
+            oldSol = sol_moved_bu  # Update oldSol if there was an improvement
         end
-        println(isFactible(sol_moved_bu, true))
-        sol_interchanged_bu = interchange_bu_improve(sol_moved_bu, targets_lower, targets_upper, :bf)
+        #println(isFactible(sol_moved_bu, true))
+
+        # Second improvement function
+        sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :bf)
         new_weight_moved = sol_interchanged_bu.Weight
-        if new_weight_moved < prev_weight
-            improvement = true
+        push!(improvements, new_weight_moved < prev_weight)
+        if improvements[end]
             prev_weight = new_weight_moved
+            #println("En el loop $loop el movimiento intercambio mejora con un $new_weight_moved")
+            oldSol = sol_interchanged_bu  # Update oldSol if there was an improvement
         end
-        println(isFactible(sol_interchanged_bu, true))
-        sol_deactivated_center = deactivate_center_improve(sol_interchanged_bu, targets_lower, targets_upper)
+        #println(isFactible(sol_interchanged_bu, true))
+
+        # Third improvement function
+        sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
         new_weight_moved = sol_deactivated_center.Weight
-        if new_weight_moved < prev_weight
-            improvement = true
+        push!(improvements, new_weight_moved < prev_weight)
+        if improvements[end]
             prev_weight = new_weight_moved
+            #println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
+            oldSol = sol_deactivated_center  # Update oldSol if there was an improvement
         end
-        println(isFactible(sol_deactivated_center, true))
-        oldSol = sol_deactivated_center
-        println(isFactible(oldSol, true))
-        println(oldSol.Weight)
+        #println(isFactible(sol_deactivated_center, true))
+
+        # Check for any improvements
+
+        improvement = any(improvements)
+        #println(isFactible(oldSol, true))
     end
+
     println(isFactible(oldSol, true))
     println(oldSol.Weight)
     println("\a")
