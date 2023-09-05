@@ -459,7 +459,7 @@ function oppCostAssignment(Y, instance::Types.Instance)
     oppMatrix = copy(D)
     for i in 1:B
         minimal = 0
-        minimals, _ = minimums(D[:, i], 1)
+        minimals, _ = minimums(D[:, i], 1) # cambiar por findmin en 1 solo
         minimal = minimals[1]
         oppMatrix[:, i] .= D[:, i] .- minimal
     end
