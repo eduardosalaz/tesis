@@ -4,8 +4,8 @@ using Dates
 function test_load()
     vals = rand(100000000)
     sort!(vals)
-    vals = vals .+ 1.242142131
-    return (sum(vals) * 2344.23433)
+    vals = vals .+ 1.24214212423431 .- 0.12232431253
+    return (sum(vals) * 2344.2435343433)
 end
 
 function test_load2(valor)
@@ -62,8 +62,8 @@ end
 
 function main()
     println(Threads.nthreads())
-    grasp1(5)
-    grasp2(5)
+    grasp1(10)
+    grasp2(10)
 end
 
 main()
