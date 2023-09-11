@@ -419,31 +419,6 @@ function update_constraints(M, V, R, i, j, values_matrix, risk_vec, targets, β)
     return constraints
 end
 
-function compute_assignments_and_opportunity_costs(D::Matrix{Int64}, Y::Vector{Int}, N::Int)
-    _, num_clients = size(D)
-    best_assignments = Dict{Int, Vector{Tuple{Int64, Int}}}()
-    pq = PriorityQueue{Int, Int64}(Base.Order.Reverse)
-    for j in 1:num_clients
-        # Use a temporary array to store the facility opportunity costs for this client
-        costs = Tuple{Int64, Int}[]
-        for (i, yi) in enumerate(Y)
-            if yi == 1
-                push!(costs, (D[i, j], i))
-            end
-        end
-        # Sort the costs
-        sort!(costs)
-        # Store the top N assignments for this client
-        best_assignments[j] = costs[1:N]
-        # Calculate the opportunity cost and populate the priority queue
-        for i in 1:(N-1)
-            opp_cost = costs[i + 1][1] - costs[i][1]
-            enqueue!(pq, j, opp_cost)  # The key is now a tuple (client, index of assignment)
-        end
-    end
-    return best_assignments, pq
-end
-
 function encode_key(client_index, facility_index, max_facilities)
     return client_index * max_facilities + facility_index
 end
@@ -457,11 +432,12 @@ end
 function compute_assignments_and_opportunity_costs(D::Matrix{Int64}, Y::Vector{Int}, N::Int)
     _, num_clients = size(D)
     max_facilities = length(Y)
-    best_assignments = Dict{Int, Vector{Int64}}()
-    pq = PriorityQueue{Int, Int64}(Base.Order.Reverse)
+    best_assignments = Dict{Int,Vector{Int64}}()
+    pq = PriorityQueue{Int,Int64}(Base.Order.Reverse)
+
     for j in 1:num_clients
         # Use a temporary array to store the facility opportunity costs for this client
-        costs = Tuple{Int64, Int}[]
+        costs = Tuple{Int64,Int}[]
         for (i, yi) in enumerate(Y)
             if yi == 1
                 push!(costs, (D[i, j], i))
@@ -470,7 +446,7 @@ function compute_assignments_and_opportunity_costs(D::Matrix{Int64}, Y::Vector{I
         # Sort the costs
         sort!(costs)
         # Store the top N assignments for this client
-        best_assignments[j] =  best_assignments[j] = [cost[2] for cost in costs[1:N]] # extrae el indice nada mas
+        best_assignments[j] = best_assignments[j] = [cost[2] for cost in costs[1:N]] # extrae el indice nada mas
         # Calculate the opportunity cost as the largest difference among all possible assignments
         opp_cost = costs[end][1] - costs[1][1]  # Difference between largest and smallest costs
         # Use the smallest facility index for this client to form the unique key
@@ -480,7 +456,7 @@ function compute_assignments_and_opportunity_costs(D::Matrix{Int64}, Y::Vector{I
     return best_assignments, pq
 end
 
-best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, 3)
+best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, 10)
 
 
 """
@@ -514,6 +490,32 @@ best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, 3)
                         update_best_assignments_for_all_clients(facility, best_assignments)
                     BREAK out of loop, move to next client
 
+    1. Assignment Loop
+    assigned_clients = Set() # An empty set to keep track of clients who have been assigned
+    assignment_dict = Dict() # A dictionary to store which facility each client is assigned to
+
+    WHILE !isempty(priority_queue) AND length(assigned_clients) < number_of_clients
+        client, _ = dequeue(priority_queue) # Get the client with the highest opportunity cost
+
+        IF client not in assigned_clients
+            FOR facility in best_assignments[client]
+                IF can_assign(facility) # Check constraints or facility capacity
+                    assignment_dict[client] = facility
+                    ADD client to assigned_clients
+                    DECREASE capacity of facility
+                    
+                    IF facility is full
+                        update_best_assignments_for_all_clients(facility, best_assignments)
+                    END IF
+
+                    BREAK # Move to the next client in the priority queue
+                END IF
+            END FOR
+        END IF
+    END WHILE
+
+    RETURN assignment_dict
+
 5. Handle Unassigned Clients
     FOR each client in clients
         IF client not in assigned_clients
@@ -528,7 +530,30 @@ FUNCTION update_best_assignments_for_all_clients(facility, best_assignments)
                 ADD this new facility to best_assignments[client]
 """
 function oppCostQueue(Y, instance::Types.Instance)
-
+    D = copy(instance.D)
+    X = zeros(Int, size(D))
+    max_facilities = length(Y)
+    N = instance.P # podemos hacerlo en proporcion a P, no necesariamente tiene que ser P
+    best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
+    assigned_bus = Set([])
+    while !isempty(pq) && length(assigned_bus) < Instance.P
+        indices, cost = dequeue!(pq)
+        bu, _ = decode_key(indices, max_facilities)
+        if bu ∉ assigned_bus
+            for center in best_assignments[bu]
+                full = false
+                if can_assign(center)
+                    X[center, bu] = 1
+                    push!(assigned_bus, bu)
+                    full = update_center_capacity(center, bu)
+                    if full
+                        update_assignments(center, best_assignments)
+                    end
+                    break
+                end
+            end
+        end
+    end
 end
 
 
