@@ -394,6 +394,28 @@ function calculate_target(instance)
     return targets
 end
 
+function calculate_targets_upper(instance)
+    M = instance.M
+    μ = instance.μ
+    T = instance.T
+    targets = Vector{Int64}(undef, M)
+    for m in 1:M
+        targets[m] = round(Int, (1 * μ[m][1] * (1 + T[m]))) # corregir esto
+    end
+    return targets
+end
+
+function calculate_targets_lower(instance)
+    M = instance.M
+    μ = instance.μ
+    T = instance.T
+    targets = Vector{Int64}(undef, M)
+    for m in 1:M
+        targets[m] = round(Int, (1 * μ[m][1] * (1 - T[m]))) # corregir esto
+    end
+    return targets
+end
+
 function start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
     for i in 1:S
         for m in 1:M
@@ -450,13 +472,12 @@ function compute_assignments_and_opportunity_costs(D::Matrix{Int64}, Y::Vector{I
         # Calculate the opportunity cost as the largest difference among all possible assignments
         opp_cost = costs[end][1] - costs[1][1]  # Difference between largest and smallest costs
         # Use the smallest facility index for this client to form the unique key
-        unique_key = encode_key(j, costs[1][2], max_facilities)
-        enqueue!(pq, unique_key, opp_cost)
+        # unique_key = encode_key(j, costs[1][2], max_facilities)
+        enqueue!(pq, j, opp_cost)
     end
     return best_assignments, pq
 end
 
-best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, 10)
 
 
 """
@@ -533,16 +554,19 @@ function oppCostQueue(Y, instance::Types.Instance)
     D = copy(instance.D)
     X = zeros(Int, size(D))
     max_facilities = length(Y)
+    targets = calculate_targets_lower(instance)
+    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, zeros(S, M), zeros(S))
     N = instance.P # podemos hacerlo en proporcion a P, no necesariamente tiene que ser P
     best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
-    assigned_bus = Set([])
+    full_centers = Set()
+    assigned_bus = Set()
+
     while !isempty(pq) && length(assigned_bus) < Instance.P
-        indices, cost = dequeue!(pq)
-        bu, _ = decode_key(indices, max_facilities)
+        bu, cost = dequeue!(pq)
         if bu ∉ assigned_bus
             for center in best_assignments[bu]
                 full = false
-                if can_assign(center)
+                if center ∉ full_centers
                     X[center, bu] = 1
                     push!(assigned_bus, bu)
                     full = update_center_capacity(center, bu)
@@ -556,6 +580,9 @@ function oppCostQueue(Y, instance::Types.Instance)
     end
 end
 
+function update_center_capacity(center, bu)
+    return true
+end
 
 function oppCostAssignment(Y, instance::Types.Instance)
     D = copy(instance.D)
