@@ -56,6 +56,9 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
     elseif assign_method == "opp"
         println("OPP COST")
         X = oppCostAssignment(Y_bool, instancia)
+    elseif assign_method == "queue"
+        println("QUEUE")
+        X = oppCostQueue(Y_bool, instancia)
     end
     after1 = Dates.now()
     delta_assign = after1 - after_init
@@ -553,35 +556,165 @@ FUNCTION update_best_assignments_for_all_clients(facility, best_assignments)
 function oppCostQueue(Y, instance::Types.Instance)
     D = copy(instance.D)
     X = zeros(Int, size(D))
-    max_facilities = length(Y)
     targets = calculate_targets_lower(instance)
+    β = instance.β[1]
+    S = instance.S
+    B = instance.B
+    M = instance.M
+    V = instance.V
+    P = instance.P
+    R = instance.R
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, zeros(S, M), zeros(S))
     N = instance.P # podemos hacerlo en proporcion a P, no necesariamente tiene que ser P
     best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
     full_centers = Set()
     assigned_bus = Set()
-
-    while !isempty(pq) && length(assigned_bus) < Instance.P
-        bu, cost = dequeue!(pq)
+    unassigned_bus = Set(collect(1:B))
+    while !isempty(pq) && length(assigned_bus) < B
+        bu = dequeue!(pq)
         if bu ∉ assigned_bus
             for center in best_assignments[bu]
                 full = false
+                fulls_m = zeros(Int, M)
                 if center ∉ full_centers
-                    X[center, bu] = 1
-                    push!(assigned_bus, bu)
-                    full = update_center_capacity(center, bu)
-                    if full
-                        update_assignments(center, best_assignments)
+                    for m in 1:M
+                        values_matrix[center, m] += V[m][bu]
+                        if values_matrix[center, m] > targets[m]
+                            fulls_m[m] = 1
+                        end
                     end
+                    if all(x->x==1, fulls_m)
+                        push!(full_centers, center)
+                    end
+                    risk_vec[center] += R[bu]
+                    if risk_vec[center] > β
+                        push!(full_centers, center)
+                    end
+                    push!(assigned_bus, bu)
+                    pop!(unassigned_bus, bu)
+                    X[center, bu] = 1
                     break
                 end
             end
         end
     end
+    todos = true
+    count = 0
+    for col in eachcol(X)
+        if all(x -> x == 0, col)
+            count += 1
+            todos = false
+        end
+    end
+    @show length(unassigned_bus)
+    X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
+    return X
 end
 
-function update_center_capacity(center, bu)
-    return true
+function handle_unassigned_clients2(X, instance, best_assignments, unassigned_clients, values_matrix, risk_vec)
+    targets_upper = calculate_targets_upper(instance)
+    S = instance.S
+    M = instance.M
+    V = instance.V
+    β = instance.β[1]
+    R = instance.R
+
+    # Only loop over unassigned clients
+    for client in unassigned_clients
+        assigned = false
+
+        # Sort facilities for this client based on their remaining risk capacity
+        sorted_best_assignments = sort(best_assignments[client], by = f -> β - risk_vec[f], rev=true)
+
+        for facility in sorted_best_assignments
+            potential_assignment_valid = true
+            for m in 1:M
+                if values_matrix[facility, m] + V[m][client] > targets_upper[m]
+                    potential_assignment_valid = false
+                    break
+                end
+            end
+
+            if risk_vec[facility] + R[client] > β
+                potential_assignment_valid = false
+            end
+
+            if potential_assignment_valid
+                X[facility, client] = 1
+                assigned = true
+                delete!(unassigned_clients, client)
+                for m in 1:M
+                    values_matrix[facility, m] += V[m][client]
+                end
+                risk_vec[facility] += R[client]
+                break  # Assign to the first valid facility and then exit the inner loop
+            end
+        end
+
+        if !assigned
+            println("Client $client could not be assigned.")
+        end
+    end
+
+    println("Number of unassigned clients: $(length(unassigned_clients))")
+    return X
+end
+
+
+function handle_unassigned_clients(X, instance, best_assignments, unassigned_clients, values_matrix, risk_vec)
+    targets_upper = calculate_targets_upper(instance)
+    S = instance.S
+    M = instance.M
+    V = instance.V
+    β = instance.β[1]
+    R = instance.R
+    # Only loop over unassigned clients
+    for client in unassigned_clients
+        assigned = false
+        @show client
+        for facility in best_assignments[client]
+            potential_assignment_valid = true
+            for m in 1:M
+                if values_matrix[facility, m] + V[m][client] > targets_upper[m]
+                    potential_assignment_valid = false
+                    break
+                end
+            end
+            if risk_vec[facility] + R[client] > β
+                potential_assignment_valid = false
+                break
+            end
+            if potential_assignment_valid
+                X[facility, client] = 1
+                assigned = true
+                pop!(unassigned_clients, client)
+                for m in 1:M
+                    values_matrix[facility, m] += V[m][client]
+                end
+                risk_vec[facility] += R[client]
+                break  # Assign to the first valid facility and then exit the inner loop
+            end
+        end
+        if !assigned
+            @show client
+        end
+    end
+    @show length(unassigned_clients)
+    return X
+end
+
+function update_center_capacity(center, bu, values_matrix, risk_vec, targets, β, M, V, R)
+    for m in 1:M
+        values_matrix[center, m] += V[m][bu]
+        if values_matrix[center, m] > targets[m]
+            return true
+        end
+    end
+    risk_vec[center] += R[center]
+    if risk_vec[center] > β
+        return true
+    end
+    return falses
 end
 
 function oppCostAssignment(Y, instance::Types.Instance)
