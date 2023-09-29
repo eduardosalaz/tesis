@@ -583,7 +583,7 @@ function oppCostQueue(Y, instance::Types.Instance)
                             fulls_m[m] = 1
                         end
                     end
-                    if all(x->x==1, fulls_m)
+                    if all(x -> x == 1, fulls_m)
                         push!(full_centers, center)
                     end
                     risk_vec[center] += R[bu]
@@ -610,6 +610,23 @@ function oppCostQueue(Y, instance::Types.Instance)
     X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
     return X
 end
+# Function to calculate how much an assignment violates constraints
+function calculate_violation(facility, client, targets_upper, V, M, R, β, values_matrix, risk_vec)
+    violation = 0
+    for m in 1:M
+        excess = values_matrix[facility, m] + V[m][client] - targets_upper[m]
+        if excess > 0
+            violation += excess
+        end
+    end
+    excess_risk = risk_vec[facility] + R[client] - β
+    if excess_risk > 0
+        violation += excess_risk
+    end
+    return violation
+end
+
+
 
 function handle_unassigned_clients2(X, instance, best_assignments, unassigned_clients, values_matrix, risk_vec)
     targets_upper = calculate_targets_upper(instance)
@@ -622,10 +639,8 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
     # Only loop over unassigned clients
     for client in unassigned_clients
         assigned = false
-
         # Sort facilities for this client based on their remaining risk capacity
-        sorted_best_assignments = sort(best_assignments[client], by = f -> β - risk_vec[f], rev=true)
-
+        sorted_best_assignments = sort(best_assignments[client], by=f -> β - risk_vec[f], rev=true)
         for facility in sorted_best_assignments
             potential_assignment_valid = true
             for m in 1:M
@@ -634,11 +649,9 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
                     break
                 end
             end
-
             if risk_vec[facility] + R[client] > β
                 potential_assignment_valid = false
             end
-
             if potential_assignment_valid
                 X[facility, client] = 1
                 assigned = true
@@ -650,15 +663,30 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
                 break  # Assign to the first valid facility and then exit the inner loop
             end
         end
-
         if !assigned
-            println("Client $client could not be assigned.")
+            min_violation = 10000000
+            least_violating_facility = -1
+            for facility in sorted_best_assignments
+                violation = calculate_violation(facility, client, targets_upper, V, M, R, β, values_matrix, risk_vec)
+                if violation < min_violation
+                    min_violation = violation
+                    least_violating_facility = facility
+                end
+            end
+            # Assign the client to the least violating facility
+            X[least_violating_facility, client] = 1
+            for m in 1:M
+                values_matrix[least_violating_facility, m] += V[m][client]
+            end
+            risk_vec[least_violating_facility] += R[client]
+            println("Client $client was assigned to facility $least_violating_facility with a violation of $min_violation.")
         end
     end
 
     println("Number of unassigned clients: $(length(unassigned_clients))")
     return X
 end
+
 
 
 function handle_unassigned_clients(X, instance, best_assignments, unassigned_clients, values_matrix, risk_vec)
