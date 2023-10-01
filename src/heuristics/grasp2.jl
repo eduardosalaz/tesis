@@ -19,24 +19,48 @@ function grasp(αₗ, αₐ, max_iters, instance)
     Weight = 0
     iters = 0
     targets_lower, targets_upper = calculate_targets(instance)
-
+    Xs = []
+    Ys = []
     for iter in 1:max_iters
-        println(iter)
+        #println(iter)
         Y, time_loc = pdisp_grasp(instance, αₗ)
-        X, time_alloc = oppCostQueueGRASP(instance, Y, αₐ)
+        X, time_alloc = oppCostQueueGRASP(Y, instance, αₐ)
         Weight = 0
         indices = findall(x -> x == 1, X)
         for indice in indices
             Weight += D[indice]
         end
-        @show Weight
+        #@show Weight
         oldSol = Types.Solution(instance, X, Y, Weight, time_loc + time_alloc)
         repair_delta = 0
         factible_after_repair = false
-        factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
+        factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper, false)
         if !factible
+            repaired_1 = repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
+            fac_repaired_1, cons = isFactible(repaired_1, false)
+            if !fac_repaired_1
+                repaired_2 = repair_solution2(oldSol, constraints, targets_lower, targets_upper, remove, add)
+                fac_repaired_2, cons = isFactible(repaired_2, false)
+                if fac_repaired_2
+                    repair_algorithm = 2
+                    factible_after_repair = true
+                    repaired = repaired_2
+                end
+            else
+                repaired = repaired_1
+                factible_after_repair = true
+            end
+            if factible_after_repair
+                original_weight = repaired.Weight
+                weight_before = repaired.Weight
+                #println("Reparada")
+            end
+        end
+        if !factible_after_repair
             continue
         end
+        #println(original_weight)
+        oldSol = repaired
         improvement = true
         while improvement
             improvement = false  # Reset the flag at the start of each loop iteration
@@ -79,11 +103,11 @@ function grasp(αₗ, αₐ, max_iters, instance)
             #println(isFactible(sol_deactivated_center, true))
 
             # Check for any improvements
-            println(prev_weight)
 
             improvement = any(improvements)
             #println(isFactible(oldSol, true))
         end
+        #@show oldSol.Weight
         if oldSol.Weight < bestWeight
             bestSol = oldSol
             bestWeight = oldSol.Weight
@@ -92,7 +116,6 @@ function grasp(αₗ, αₐ, max_iters, instance)
         #gap_improved = (1 - (weight_exac / weight_after)) * 100
         #abs_improved = weight_before - weight_after
         #rel_improved = ((abs_improved) / weight_after) * 100
-    iters += 1
     end
     return bestSol
 end
@@ -180,6 +203,7 @@ function pick_center_from_rcl(rcl, full_centers)
 end
 
 function oppCostQueueGRASP(Y, instance::Types.Instance, α)
+    before_alloc = Dates.now()
     D = copy(instance.D)
     X = zeros(Int, size(D))
     targets = calculate_targets_lower(instance)
@@ -236,9 +260,11 @@ function oppCostQueueGRASP(Y, instance::Types.Instance, α)
             todos = false
         end
     end
-    @show length(unassigned_bus)
     X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
-    return X
+    after_alloc = Dates.now()
+    delta_alloc = after_alloc - before_alloc
+    delta_alloc_milli = round(delta_alloc, Millisecond)
+    return X, delta_alloc_milli.value
 end
 
 function handle_unassigned_clients2(X, instance, best_assignments, unassigned_clients, values_matrix, risk_vec)
@@ -286,7 +312,7 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
         end
     end
 
-    println("Number of unassigned clients: $(length(unassigned_clients))")
+    # println("Number of unassigned clients: $(length(unassigned_clients))")
     return X
 end
 
@@ -500,11 +526,12 @@ function main_grasp()
     file_name = ARGS[1]
     #file_name = "instances\\625_78_32\\inst_1_625_78_32.jld2"
     instance = read_instance(file_name)
-    αₗ = 0.3
-    αₐ = 0.1
-    iters = 20
+    αₗ = 0.2
+    αₐ = 0.2
+    iters = 50
     solution = grasp(αₗ, αₐ, iters, instance)
-    write_solution(solucion, "solucion_grasp_625_nuevo.jld2")
+    println(solution.Weight)
+    write_solution(solution, "solucion_grasp_625_nuevo5.jld2")
 end
 
 main_grasp()
