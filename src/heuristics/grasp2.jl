@@ -3,13 +3,14 @@ include("ls.jl")
 using Types
 using Dates
 using DelimitedFiles
+using TimerOutputs
 
 function grasp(αₗ, αₐ, max_iters, instance)
+    to = TimerOutput()
     start = now()
     bestSol = nothing
     bestWeight = 100000000
     instancia = instance
-    iter_improve = 0
     B = instancia.B
     S = instancia.S
     P = instancia.P
@@ -20,11 +21,13 @@ function grasp(αₗ, αₐ, max_iters, instance)
     iters = 0
     targets_lower, targets_upper = calculate_targets(instance)
     Xs = []
+    count_repair_1 = 0
+    count_repair_2 = 0
     Ys = []
     for iter in 1:max_iters
         #println(iter)
-        Y, time_loc = pdisp_grasp(instance, αₗ)
-        X, time_alloc = oppCostQueueGRASP(Y, instance, αₐ)
+        Y, time_loc = @timeit to "pdisp" pdisp_grasp(instance, αₗ)
+        X, time_alloc = @timeit to "queue" oppCostQueueGRASP(Y, instance, αₐ)
         Weight = 0
         indices = findall(x -> x == 1, X)
         for indice in indices
@@ -36,17 +39,19 @@ function grasp(αₗ, αₐ, max_iters, instance)
         factible_after_repair = false
         factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper, false)
         if !factible
-            repaired_1 = repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
+            repaired_1 = @timeit to "repair1" repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
             fac_repaired_1, cons = isFactible(repaired_1, false)
             if !fac_repaired_1
-                repaired_2 = repair_solution2(oldSol, constraints, targets_lower, targets_upper, remove, add)
+                repaired_2 = @timeit to "repair2" repair_solution2(oldSol, constraints, targets_lower, targets_upper, remove, add)
                 fac_repaired_2, cons = isFactible(repaired_2, false)
                 if fac_repaired_2
                     repair_algorithm = 2
+                    count_repair_2 += 1
                     factible_after_repair = true
                     repaired = repaired_2
                 end
             else
+                count_repair_1 += 1
                 repaired = repaired_1
                 factible_after_repair = true
             end
@@ -62,7 +67,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
         #println(original_weight)
         oldSol = repaired
         improvement = true
-        while improvement
+        @timeit to "ls" while improvement
             improvement = false  # Reset the flag at the start of each loop iteration
             prev_weight = oldSol.Weight
 
@@ -70,7 +75,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
             improvements = Bool[]
 
             # First improvement function
-            sol_moved_bu = simple_bu_improve(oldSol, targets_lower, targets_upper, :ff)
+            @timeit to "ls simple" sol_moved_bu = simple_bu_improve(oldSol, targets_lower, targets_upper, :ff)
             new_weight_moved = sol_moved_bu.Weight
             push!(improvements, new_weight_moved < prev_weight)
             if improvements[end]
@@ -79,25 +84,23 @@ function grasp(αₗ, αₐ, max_iters, instance)
                 oldSol = sol_moved_bu  # Update oldSol if there was an improvement
             end
             #println(isFactible(sol_moved_bu, true))
-
             # Second improvement function
-            sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :ff)
+            @timeit to "ls interchange" sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :ff)
             new_weight_moved = sol_interchanged_bu.Weight
             push!(improvements, new_weight_moved < prev_weight)
             if improvements[end]
                 prev_weight = new_weight_moved
-                #println("En el loop $loop el movimiento intercambio mejora con un $new_weight_moved")
+                #println("En el loop loop el movimiento intercambio mejora con un new_weight_moved")
                 oldSol = sol_interchanged_bu  # Update oldSol if there was an improvement
             end
             #println(isFactible(sol_interchanged_bu, true))
-
             # Third improvement function
-            sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
+            @timeit to "ls deactivate" sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
             new_weight_moved = sol_deactivated_center.Weight
             push!(improvements, new_weight_moved < prev_weight)
             if improvements[end]
                 prev_weight = new_weight_moved
-                #println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
+                #println("En el loop loop el movimiento desactivar mejora con un new_weight_moved")
                 oldSol = sol_deactivated_center  # Update oldSol if there was an improvement
             end
             #println(isFactible(sol_deactivated_center, true))
@@ -117,8 +120,14 @@ function grasp(αₗ, αₐ, max_iters, instance)
         #abs_improved = weight_before - weight_after
         #rel_improved = ((abs_improved) / weight_after) * 100
     end
+    @show count_repair_1
+    @show count_repair_2
+    show(to)
     return bestSol
 end
+
+
+
 
 function calculate_targets_upper(instance)
     M = instance.M
@@ -528,10 +537,10 @@ function main_grasp()
     instance = read_instance(file_name)
     αₗ = 0.2
     αₐ = 0.2
-    iters = 50
+    iters = 1
     solution = grasp(αₗ, αₐ, iters, instance)
     println(solution.Weight)
-    write_solution(solution, "solucion_grasp_625_nuevo5.jld2")
+    write_solution(solution, "solucion_grasp_2650_nuevo8.jld2")
 end
 
 main_grasp()
