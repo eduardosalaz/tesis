@@ -537,10 +537,10 @@ function main_grasp()
     instance = read_instance(file_name)
     αₗ = 0.2
     αₐ = 0.2
-    iters = 1
+    iters = parse(Int, ARGS[2])
     solution = grasp(αₗ, αₐ, iters, instance)
     println(solution.Weight)
-    write_solution(solution, "solucion_grasp_2650_nuevo8.jld2")
+    write_solution(solution, "solucion_grasp_625_nuevo8.jld2")
 end
 
 main_grasp()
