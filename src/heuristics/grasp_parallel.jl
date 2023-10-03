@@ -125,8 +125,8 @@ function grasp(αₗ, αₐ, max_iters, instance)
         #rel_improved = ((abs_improved) / weight_after) * 100
     end
     finish = now()
-    @show count_repair_1
-    @show count_repair_2
+    # @show count_repair_1
+    #@show count_repair_2
     delta = finish - start
     delta_millis = round(delta, Millisecond)
     println(delta_millis.value)
