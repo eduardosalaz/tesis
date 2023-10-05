@@ -141,56 +141,6 @@ function get_magnitude_contraints(usables_i, B, M, V, R, X, values_matrix, risk_
     return value
 end
 
-function update_magnitude_constraints_simple(usables_i, values_matrix, risk_vec, targets_lower, targets_upper, β, V, R, i, ĩ, j)
-    value = 0
-    M = 3
-    for m in 1:M
-        values_matrix[i, m] += V[m][j]
-        values_matrix[ĩ, m] -= V[m][j]
-    end
-    risk_vec[i] += R[j]
-    risk_vec[ĩ] -= R[j]
-
-    for i in usables_i
-        for m in 1:M
-            if values_matrix[i, m] > targets_upper[m]
-                value += abs(targets_upper[m] - values_matrix[i, m])
-            elseif values_matrix[i, m] < targets_lower[m]
-                value += abs(targets_lower[m] - values_matrix[i, m])
-            end
-        end
-        if risk_vec[i] > β
-            value += abs(β - risk_vec[i])
-        end
-    end
-    return value
-end
-
-function update_magnitude_constraints_interchange(usables_i, values_matrix, risk_vec, targets_lower, targets_upper, β, V, R, i, ĩ, j₁, j₂)
-    value = 0
-    M = 3
-    for m in 1:M
-        values_matrix[i, m] = values_matrix[i, m] + V[m][j₁] - V[m][j₂]
-        values_matrix[ĩ, m] = values_matrix[ĩ, m] + V[m][j₂] - V[m][j₁]
-    end
-    risk_vec[i] = risk_vec[i] - R[j₂] + R[j₁]
-    risk_vec[ĩ] = risk_vec[i] - R[j₁] + R[j₂]
-
-    for i in usables_i
-        for m in 1:M
-            if values_matrix[i, m] > targets_upper[m]
-                value += abs(targets_upper[m] - values_matrix[i, m])
-            elseif values_matrix[i, m] < targets_lower[m]
-                value += abs(targets_lower[m] - values_matrix[i, m])
-            end
-        end
-        if risk_vec[i] > β
-            value += abs(β - risk_vec[i])
-        end
-    end
-    return value
-end
-
 function calculate_targets(instance)
     M = instance.M
     μ = instance.μ
@@ -214,47 +164,6 @@ function start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
     return values_matrix, risk_vec
 end
 
-function update_constraints(M, V, R, i, j, values_matrix, risk_vec, targets, β)
-    constraints = 0
-    for m in 1:M
-        values_matrix[i, m] += V[m][j]
-        if values_matrix[i, m] > targets[m]
-            constraints += 1
-        end
-    end
-    risk_vec[i] += R[j]
-    if risk_vec[i] > β
-        constraints += 1
-    end
-    return constraints
-end
-
-function checkFactibilityCenter(M, V, R, ĩ, i, j, values_matrix, risk_vec, targets_lower, targets_upper, β)
-    factible = false
-    for m in 1:M
-        values_matrix[ĩ, m] -= V[m][j] # restale a ĩ, previo
-        values_matrix[i, m] += V[m][j] # sumale a i, nuevo
-        if values_matrix[i, m] < targets_upper[m]
-            factible = true
-        end
-        if values_matrix[i, m] > targets_lower[m]
-            factible = true
-        end
-        if values_matrix[ĩ, m] > targets_lower[m]
-            factible = true
-            # naturalmente si al hacer el cambio, el ĩ incumple con lower, no lo queremos hacer
-        end
-    end
-    risk_vec[ĩ] -= R[j] # restale a ĩ el viejo
-    risk_vec[i] += R[j] # sumale a i el nuevo
-    if risk_vec[i] < β
-        factible = true
-    end
-    if risk_vec[ĩ] < β
-        factible = true
-    end
-    return factible
-end
 
 function count_k(P, Sk)
     count = zeros(Int, length(Sk))
@@ -966,7 +875,6 @@ function interchange_bu_improve(solution, targets_lower, targets_upper, strategy
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
-
 function minimums(matrix::Matrix, n)::Tuple{Vector{Int64},Vector{CartesianIndex{2}}}
     type = eltype(matrix)
     vals = fill(10000000000000, n)
@@ -984,6 +892,107 @@ function minimums(matrix::Matrix, n)::Tuple{Vector{Int64},Vector{CartesianIndex{
     indices = [x[2] for x in arr]
     return vals, indices
 end
+
+function get_best_assignments(D, Y, N)
+    _, num_clients = size(D)
+    best_assignments = Dict{Int,Vector{Int64}}()
+    for j in 1:num_clients
+        # Use a temporary array to store the facility opportunity costs for this client
+        costs = Tuple{Int64,Int}[]
+        for (i, yi) in enumerate(Y)
+            if yi == 1
+                push!(costs, (D[i, j], i))
+            end
+        end
+        # Sort the costs
+        sort!(costs)
+        # Store the top N assignments for this client
+        best_assignments[j] = best_assignments[j] = [cost[2] for cost in costs[1:N]] # extrae el indice nada mas
+    end
+    return best_assignments
+end
+
+"""
+Pre-Processing:
+
+    Initialization: Start with a given solution (feasible or not).
+
+    Compute Data Structures for Quick Lookups:
+        Using the distance matrix DD, compute the get_best_assignments function which provides the top NN centers for each client.
+        Similarly, calculate the get_best_clients_for_centers which lists the top NN clients for each center.
+
+Local Search:
+
+    While there is potential for improvement:
+
+    a. Iterate Over Centers:
+        For every currently active center ı~ı~:
+            Consider deactivating this center, making its clients "orphaned".
+            For every currently inactive center i✶i✶:
+                Consider activating this center.
+
+    b. Fulfilling New Centers:
+        Use the get_best_clients_for_centers to get the nearest clients for i✶i✶.
+        Assign clients to i✶i✶ until it becomes feasible or until there's no more benefit in adding more clients.
+        Ensure that removing a client from another center doesn't make the original center unfeasible.
+
+    c. Reassign Orphaned Clients:
+        For each orphaned client (previously assigned to ı~ı~):
+            Use the get_best_assignments data structure to find the most suitable center for this client.
+            Reassign the client to a feasible center, ensuring the center remains feasible post-assignment.
+
+    d. Evaluate Solution:
+        After attempting to activate a new center and reassigning clients, evaluate the new solution.
+        If the new solution is better (e.g., has a lower total distance or better meets other criteria), keep it; otherwise, revert to the previous solution.
+
+    If a better solution is found during an iteration, continue the loop. Otherwise, terminate the local search.
+# Pre-Processing
+initial_solution = ...  # Your initial solution
+
+# Compute quick lookup structures
+best_assignments_for_clients = get_best_assignments(D, Y, N)
+best_clients_for_centers = get_best_clients_for_centers(D, Y, N)
+
+best_solution = initial_solution
+improvement = true
+
+# Local Search
+while improvement
+    improvement = false
+
+    for each active_center ĩ in best_solution
+        for each inactive_center i✶ in best_solution
+            
+            # Deactivate current center ĩ
+            orphaned_clients = deactivate_center(ĩ)
+
+            # Activate new center i✶ and assign its nearest clients
+            assign_nearest_clients(i✶, best_clients_for_centers)
+
+            # Reassign orphaned clients
+            for client in orphaned_clients
+                best_new_center = find_best_center_for_client(client, best_assignments_for_clients)
+                if best_new_center is feasible after assignment
+                    assign(client, best_new_center)
+                end
+            end
+
+            # Evaluate the new solution
+            new_solution = compute_new_solution(...)  # With the changes made
+            if is_better(new_solution, best_solution)
+                best_solution = new_solution
+                improvement = true
+            else
+                # If the new solution isn't better, revert changes
+                revert_changes()
+            end
+        end
+    end
+end
+
+# Post-Processing
+return best_solution
+"""
 
 function deactivate_center_improve(solution, targets_lower, targets_upper, strategy=:bf)
     X = copy(solution.X)
@@ -1007,15 +1016,11 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
 
-    for i in not_usables_i
-        D[i, :] .= 10000000000000
-    end
-
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
+    best_assignments = get_best_assignments(D, Y, P)
     count = count_k(usables_i, Sk)
     improvement = true
     # hacerlo solo FF
-
     while improvement
         improvement = false
         for ĩ in usables_i
@@ -1184,9 +1189,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                             risk_vec[i] -= R[j]
                             X[:, j] .= 0 # deshacemos asignaciones de los clientes
                         end
-
                         X[i✶, :] .= 0 #deshaz cualquier asignacion al nuevo centro
-
                         for (i_old, j_old) in ij_prev_assignments
                             X[i_old, j_old] = 1 # pon la asignacion previa de vuelta
                         end
@@ -1203,7 +1206,6 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
             end
         end
     end
-
     indices = findall(x -> x == 1, X)
     Weight = 0
     for indice in indices
@@ -1359,7 +1361,6 @@ function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
     end
     return Solution(instance, X, Y, Weight, solution.Time)
 end
-
 
 function mainLocal(; path="sol_1_625_78_32_relax_opp.jld2")
     solution = read_solution(path)
