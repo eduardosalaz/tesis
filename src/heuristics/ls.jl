@@ -1030,7 +1030,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     n = P
     not_usables_i = Set(findall(==(0), Y))
     usables_i = Set(findall(==(1), Y))
-    @show findall(==(1), @views X[:, 584])
+    #    @show findall(==(1), @views X[:, 584])
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
@@ -1043,7 +1043,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
         for ĩ in usables_i
             for i✶ in not_usables_i
                 values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
-                modified_X = Dict{Tuple{Int,Int}, Int}()
+                modified_X = Dict{Tuple{Int,Int},Int}()
                 useful = true
                 ĩₖ = node_type(ĩ, Sk)
                 i✶ₖ = node_type(i✶, Sk)
@@ -1052,15 +1052,15 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                 if count_ĩ <= Uk[ĩₖ] && count_ĩ >= Lk[ĩₖ] && count_i✶ <= Uk[i✶ₖ] && count_i✶ >= Lk[i✶ₖ]
                     js_assigned = findall(==(1), @views X[ĩ, :])
                     for j in js_assigned
-                        if !haskey(modified_X, (ĩ,j))
-                            modified_X[(ĩ,j)] = X[ĩ,j]
+                        if !haskey(modified_X, (ĩ, j))
+                            modified_X[(ĩ, j)] = X[ĩ, j]
                         end
                     end
                     X[ĩ, :] .= 0
                     js_assigned_set = Set(js_assigned)
                     weight_old_branch = sum(D[ĩ, js_assigned]) # total weight of old branch/center
                     weight_new_branch = 0
-                    factible_yet = false                    
+                    factible_yet = false
                     fulls_m = zeros(Int, M)
                     for client in best_clients_for_centers[i✶]
                         potential_assignment_valid = true
@@ -1085,7 +1085,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                                 end
                                 risk_vec[previous_i_client] -= R[client]
                                 risk_vec[i✶] += R[client]
-                            end                          
+                            end
                         else
                             for m in 1:M
                                 values_matrix[i✶, m] += V[m][client]
@@ -1096,21 +1096,21 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                             risk_vec[i✶] += R[client]
                         end
                         if potential_assignment_valid
-                            if client in js_assigned_set
-                                delete!(js_assigned_set, client)
-                            end
-                            if !haskey(modified_X, (i✶,client))
-                                modified_X[(i✶,client)] = X[i✶,client]
+                            if !haskey(modified_X, (i✶, client))
+                                modified_X[(i✶, client)] = X[i✶, client]
                             end
                             if previous_i_client !== nothing
-                                if !haskey(modified_X, (previous_i_client,client))
-                                    modified_X[(previous_i_client,client)] = X[previous_i_client,client]
+                                if !haskey(modified_X, (previous_i_client, client))
+                                    modified_X[(previous_i_client, client)] = X[previous_i_client, client]
                                 end
                                 X[previous_i_client, client] = 0
                             end
                             X[i✶, client] = 1
+                            if client in js_assigned_set
+                                delete!(js_assigned_set, client)
+                            end
                             weight_new_branch += D[i✶, client]
-                            if all(x->x==1, fulls_m)
+                            if all(x -> x == 1, fulls_m)
                                 factible_yet = true
                                 # ya llenamos el centro i✶
                                 break
@@ -1146,10 +1146,11 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                                         values_matrix[center, m] += V[m][orphaned_client]
                                     end
                                     risk_vec[center] += R[orphaned_client]
+                                    break
                                 end
                             end
-                        end                       
-                        if !assigned_yet 
+                        end
+                        if !assigned_yet
                             useful = false
                             println("no pude asignar a $orphaned_client")
                             break
@@ -1179,8 +1180,6 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     for indice in indices
         Weight += instance.D[indice]
     end
-    sol = Solution(instance, X, Y, Weight, solution.Time)
-    println(isFactible(sol, true))
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
@@ -1565,7 +1564,7 @@ function mainLocal(; path="sol_1_625_78_32_relax_opp.jld2")
     solution = read_solution(path)
     newSolution = @time localSearch(solution)
     write_solution(newSolution, "sol_ls_1_312.jld2")
-    plot_solution(newSolution, "plot_sol_1_312.png")
+    plot_solution(newSolution, "plot_sol_2_1250_nuevols.png")
     return newSolution
 end
 
@@ -1635,7 +1634,8 @@ function localSearch(solution)
             oldSol = sol_moved_bu  # Update oldSol if there was an improvement
         end
         #println(isFactible(sol_moved_bu, true))
-
+        """
+        """
         # Second improvement function
         sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :bf)
         new_weight_moved = sol_interchanged_bu.Weight
@@ -1674,5 +1674,5 @@ end
 if abspath(PROGRAM_FILE) == @__FILE__
     mainLocal(; path=ARGS[1])
 else
-    mainLocal(; path="sol_1_1250_155_62_pdisp_queue.jld2")
+    mainLocal(; path="sol_1_625_78_32_pdisp_opp.jld2")
 end
