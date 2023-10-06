@@ -1,5 +1,8 @@
 using Types, BenchmarkTools, DelimitedFiles
 using TimerOutputs
+using LinearAlgebra
+using LoopVectorization
+using Dates
 
 function isFactible(solution::Types.Solution, verbose=true)
     number_constraints_violated = 0
@@ -161,6 +164,85 @@ function start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
             values_matrix[i, m] = sum(X[i, j] * V[m][j] for j in 1:B)
         end
         risk_vec[i] = sum(X[i, j] * R[j] for j in 1:B)
+    end
+    return values_matrix, risk_vec
+end
+
+function start_constraints_blazing_fast(X::Matrix{Int}, V::Array{Vector{Int},1}, R::Vector{Int})
+    values_matrix = X * hcat(V...)
+    risk_vec = vec(sum(X .* R', dims=2))
+    return values_matrix, risk_vec
+end
+
+function start_constraints_optimized(S, B, M, V, R, X, values_matrix, risk_vec)
+    @inbounds for i in 1:S
+        risk_vec[i] = 0
+        for m in 1:M
+            values_matrix[i, m] = 0
+        end
+        @inbounds for j in 1:B
+            x_val = X[i, j]
+            risk_vec[i] += x_val * R[j]
+            for m in 1:M
+                values_matrix[i, m] += x_val * V[m][j]
+            end
+        end
+    end
+    return values_matrix, risk_vec
+end
+
+function start_constraints_optimized_v3(S, B, M, V, R, X, values_matrix, risk_vec)
+    @inbounds for i in 1:S
+        risk_vec[i] = 0
+        for m in 1:M
+            tmp = 0
+            @simd for j in 1:B
+                tmp += X[i, j] * V[m][j]
+            end
+            values_matrix[i, m] = tmp
+        end
+
+        @simd for j in 1:B
+            risk_vec[i] += X[i, j] * R[j]
+        end
+    end
+    return values_matrix, risk_vec
+end
+
+function start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+    @inbounds for i in 1:S
+        for m in 1:M
+            tmp = 0
+            @simd for j in 1:B
+                tmp += X[i, j] * V[m][j]
+            end
+            values_matrix[i, m] = tmp
+        end
+    end
+    mul!(risk_vec, X, R)
+    return values_matrix, risk_vec
+end
+
+@inline function prepare_values_risk_vec(S, M, values_matrix, risk_vec)
+    @inbounds for i in 1:S
+        risk_vec[i] = 0
+        for m in 1:M
+            values_matrix[i, m] = 0
+        end
+    end
+    return values_matrix, risk_vec
+end
+
+function start_constraints_optimized_v4(S, B, M, V, R, X, values_matrix, risk_vec)
+    values_matrix, risk_vec = prepare_values_risk_vec(S, M, values_matrix, risk_vec)
+    @turbo for i in 1:S
+        for j in 1:B
+            x_val = X[i, j]
+            risk_vec[i] += x_val * R[j]
+            for m in 1:M
+                values_matrix[i, m] += x_val * V[m][j]
+            end
+        end
     end
     return values_matrix, risk_vec
 end
@@ -1011,6 +1093,7 @@ return best_solution
 """
 
 function deactivate_center_improve(solution, targets_lower, targets_upper, strategy=:bf)
+    to = TimerOutput()
     X = copy(solution.X)
     Y = copy(solution.Y)
     instance = solution.Instance
@@ -1026,23 +1109,31 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     Uk = instance.Uk
     P = instance.P
     Weight = solution.Weight
-    @show Weight
-    n = P
     not_usables_i = Set(findall(==(0), Y))
     usables_i = Set(findall(==(1), Y))
-    #    @show findall(==(1), @views X[:, 584])
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
-    best_assignments_clients = get_best_assignments(D, P)
-    best_clients_for_centers = get_best_clients_for_centers(D, B)
+    @timeit to "Get best assignments clients" best_assignments_clients = get_best_assignments(D, P)
+    @timeit to "Get best clients for centers" best_clients_for_centers = get_best_clients_for_centers(D, B)
     count = count_k(usables_i, Sk)
     improvement = true
-    while improvement
+    total_time_spent = 0
+    @timeit to "Main while" while improvement
         improvement = false
         for ĩ in usables_i
             for i✶ in not_usables_i
-                values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
+                start = now()
+                values_matrix, risk_vec = start_constraints_optimized_v3(S, B, M, V, R, X, values_matrix, risk_vec)
+                #values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+                # values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
+                finish = now()
+                delta = finish - start
+                delta_millis = round(delta, Millisecond)
+                delta_val = delta_millis.value
+                total_time_spent += delta_val
+                #@timeit to "Calc start constraints" values_matrix, risk_vec = start_constraints_blazing_fast(X, V, R)
+                #@timeit to "Calc start constraints" values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
                 modified_X = Dict{Tuple{Int,Int},Int}()
                 useful = true
                 ĩₖ = node_type(ĩ, Sk)
@@ -1062,7 +1153,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                     weight_new_branch = 0
                     factible_yet = false
                     fulls_m = zeros(Int, M)
-                    for client in best_clients_for_centers[i✶]
+                    @timeit to "Asignar clientes a i✶" for client in best_clients_for_centers[i✶]
                         potential_assignment_valid = true
                         previous_i_client = findfirst(==(1), @views X[:, client])
                         if previous_i_client !== nothing # si es nothing entonces estaba asignado a ĩ
@@ -1121,7 +1212,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                     if !factible_yet
                         useful = false
                     end
-                    for orphaned_client in js_assigned_set
+                    @timeit to "Asignar clientes huerfanos" for orphaned_client in js_assigned_set
                         assigned_yet = false
                         for center in best_assignments_clients[orphaned_client]
                             if (center ∈ usables_i && center ≠ ĩ) || center == i✶
@@ -1152,7 +1243,6 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                         end
                         if !assigned_yet
                             useful = false
-                            println("no pude asignar a $orphaned_client")
                             break
                         end
                     end
@@ -1180,6 +1270,8 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     for indice in indices
         Weight += instance.D[indice]
     end
+    show(to)
+    @show total_time_spent
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
@@ -1564,7 +1656,7 @@ function mainLocal(; path="sol_1_625_78_32_relax_opp.jld2")
     solution = read_solution(path)
     newSolution = @time localSearch(solution)
     write_solution(newSolution, "sol_ls_1_312.jld2")
-    plot_solution(newSolution, "plot_sol_2_1250_nuevols.png")
+    plot_solution(newSolution, "plot_sol_2_1250_viejo_relax_ls.png")
     return newSolution
 end
 
