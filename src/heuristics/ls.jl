@@ -210,14 +210,8 @@ function start_constraints_optimized_v3(S, B, M, V, R, X, values_matrix, risk_ve
 end
 
 function start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
-    @inbounds for i in 1:S
-        for m in 1:M
-            tmp = 0
-            @simd for j in 1:B
-                tmp += X[i, j] * V[m][j]
-            end
-            values_matrix[i, m] = tmp
-        end
+    for m in eachindex(V)
+        mul!(view(values_matrix, :, m), X, V[m])
     end
     mul!(risk_vec, X, R)
     return values_matrix, risk_vec
@@ -1124,9 +1118,9 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
         for ĩ in usables_i
             for i✶ in not_usables_i
                 start = now()
-                values_matrix, risk_vec = start_constraints_optimized_v3(S, B, M, V, R, X, values_matrix, risk_vec)
-                #values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
-                # values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
+                #@timeit to "Start constraints" values_matrix, risk_vec = start_constraints_optimized_v3(S, B, M, V, R, X, values_matrix, risk_vec)
+                @timeit to "Start constraints" values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+                #@timeit to "Start contraints" values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
                 finish = now()
                 delta = finish - start
                 delta_millis = round(delta, Millisecond)
@@ -1271,7 +1265,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
         Weight += instance.D[indice]
     end
     show(to)
-    @show total_time_spent
+    #@show total_time_spent
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
