@@ -1,7 +1,6 @@
 using Types, BenchmarkTools, DelimitedFiles
 using TimerOutputs
 using LinearAlgebra
-using LoopVectorization
 using Dates
 
 function isFactible(solution::Types.Solution, verbose=true)
@@ -226,21 +225,6 @@ end
     end
     return values_matrix, risk_vec
 end
-
-function start_constraints_optimized_v4(S, B, M, V, R, X, values_matrix, risk_vec)
-    values_matrix, risk_vec = prepare_values_risk_vec(S, M, values_matrix, risk_vec)
-    @turbo for i in 1:S
-        for j in 1:B
-            x_val = X[i, j]
-            risk_vec[i] += x_val * R[j]
-            for m in 1:M
-                values_matrix[i, m] += x_val * V[m][j]
-            end
-        end
-    end
-    return values_matrix, risk_vec
-end
-
 
 function count_k(P, Sk)
     count = zeros(Int, length(Sk))
@@ -1087,7 +1071,7 @@ return best_solution
 """
 
 function deactivate_center_improve(solution, targets_lower, targets_upper, strategy=:bf)
-    to = TimerOutput()
+    #to = TimerOutput()
     X = copy(solution.X)
     Y = copy(solution.Y)
     instance = solution.Instance
@@ -1105,30 +1089,34 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     Weight = solution.Weight
     not_usables_i = Set(findall(==(0), Y))
     usables_i = Set(findall(==(1), Y))
+    println("----------------------------------------------------------------")
+    @show not_usables_i
+    @show usables_i
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
-    @timeit to "Get best assignments clients" best_assignments_clients = get_best_assignments(D, P)
-    @timeit to "Get best clients for centers" best_clients_for_centers = get_best_clients_for_centers(D, B)
+    #@timeit to "Get best assignments clients" best_assignments_clients = get_best_assignments(D, P)
+    best_assignments_clients = get_best_assignments(D, P)
+    #@timeit to "Get best clients for centers" best_clients_for_centers = get_best_clients_for_centers(D, B)
+    best_clients_for_centers = get_best_clients_for_centers(D, B)
     count = count_k(usables_i, Sk)
     improvement = true
     total_time_spent = 0
-    @timeit to "Main while" while improvement
+    #@timeit to "Main while" while improvement
+    while improvement
         improvement = false
         for ĩ in usables_i
             for i✶ in not_usables_i
                 start = now()
-                #@timeit to "Start constraints" values_matrix, risk_vec = start_constraints_optimized_v3(S, B, M, V, R, X, values_matrix, risk_vec)
-                @timeit to "Start constraints" values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
-                #@timeit to "Start contraints" values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
+                #@timeit to "Start constraints optimized" values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
                 finish = now()
                 delta = finish - start
                 delta_millis = round(delta, Millisecond)
                 delta_val = delta_millis.value
                 total_time_spent += delta_val
-                #@timeit to "Calc start constraints" values_matrix, risk_vec = start_constraints_blazing_fast(X, V, R)
-                #@timeit to "Calc start constraints" values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
                 modified_X = Dict{Tuple{Int,Int},Int}()
+                modified_values_matrix = Dict{Tuple{Int,Int}, Int64}()
+                modified_risk = Dict{Int, Int64}()
                 useful = true
                 ĩₖ = node_type(ĩ, Sk)
                 i✶ₖ = node_type(i✶, Sk)
@@ -1148,7 +1136,8 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                     weight_new_branch = 0
                     factible_yet = false
                     fulls_m = zeros(Int, M)
-                    @timeit to "Asignar clientes a i✶" for client in best_clients_for_centers[i✶]
+                    #@timeit to "Asignar clientes a i✶" for client in best_clients_for_centers[i✶]
+                    for client in best_clients_for_centers[i✶]
                         potential_assignment_valid = true
                         previous_i_client = findfirst(==(1), @views X[:, client])
                         if previous_i_client !== nothing # si es nothing entonces estaba asignado a ĩ
@@ -1163,22 +1152,57 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                             end
                             if potential_assignment_valid
                                 for m in 1:M
+                                    ##=
+                                    if !haskey(modified_values_matrix, (previous_i_client, m))
+                                        modified_values_matrix[(previous_i_client, m)] = values_matrix[previous_i_client, m]
+                                    end
+                                    if !haskey(modified_values_matrix, (i✶, m))
+                                        modified_values_matrix[(i✶, m)] = values_matrix[i✶, m]
+                                    end
+                                    #
                                     values_matrix[previous_i_client, m] -= V[m][client]
                                     values_matrix[i✶, m] += V[m][client]
                                     if values_matrix[i✶, m] > targets_lower[m]
                                         fulls_m[m] = 1
                                     end
                                 end
+                                ##=
+                                if !haskey(modified_risk, previous_i_client)
+                                    modified_risk[previous_i_client] = risk_vec[previous_i_client]
+                                end
+                                
+                                if !haskey(modified_risk,i✶)
+                                    modified_risk[i✶] = risk_vec[i✶]
+                                end
+                                #
                                 risk_vec[previous_i_client] -= R[client]
                                 risk_vec[i✶] += R[client]
                             end
                         else
                             for m in 1:M
+                                ##=
+                                if !haskey(modified_values_matrix, (i✶, m))
+                                    modified_values_matrix[(i✶, m)] = values_matrix[i✶, m]
+                                end
+                                if !haskey(modified_values_matrix, (ĩ, m))
+                                    modified_values_matrix[(ĩ, m)] = values_matrix[ĩ, m]
+                                end
+                                #
                                 values_matrix[i✶, m] += V[m][client]
+                                values_matrix[ĩ, m] -= V[m][client]
                                 if values_matrix[i✶, m] > targets_lower[m]
                                     fulls_m[m] = 1
                                 end
                             end
+                            ##=
+                            if !haskey(modified_risk, ĩ)
+                                modified_risk[ĩ] = risk_vec[ĩ]
+                            end
+                            if !haskey(modified_risk,i✶)
+                                modified_risk[i✶] = risk_vec[i✶]
+                            end
+                            #
+                            risk_vec[ĩ] -= R[client]
                             risk_vec[i✶] += R[client]
                         end
                         if potential_assignment_valid
@@ -1206,7 +1230,8 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                     if !factible_yet
                         useful = false
                     end
-                    @timeit to "Asignar clientes huerfanos" for orphaned_client in js_assigned_set
+                    #@timeit to "Asignar clientes huerfanos" for orphaned_client in js_assigned_set
+                    for orphaned_client in js_assigned_set
                         assigned_yet = false
                         for center in best_assignments_clients[orphaned_client]
                             if (center ∈ usables_i && center ≠ ĩ) || center == i✶
@@ -1228,8 +1253,18 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                                     assigned_yet = true
                                     weight_new_branch += D[center, orphaned_client]
                                     for m in 1:M
+                                        ##=
+                                        if !haskey(modified_values_matrix, (center, m))
+                                            modified_values_matrix[(center, m)] = values_matrix[center, m]
+                                        end
+                                        #
                                         values_matrix[center, m] += V[m][orphaned_client]
                                     end
+                                    ##=
+                                    if !haskey(modified_risk, center)
+                                        modified_risk[center] = risk_vec[center]
+                                    end
+                                    #
                                     risk_vec[center] += R[orphaned_client]
                                     break
                                 end
@@ -1241,6 +1276,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                         end
                     end
                     if useful && weight_new_branch < weight_old_branch
+                        println("Intercambiado $ĩ por $i✶")
                         Y[ĩ] = 0
                         Y[i✶] = 1
                         improvement = true
@@ -1254,6 +1290,15 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                             val = item[2]
                             X[i, j] = val
                         end
+                        ##=
+                        for (center, m) in keys(modified_values_matrix)
+                            values_matrix[center, m] = modified_values_matrix[(center, m)]
+                        end
+                        for center in keys(modified_risk)
+                            risk_vec[center] = modified_risk[center]
+                        end
+                        #
+                        # Rollback de todos los cambios
                     end
                 end
             end
@@ -1264,8 +1309,10 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     for indice in indices
         Weight += instance.D[indice]
     end
-    show(to)
+    #show(to)
     #@show total_time_spent
+    sol = Solution(instance, X, Y, Weight, solution.Time)
+    println(isFactible(sol, true))
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
@@ -1760,5 +1807,5 @@ end
 if abspath(PROGRAM_FILE) == @__FILE__
     mainLocal(; path=ARGS[1])
 else
-    mainLocal(; path="sol_1_625_78_32_pdisp_opp.jld2")
+    mainLocal(; path="sol_1_1250_155_62_pdisp_queue.jld2")
 end
