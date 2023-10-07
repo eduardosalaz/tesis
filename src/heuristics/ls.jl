@@ -1089,9 +1089,6 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     Weight = solution.Weight
     not_usables_i = Set(findall(==(0), Y))
     usables_i = Set(findall(==(1), Y))
-    println("----------------------------------------------------------------")
-    @show not_usables_i
-    @show usables_i
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
@@ -1128,6 +1125,16 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                         if !haskey(modified_X, (ĩ, j))
                             modified_X[(ĩ, j)] = X[ĩ, j]
                         end 
+                        for m in 1:M
+                            if !haskey(modified_values_matrix, (ĩ, m))
+                                modified_values_matrix[(ĩ, m)] = values_matrix[ĩ, m]
+                            end
+                            values_matrix[ĩ, m] = 0
+                        end
+                        if !haskey(modified_risk, ĩ)
+                            modified_risk[ĩ] = risk_vec[ĩ]
+                        end
+                        risk_vec[ĩ] = 0
                     end
                     X[ĩ, :] .= 0
                     # aqui se modifica la X entonces debemos de restar los vawlores de values_matrix y risk_vec a las js asignadas
@@ -1184,25 +1191,17 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                                 if !haskey(modified_values_matrix, (i✶, m))
                                     modified_values_matrix[(i✶, m)] = values_matrix[i✶, m]
                                 end
-                                if !haskey(modified_values_matrix, (ĩ, m))
-                                    modified_values_matrix[(ĩ, m)] = values_matrix[ĩ, m]
-                                end
                                 #
                                 values_matrix[i✶, m] += V[m][client]
-                                values_matrix[ĩ, m] -= V[m][client]
                                 if values_matrix[i✶, m] > targets_lower[m]
                                     fulls_m[m] = 1
                                 end
                             end
                             ##=
-                            if !haskey(modified_risk, ĩ)
-                                modified_risk[ĩ] = risk_vec[ĩ]
-                            end
                             if !haskey(modified_risk,i✶)
                                 modified_risk[i✶] = risk_vec[i✶]
                             end
                             #
-                            risk_vec[ĩ] -= R[client]
                             risk_vec[i✶] += R[client]
                         end
                         if potential_assignment_valid
@@ -1276,7 +1275,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                         end
                     end
                     if useful && weight_new_branch < weight_old_branch
-                        println("Intercambiado $ĩ por $i✶")
+                        #println("Intercambiado $ĩ por $i✶")
                         Y[ĩ] = 0
                         Y[i✶] = 1
                         improvement = true
