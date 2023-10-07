@@ -1139,9 +1139,10 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                     for j in js_assigned
                         if !haskey(modified_X, (ĩ, j))
                             modified_X[(ĩ, j)] = X[ĩ, j]
-                        end
+                        end 
                     end
                     X[ĩ, :] .= 0
+                    # aqui se modifica la X entonces debemos de restar los vawlores de values_matrix y risk_vec a las js asignadas
                     js_assigned_set = Set(js_assigned)
                     weight_old_branch = sum(D[ĩ, js_assigned]) # total weight of old branch/center
                     weight_new_branch = 0
@@ -1196,8 +1197,7 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                             end
                             weight_new_branch += D[i✶, client]
                             if all(x -> x == 1, fulls_m)
-                                factible_yet = true
-                                # ya llenamos el centro i✶
+                                factible_yet = true # ya llenamos el centro i✶
                                 break
                             end
                         end
