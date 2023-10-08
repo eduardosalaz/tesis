@@ -427,14 +427,14 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
 
-    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
     current_constraints_value = get_magnitude_contraints(usables_i, B, M, V, R, X, values_matrix, risk_vec, targets_lower, targets_upper, β)
     cant_fix = false
     for ĩ in remove
         if cant_fix
             break
         end
-        values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
+        values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
         # aqui el chiste es quitar las bus ASIGNADAS MAS LEJANAS
         # para asegurar que solo son las asignadas, multiplicamos la D por X
         all_asigneds = findall(==(1), X[ĩ, :])
@@ -591,7 +591,6 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
     return newSol
 end
 
-# no funciona por los indices en julia, no se recorre el arreglo bien
 
 function repair_solution2(solution, cons, targets_lower, targets_upper, remove, add)
     X = copy(solution.X)
@@ -617,7 +616,7 @@ function repair_solution2(solution, cons, targets_lower, targets_upper, remove, 
     remove_factible = [false for i in remove_vec]
     add_factible = [false for i in add_vec]
 
-    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
     while !all(remove_factible) # mientras siga habiendo un falso en remover
         distances_fixed = Matrix{Int64}(undef, S, B)
         for i in 1:S
@@ -810,55 +809,20 @@ function interchange_bu_improve(solution, targets_lower, targets_upper, strategy
                 weight_diff = -D[ĩ, j₁] - D[i✶, j₂] + D[ĩ, j₂] + D[i✶, j₁]
                 if weight_diff < 0 # si el peso mejora, revisa el estado del movimiento
                     can_do_move = true
-                    value_ĩ_1 = values_matrix[ĩ, 1] - V[1][j₁] + V[1][j₂]
-                    value_ĩ_2 = values_matrix[ĩ, 2] - V[2][j₁] + V[2][j₂]
-                    value_ĩ_3 = values_matrix[ĩ, 3] - V[3][j₁] + V[3][j₂]
-                    value_i✶_1 = values_matrix[i✶, 1] + V[1][j₁] - V[1][j₂]
-                    value_i✶_2 = values_matrix[i✶, 2] + V[2][j₁] - V[2][j₂]
-                    value_i✶_3 = values_matrix[i✶, 3] + V[3][j₁] - V[3][j₂]
-                    if value_ĩ_1 > targets_upper[1]
-                        can_do_move = false
-                    end
-                    if value_ĩ_2 > targets_upper[2]
-                        can_do_move = false
-                    end
-                    if value_ĩ_3 > targets_upper[3]
-                        can_do_move = false
-                    end
-                    if value_i✶_1 > targets_upper[1]
-                        can_do_move = false
-                    end
-                    if value_i✶_2 > targets_upper[2]
-                        can_do_move = false
-                    end
-                    if value_i✶_3 > targets_upper[3]
-                        can_do_move = false
-                    end
-                    if value_ĩ_1 < targets_lower[1]
-                        can_do_move = false
-                    end
-                    if value_ĩ_2 < targets_lower[2]
-                        can_do_move = false
-                    end
-                    if value_ĩ_3 < targets_lower[3]
-                        can_do_move = false
-                    end
-                    if value_i✶_1 < targets_lower[1]
-                        can_do_move = false
-                    end
-                    if value_i✶_2 < targets_lower[2]
-                        can_do_move = false
-                    end
-                    if value_i✶_3 < targets_lower[3]
-                        can_do_move = false
+                    values_ĩ = Vector{Int}(undef, 3)
+                    values_i✶ = Vector{Int}(undef, 3)
+                    for m in 1:3
+                        values_ĩ[m] = values_matrix[ĩ, m] - V[m][j₁] + V[m][j₂]
+                        values_i✶[m] = values_matrix[i✶, m] + V[m][j₁] - V[m][j₂]
+                        if values_ĩ[m] > targets_upper[m] || values_i✶[m] > targets_upper[m] || values_ĩ[m] < targets_lower[m] || values_i✶[m] < targets_lower[m]
+                            can_do_move = false
+                            break
+                        end
                     end
                     risk_ĩ = risk_vec[ĩ] - R[j₁] + R[j₂]
                     risk_i✶ = risk_vec[i✶] + R[j₁] - R[j₂]
-                    if risk_ĩ > β
+                    if risk_ĩ > β || risk_i✶ > β
                         # si yo le agrego, no deberia de pasar esto porque cambia infactibilidad
-                        can_do_move = false
-                    end
-                    if risk_i✶ > β
                         can_do_move = false
                     end
                     if can_do_move
@@ -928,11 +892,7 @@ function interchange_bu_improve(solution, targets_lower, targets_upper, strategy
             end
         end
     end
-    indices = findall(x -> x == 1, X)
-    Weight = 0
-    for indice in indices
-        Weight += instance.D[indice]
-    end
+    Weight = sum(X .* D)
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
@@ -1071,7 +1031,6 @@ return best_solution
 """
 
 function deactivate_center_improve(solution, targets_lower, targets_upper, strategy=:bf)
-    #to = TimerOutput()
     X = copy(solution.X)
     Y = copy(solution.Y)
     instance = solution.Instance
@@ -1091,16 +1050,14 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     usables_i = Set(findall(==(1), Y))
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
-    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
-    #@timeit to "Get best assignments clients" best_assignments_clients = get_best_assignments(D, P)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
     best_assignments_clients = get_best_assignments(D, P)
-    #@timeit to "Get best clients for centers" best_clients_for_centers = get_best_clients_for_centers(D, B)
     best_clients_for_centers = get_best_clients_for_centers(D, B)
     count = count_k(usables_i, Sk)
     improvement = true
     total_time_spent = 0
-    #@timeit to "Main while" while improvement
     while improvement
+    #while improvement
         improvement = false
         for ĩ in usables_i
             for i✶ in not_usables_i
@@ -1143,8 +1100,8 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                     weight_new_branch = 0
                     factible_yet = false
                     fulls_m = zeros(Int, M)
-                    #@timeit to "Asignar clientes a i✶" for client in best_clients_for_centers[i✶]
                     for client in best_clients_for_centers[i✶]
+                    #for client in best_clients_for_centers[i✶]
                         potential_assignment_valid = true
                         previous_i_client = findfirst(==(1), @views X[:, client])
                         if previous_i_client !== nothing # si es nothing entonces estaba asignado a ĩ
@@ -1229,8 +1186,8 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                     if !factible_yet
                         useful = false
                     end
-                    #@timeit to "Asignar clientes huerfanos" for orphaned_client in js_assigned_set
                     for orphaned_client in js_assigned_set
+                    #for orphaned_client in js_assigned_set
                         assigned_yet = false
                         for center in best_assignments_clients[orphaned_client]
                             if (center ∈ usables_i && center ≠ ĩ) || center == i✶
@@ -1303,244 +1260,8 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
             end
         end
     end
-    indices = findall(x -> x == 1, X)
-    Weight = 0
-    for indice in indices
-        Weight += instance.D[indice]
-    end
-    #show(to)
+    Weight = sum(X .* D)
     #@show total_time_spent
-    sol = Solution(instance, X, Y, Weight, solution.Time)
-    println(isFactible(sol, true))
-    return Solution(instance, X, Y, Weight, solution.Time)
-end
-
-function deactivate_center_improve2(solution, targets_lower, targets_upper, strategy=:bf)
-    X = copy(solution.X)
-    Y = copy(solution.Y)
-    instance = solution.Instance
-    B = instance.B
-    S = instance.S
-    D = copy(instance.D)
-    M = instance.M
-    V = instance.V
-    R = instance.R
-    β = instance.β[1]
-    Sk = instance.Sk
-    Lk = instance.Lk
-    Uk = instance.Uk
-    P = instance.P
-    Weight = solution.Weight
-    n = P
-    not_usables_i = Set(findall(==(0), Y))
-    usables_i = Set(findall(==(1), Y))
-    values_matrix = Matrix{Int64}(undef, S, M)
-    risk_vec = Vector{Int64}(undef, S)
-
-    for i in not_usables_i
-        D[i, :] .= 10000000000000
-    end
-
-    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
-    count = count_k(usables_i, Sk)
-    improvement = true
-    # hacerlo solo FF
-
-    while improvement
-        improvement = false
-        for ĩ in usables_i
-            for i✶ in not_usables_i
-                ij_prev_assignments = []
-                useful = true
-                ĩₖ = node_type(ĩ, Sk)
-                i✶ₖ = node_type(i✶, Sk)
-                count_ĩ = count[ĩₖ] - 1
-                count_i✶ = count[i✶ₖ] + 1
-                if count_ĩ <= Uk[ĩₖ] && count_ĩ >= Lk[ĩₖ] && count_i✶ <= Uk[i✶ₖ] && count_i✶ >= Lk[i✶ₖ]
-                    # tenemos que mantener cuales son las asignaciones de ĩ antes de apagarlas
-                    # para esto las guardo en un arreglo mejor
-                    js_assigned = findall(==(1), X[ĩ, :])
-                    X[ĩ, :] .= 0
-                    js_assigned_set = Set(js_assigned)
-                    weight_old_branch = sum(D[ĩ, js_assigned]) # peso total representado por la rama
-                    weight_new_branch = 0
-                    D[i✶, :] .= instance.D[i✶, :]
-                    D[ĩ, :] .= 10000000000000
-                    factible_yet = false
-                    candidates_BUs = minimums2(D[i✶, :], B)
-                    for m in 1:M
-                        values_matrix[ĩ, m] = 0
-                    end
-                    risk_vec[ĩ] = 0
-                    while !factible_yet
-                        if length(candidates_BUs) == 0
-                            useful = false
-                            break
-                        end
-                        j = popfirst!(candidates_BUs)[1]
-                        i_old = findfirst(==(1), X[:, j]) # asignacion previa de esta j
-                        if i_old === nothing
-                            i_old = ĩ
-                        end
-                        factible_yet = true
-                        can_do_move = true
-                        for m in 1:M
-                            values_matrix[i_old, m] -= V[m][j] # restale a ĩ, previo
-                            values_matrix[i✶, m] += V[m][j] # sumale a i, nuevo
-                            if values_matrix[i✶, m] > targets_upper[m]
-                                # no deberia de pasar porque entonces la infactibilidad cambia de razon
-                                factible_yet = false
-                                can_do_move = false
-                            end
-                            if values_matrix[i✶, m] < targets_lower[m]
-                                factible_yet = false
-                            end
-                            if i_old != ĩ
-                                if values_matrix[i_old, m] < targets_lower[m]
-                                    factible_yet = false
-                                    can_do_move = false
-                                    # no deberia de pasar porque entonces i_old es infactible ahora
-                                end
-                            end
-                        end
-                        risk_vec[i_old] -= R[j] # restale a ĩ el viejo
-                        risk_vec[i✶] += R[j] # sumale a i el nuevo
-                        if risk_vec[i✶] > β
-                            # si yo le agrego, no deberia de pasar esto porque cambia infactibilidad
-                            can_do_move = false
-                            factible_yet = false
-                        end
-                        if can_do_move
-                            X[i✶, j] = 1
-                            X[i_old, j] = 0
-                            if j ∉ js_assigned
-                                push!(ij_prev_assignments, (i_old, j))
-                            else
-                                delete!(js_assigned_set, j) # ya la asignamos
-                            end
-                            weight_new_branch += D[i✶, j]
-                        else
-                            for m in 1:M
-                                values_matrix[i_old, m] += V[m][j] # corrige el valor de la NO asignacion
-                                values_matrix[i✶, m] -= V[m][j]
-                            end
-                            risk_vec[i_old] += R[j]
-                            risk_vec[i✶] -= R[j]
-                        end
-                    end
-
-
-                    for j in js_assigned_set # para las js que aun queden sin asignar
-                        candidates_is = minimums2(D[:, j], n)
-                        j_assigned = false
-                        if !useful
-                            break
-                        end
-                        while !j_assigned
-                            i = 0
-                            if length(candidates_is) == 0 # si no podemos asignar esta j, entonces el movimiento se invalida
-                                useful = false
-                                break
-                            else
-                                i = popfirst!(candidates_is)
-                                i = i[1]
-                            end
-                            can_do_move = true
-                            #println("probando cambio en $i por $ĩ")
-                            for m in 1:M
-                                values_matrix[i, m] += V[m][j] # sumale a i, nuevo
-                                if values_matrix[i, m] > targets_upper[m]
-                                    #println("no es factible por que se pasa el otro upper: ", values_matrix[i, m])
-                                    can_do_move = false
-                                end
-                            end
-                            risk_vec[i] += R[j] # sumale a i el nuevo
-                            if risk_vec[i] > β
-                                # si yo le agrego, no deberia de pasar esto porque cambia infactibilidad
-                                can_do_move = false
-                            end
-                            if can_do_move
-                                X[i, j] = 1
-                                j_assigned = true
-                                weight_new_branch += D[i, j]
-                            else
-                                # si no puedo hacer el movimiento, restaura el valor de la ev parcial
-                                for m in 1:M
-                                    values_matrix[i, m] -= V[m][j]
-                                end
-                                risk_vec[i] -= R[j]
-                            end
-                        end
-                    end
-
-                    if weight_new_branch < weight_old_branch && useful
-                        # arreglar esto
-                    else
-                        useful = false
-                    end
-
-                    if useful
-                        Y[i✶] = 1
-                        Y[ĩ] = 0
-                        count[ĩₖ] -= 1
-                        count[i✶ₖ] += 1
-                        delete!(not_usables_i, i✶)
-                        delete!(usables_i, ĩ)
-                        push!(usables_i, i✶)
-                        push!(not_usables_i, ĩ)
-                        weight_old_branch = weight_new_branch
-                        indices = findall(x -> x == 1, X)
-                        Weight = 0
-                        for indice in indices
-                            Weight += instance.D[indice]
-                        end
-                        aux = ĩ
-                        ĩ = i✶
-                        i✶ = aux
-                        improvement = true
-                    else
-                        # restaurar el valor de values_matrix y risk_vec
-                        # devolver el valor de las demas afectadas
-                        for m in 1:M
-                            values_matrix[ĩ, m] = sum(V[m][js_assigned])
-                        end
-                        risk_vec[ĩ] = sum(R[js_assigned])
-                        for j in js_assigned
-                            i = findfirst(==(1), X[:, j])
-                            if i === nothing
-                                i = ĩ
-                            end
-                            for m in 1:M
-                                values_matrix[i, m] -= V[m][j]
-                            end
-                            risk_vec[i] -= R[j]
-                            X[:, j] .= 0 # deshacemos asignaciones de los clientes
-                        end
-
-                        X[i✶, :] .= 0 #deshaz cualquier asignacion al nuevo centro
-
-                        for (i_old, j_old) in ij_prev_assignments
-                            X[i_old, j_old] = 1 # pon la asignacion previa de vuelta
-                        end
-
-                        for m in 1:M
-                            values_matrix[i✶, m] = 0
-                        end
-                        risk_vec[i✶] = 0
-                        X[ĩ, js_assigned] .= 1 # haz la asignacion vieja de nuevo
-                        D[i✶, :] .= 10000000000000
-                        D[ĩ, :] .= instance.D[ĩ, :]
-                    end
-                end
-            end
-        end
-    end
-
-    indices = findall(x -> x == 1, X)
-    Weight = 0
-    for indice in indices
-        Weight += instance.D[indice]
-    end
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
@@ -1564,10 +1285,10 @@ function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
     risk_vec = Vector{Int64}(undef, S)
 
     for j in not_usables_i
-        D[j, :] .= 10000000000000
+        D[j, :] .= 10000000000000 # fix esto
     end
 
-    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
     improvement = true
 
     while improvement
@@ -1588,56 +1309,20 @@ function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
                 weight_diff = -D[ĩ, j] + D[i, j]
                 if weight_diff < 0 # si el peso mejora, revisa el estado del movimiento
                     can_do_move = true
-                    value_ĩ_1 = values_matrix[ĩ, 1] - V[1][j]
-                    value_ĩ_2 = values_matrix[ĩ, 2] - V[2][j]
-                    value_ĩ_3 = values_matrix[ĩ, 3] - V[3][j]
-                    value_i_1 = values_matrix[i, 1] + V[1][j]
-                    value_i_2 = values_matrix[i, 2] + V[2][j]
-                    value_i_3 = values_matrix[i, 3] + V[3][j]
-                    if value_ĩ_1 > targets_upper[1]
-                        can_do_move = false
-                    end
-                    if value_ĩ_2 > targets_upper[2]
-                        can_do_move = false
-                    end
-                    if value_ĩ_3 > targets_upper[3]
-                        can_do_move = false
-                    end
-                    if value_i_1 > targets_upper[1]
-                        can_do_move = false
-                    end
-                    if value_i_2 > targets_upper[2]
-                        can_do_move = false
-                    end
-                    if value_i_3 > targets_upper[3]
-                        can_do_move = false
-                    end
-                    if value_ĩ_1 < targets_lower[1]
-                        can_do_move = false
-                    end
-                    if value_ĩ_2 < targets_lower[2]
-                        can_do_move = false
-                    end
-                    if value_ĩ_3 < targets_lower[3]
-                        can_do_move = false
-                    end
-                    if value_i_1 < targets_lower[1]
-                        can_do_move = false
-                    end
-                    if value_i_2 < targets_lower[2]
-                        can_do_move = false
-                    end
-                    if value_i_3 < targets_lower[3]
-                        can_do_move = false
+                    values_ĩ = Vector{Int}(undef, 3)
+                    values_i = Vector{Int}(undef, 3)
+                    for m in 1:3
+                        values_ĩ[m] = values_matrix[ĩ, m] - V[m][j]
+                        values_i[m] = values_matrix[i, m] + V[m][j]
+                        if values_ĩ[m] > targets_upper[m] || values_i[m] < targets_lower[m] || values_i[m] > targets_upper[m] || values_i[m] < targets_lower[m]
+                            can_do_move = false
+                            break
+                        end
                     end
                     risk_ĩ = risk_vec[ĩ] - R[j]
                     risk_i = risk_vec[i] + R[j]
-                    if risk_ĩ > β
-                        # si yo le agrego, no deberia de pasar esto porque cambia infactibilidad
-                        can_do_move = false
-                    end
-                    if risk_i > β
-                        can_do_move = false
+                    if !can_do_move || risk_ĩ > β || risk_i > β
+                        continue
                     end
                     if can_do_move
                         newWeight = Weight + weight_diff
@@ -1694,7 +1379,7 @@ end
 
 function mainLocal(; path="sol_1_625_78_32_relax_opp.jld2")
     solution = read_solution(path)
-    newSolution = @time localSearch(solution)
+    newSolution = localSearch(solution)
     write_solution(newSolution, "sol_ls_1_312.jld2")
     plot_solution(newSolution, "plot_sol_2_1250_viejo_relax_ls.png")
     return newSolution
@@ -1708,8 +1393,6 @@ function localSearch(solution)
     targets_lower, targets_upper = calculate_targets(instance)
     factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
     repaired = oldSol
-    println(remove)
-    println(add)
     original_weight = 10000000000000
     if factible
         println("Factible")
@@ -1796,6 +1479,7 @@ function localSearch(solution)
         improvement = any(improvements)
         #println(isFactible(oldSol, true))
     end
+    show(to2)
 
     println(isFactible(oldSol, true))
     println(oldSol.Weight)
@@ -1805,6 +1489,4 @@ end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     mainLocal(; path=ARGS[1])
-else
-    mainLocal(; path="sol_1_1250_155_62_pdisp_queue.jld2")
 end
