@@ -2,7 +2,7 @@ using Types
 using JuMP
 using Distances
 using DelimitedFiles
-#using Gurobi
+using Gurobi
 using HiGHS
 using Dates
 using TimerOutputs
@@ -456,7 +456,6 @@ end
 
 function compute_assignments_and_opportunity_costs(D::Matrix{Int64}, Y::Vector{Int}, N::Int)
     _, num_clients = size(D)
-    max_facilities = length(Y)
     best_assignments = Dict{Int,Vector{Int64}}()
     pq = PriorityQueue{Int,Int64}(Base.Order.Reverse)
 
@@ -579,7 +578,7 @@ function oppCostQueue(Y, instance::Types.Instance)
                 if center ∉ full_centers
                     for m in 1:M
                         values_matrix[center, m] += V[m][bu]
-                        if values_matrix[center, m] > targets[m]
+                        if values_matrix[center, m] > targets[m] 
                             fulls_m[m] = 1
                         end
                     end

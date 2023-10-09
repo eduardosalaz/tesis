@@ -1,5 +1,5 @@
 # Define the output file name
-$outputFileName = "output.txt"
+$outputFileName = "output_grasp_1250_threads.txt"
 
 # Get all the files in the specified directory
 $files = Get-ChildItem -Path .\instances\1250_155_62\
@@ -8,7 +8,7 @@ $files = Get-ChildItem -Path .\instances\1250_155_62\
 foreach ($file in $files) {
     # Run the Julia command with thread counts from 1 to 8
     for ($i = 1; $i -le 8; $i++) {
-        $command = "julia -t $i .\src\heuristics\grasp_parallel.jl $($file.FullName) 30"
+        $command = "julia -t $i --sysimage .\JuliaSysimage.dll .\src\heuristics\grasp_parallel.jl $($file.FullName) 30"
         Write-Host "Executing: $command"
         
         # Capture the output

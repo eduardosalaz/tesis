@@ -28,6 +28,14 @@ function main_test()
         Y = Vector{Int64}(undef, S)
         D = instancia.D
         Weight = 0
+        αₗ = [0.1, 0.3, 0.5, 0.7, 0.9]
+        αₐ = [0.1, 0.3, 0.5, 0.7, 0.9]
+        iters = [10, 20, 30, 40, 50]
+        before = now()
+        for αₗ in test_αₗ
+            sol, time_grasp = grasp(αₗ, αₐ,  iters, instance)
+        end
+        after = now()
 
         location_methods = ["relax", "pdisp"]
         alloc_methods = ["queue"]

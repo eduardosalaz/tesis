@@ -1438,7 +1438,6 @@ function localSearch(solution)
 
         # Array to keep track of individual improvements
         improvements = Bool[]
-        """
         # First improvement function
         sol_moved_bu = simple_bu_improve(oldSol, targets_lower, targets_upper, :bf)
         new_weight_moved = sol_moved_bu.Weight
@@ -1449,8 +1448,6 @@ function localSearch(solution)
             oldSol = sol_moved_bu  # Update oldSol if there was an improvement
         end
         #println(isFactible(sol_moved_bu, true))
-        """
-        """
         # Second improvement function
         sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :bf)
         new_weight_moved = sol_interchanged_bu.Weight
@@ -1460,7 +1457,6 @@ function localSearch(solution)
             #println("En el loop loop el movimiento intercambio mejora con un new_weight_moved")
             oldSol = sol_interchanged_bu  # Update oldSol if there was an improvement
         end
-        """
         #println(isFactible(sol_interchanged_bu, true))
 
         # Third improvement function
