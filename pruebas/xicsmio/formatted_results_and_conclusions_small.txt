@@ -1,0 +1,105 @@
+
+Statistical Analysis Results and Conclusions:
+
+1. Descriptive Statistics:
+The descriptive statistics provide a summary of the central tendency and variability of the runtime data. 
+From the results, the mean runtime decreases as we increase the number of threads from 1 to 4. However, 
+from 4 threads onwards, the mean runtime shows minor increases.
+
+| Threads | Mean Runtime (ms) | Standard Deviation (ms) |
+|---------|-------------------|-------------------------|
+| 1       | 276,884.25        | 10,713.04               |
+| 2       | 187,598.50        | 7,123.41                |
+| 3       | 162,041.70        | 7,140.22                |
+| 4       | 152,524.20        | 7,449.71                |
+| 5       | 154,213.60        | 7,525.07                |
+| 6       | 157,687.50        | 6,081.42                |
+| 7       | 159,429.15        | 8,076.55                |
+| 8       | 160,484.55        | 5,895.92                |
+
+2. Repeated Measures ANOVA on Runtimes:
+The repeated measures ANOVA tests if there are statistically significant differences in the means of the 
+same subjects under different conditions (in this case, runtime under different thread counts). The results 
+show that there's a statistically significant difference in runtimes across different thread counts.
+
+(F Value: 1141.4993, p-value: <0.0001)
+
+3. Tukey's HSD Post-hoc Test on Runtimes:
+Following a significant ANOVA result, the Tukey's HSD post-hoc test helps identify which specific group(s) 
+differ from each other. 
+Tukey's HSD (Honestly Significant Difference) post-hoc test is a multiple comparison test used to find 
+which means among a set of means differ from the rest. It is commonly used after a significant ANOVA result 
+to determine which groups are different. The test compares all possible pairs of means and controls the 
+familywise error rate.
+
+Results from Tukey's HSD Post-hoc Test on Runtimes:
+
+- There is a statistically significant difference between runtimes of:
+  * 1 and 2 threads (Mean Difference: 89,285.75 ms, p-value: <0.001)
+  * 1 and 3 threads (Mean Difference: 114,842.55 ms, p-value: <0.001)
+  * 1 and 4 threads (Mean Difference: 124,360.05 ms, p-value: <0.001)
+  * 1 and 5 threads (Mean Difference: 122,670.65 ms, p-value: <0.001)
+  * 1 and 6 threads (Mean Difference: 119,196.75 ms, p-value: <0.001)
+  * 1 and 7 threads (Mean Difference: 117,455.10 ms, p-value: <0.001)
+  * 1 and 8 threads (Mean Difference: 116,399.70 ms, p-value: <0.001)
+  * 2 and 3 threads (Mean Difference: 25,556.80 ms, p-value: <0.001)
+  * 2 and 4 threads (Mean Difference: 35,074.30 ms, p-value: <0.001)
+  * 2 and 5 threads (Mean Difference: 33,384.90 ms, p-value: <0.001)
+  * 2 and 6 threads (Mean Difference: 29,911.00 ms, p-value: <0.001)
+  * 2 and 7 threads (Mean Difference: 28,169.35 ms, p-value: <0.001)
+  * 2 and 8 threads (Mean Difference: 27,113.95 ms, p-value: <0.001)
+  * 3 and 4 threads (Mean Difference: 9,517.50 ms, p-value: <0.001)
+  * 3 and 5 threads (Mean Difference: 7,828.10 ms, p-value: <0.001)
+  * 3 and 6 threads (Mean Difference: 4,354.20 ms, p-value: <0.001)
+  * 3 and 7 threads (Mean Difference: 2,612.55 ms, p-value: <0.001)
+  * 3 and 8 threads (Mean Difference: 1,557.15 ms, p-value: <0.001)
+  * 4 and 6 threads (Mean Difference: -5,163.30 ms, p-value: 0.001)
+  * 5 and 6 threads (Mean Difference: -3,473.90 ms, p-value: 0.024)
+
+The other pairwise comparisons did not show a statistically significant difference in runtimes.
+
+
+4. Effect Sizes (Cohen's d compared to 1 thread):
+Effect size is a measure of the magnitude of the difference between groups. Here, Cohen's d is calculated 
+to quantify the difference in runtimes between 1 thread and the other thread counts.
+
+| Threads | Cohen's d |
+|---------|-----------|
+| 2       | 9.81      |
+| 3       | 12.62     |
+| 4       | 13.48     |
+| 5       | 13.25     |
+| 6       | 13.68     |
+| 7       | 12.38     |
+| 8       | 13.46     |
+
+5. Paired t-tests between adjacent thread counts:
+The paired t-tests are used to compare the means of the same group at two different times (in this case, 
+runtimes between adjacent thread counts). The results provide insights into the significance of the performance 
+differences between consecutive thread counts.
+
+| Thread Pair | t-statistic | p-value   |
+|-------------|-------------|-----------|
+| 1 vs 2     | 41.00       | <0.0001   |
+| 2 vs 3     | 16.97       | <0.0001   |
+| 3 vs 4     | 5.69        | 0.00002   |
+| 4 vs 5     | -0.84       | 0.414     |
+| 5 vs 6     | -2.51       | 0.021     |
+| 6 vs 7     | -0.93       | 0.366     |
+| 7 vs 8     | -0.66       | 0.516     |
+
+6. One-way ANOVA on Objective Values:
+The one-way ANOVA tests if there's a statistically significant difference in the means of objective values 
+across different thread counts. The results show that there's no significant impact of thread counts on the 
+objective values.
+
+(F Statistic: 0.0862, p-value: 0.9989)
+
+Conclusions:
+
+- Increasing the number of threads generally improves performance, with the most substantial gains observed 
+  when moving from 1 to 4 threads.
+- The optimal number of threads for minimizing runtime, based on this dataset, appears to be around 3 or 4.
+- Performance plateaus or shows minor reductions after 4 threads.
+- Increasing the number of threads does not have a significant impact on the objective value, as evidenced by 
+  the ANOVA on objective values.
