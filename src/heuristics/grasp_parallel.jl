@@ -23,6 +23,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
         X = Matrix{Int64}(undef, S, B)
         Y = Vector{Int64}(undef, S)
         Weight = 0
+        start_iter = now()
         #println(iter)
         Y, time_loc = pdisp_grasp(instance, αₗ)
         X, time_alloc = oppCostQueueGRASP(Y, instance, αₐ)
@@ -129,8 +130,8 @@ function grasp(αₗ, αₐ, max_iters, instance)
     #@show count_repair_2
     delta = finish - start
     delta_millis = round(delta, Millisecond)
-    println(delta_millis.value)
-    return bestSol
+    # println(delta_millis.value)
+    return bestSol, delta_millis.value
 end
 
 
@@ -545,9 +546,12 @@ function main_grasp()
     αₗ = 0.2
     αₐ = 0.2
     iters = parse(Int, ARGS[2])
-    solution = grasp(αₗ, αₐ, iters, instance)
-    println(solution.Weight)
-    write_solution(solution, "solucion_grasp_625_nuevo8.jld2")
+    bestSolution, totalTime= grasp(αₗ, αₐ, iters, instance)
+    println(totalTime)
+    println(bestSolution.Weight)
+    write_solution(bestSolution, "solucion_grasp_625_nuevo9.jld2")
 end
 
-main_grasp()
+if abspath(PROGRAM_FILE) == @__FILE__
+    main_grasp()
+end
