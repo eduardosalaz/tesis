@@ -19,7 +19,9 @@ function grasp(αₗ, αₐ, max_iters, instance)
     count_repair_1 = 0
     count_repair_2 = 0
     lockVar = ReentrantLock()
+    results = results = fill((0, 0, 0, false), max_iters)
     Threads.@threads for iter in 1:max_iters
+        #println(iter)
         X = Matrix{Int64}(undef, S, B)
         Y = Vector{Int64}(undef, S)
         Weight = 0
@@ -60,13 +62,13 @@ function grasp(αₗ, αₐ, max_iters, instance)
                 #println("Reparada")
             end
         end
-        if !factible_after_repair
-            continue
-        end
         #println(original_weight)
-        oldSol = repaired
+        #println(iter, " ", factible_after_repair)
+        if factible_after_repair
+            oldSol = repaired
+        end
         improvement = true
-        while improvement
+        while improvement && factible_after_repair
             improvement = false  # Reset the flag at the start of each loop iteration
             prev_weight = oldSol.Weight
 
@@ -109,11 +111,27 @@ function grasp(αₗ, αₐ, max_iters, instance)
             improvement = any(improvements)
             #println(isFactible(oldSol, true))
         end
+        end_iter = now()
+        delta_iter = end_iter - start_iter
+        delta_iter_millis = round(delta_iter, Millisecond)
+        delta_iter_value = delta_iter_millis.value
+
         lock(lockVar)
         try
-            if oldSol.Weight < bestWeight
-                bestSol = oldSol
-                bestWeight = oldSol.Weight
+            if oldSol !== nothing
+                if !factible_after_repair
+                    results[iter] = (iter, 0, delta_iter_value, false)
+                else
+                    results[iter] = (iter, oldSol.Weight, delta_iter_value, true)
+                    if oldSol.Weight < bestWeight
+                        bestSol = oldSol
+                        bestWeight = oldSol.Weight
+                    end
+                end
+            else
+                if !factible_after_repair
+                    results[iter] = (iter, 0, delta_iter_value, false)
+                end
             end
         finally
             unlock(lockVar)
@@ -131,7 +149,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
     delta = finish - start
     delta_millis = round(delta, Millisecond)
     # println(delta_millis.value)
-    return bestSol, delta_millis.value
+    return bestSol, delta_millis.value, results
 end
 
 
@@ -546,10 +564,13 @@ function main_grasp()
     αₗ = 0.2
     αₐ = 0.2
     iters = parse(Int, ARGS[2])
-    bestSolution, totalTime= grasp(αₗ, αₐ, iters, instance)
+    bestSolution, totalTime, results = grasp(αₗ, αₐ, iters, instance)
     println(totalTime)
     println(bestSolution.Weight)
-    write_solution(bestSolution, "solucion_grasp_625_nuevo9.jld2")
+    for var in results
+        println(var)
+    end
+    write_solution(bestSolution, "solucion_grasp_625_nuevo10.jld2")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
