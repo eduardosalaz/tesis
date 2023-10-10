@@ -19,9 +19,8 @@ function grasp(αₗ, αₐ, max_iters, instance)
     count_repair_1 = 0
     count_repair_2 = 0
     lockVar = ReentrantLock()
-    results = results = fill((0, 0, 0, false), max_iters)
+    results = results = fill((iter=0, weight=0, time=0, factible=false, improving=false, curr_epoch=0.0), max_iters)
     Threads.@threads for iter in 1:max_iters
-        #println(iter)
         X = Matrix{Int64}(undef, S, B)
         Y = Vector{Int64}(undef, S)
         Weight = 0
@@ -118,19 +117,22 @@ function grasp(αₗ, αₐ, max_iters, instance)
 
         lock(lockVar)
         try
+            current_timestamp = Dates.datetime2unix(now(Dates.UTC))
             if oldSol !== nothing
                 if !factible_after_repair
-                    results[iter] = (iter, 0, delta_iter_value, false)
+                    results[iter] = (iter=iter, weight=0, time=delta_iter_value, factible=false, improving=false, curr_epoch=current_timestamp)
                 else
-                    results[iter] = (iter, oldSol.Weight, delta_iter_value, true)
+                    improving = false
                     if oldSol.Weight < bestWeight
                         bestSol = oldSol
                         bestWeight = oldSol.Weight
+                        improving = true
                     end
+                    results[iter] = (iter=iter, weight=oldSol.Weight, time=delta_iter_value, factible=true, improving=improving, curr_epoch=current_timestamp)
                 end
             else
                 if !factible_after_repair
-                    results[iter] = (iter, 0, delta_iter_value, false)
+                    results[iter] = (iter=iter, weight=0, time=delta_iter_value, factible=false, improving=false, curr_epoch=current_timestamp)
                 end
             end
         finally
@@ -567,7 +569,8 @@ function main_grasp()
     bestSolution, totalTime, results = grasp(αₗ, αₐ, iters, instance)
     println(totalTime)
     println(bestSolution.Weight)
-    for var in results
+    sorted_results_desc = sort(results, by=p -> p.curr_epoch) # al ordenar por epoch podeoms comparar contra el inmediato anterior?
+    for var in sorted_results_desc
         println(var)
     end
     write_solution(bestSolution, "solucion_grasp_625_nuevo10.jld2")
