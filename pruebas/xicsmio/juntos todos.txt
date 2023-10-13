@@ -1,0 +1,24 @@
+The recommendations vary depending on the specific objective and dataset:
+
+    For the 625 dataset:
+        To minimize runtime: αl=0.3αl​=0.3, αa=0.3αa​=0.3
+        To minimize objective function value: αl=0.9αl​=0.9, αa=0.9αa​=0.9
+        For a balance between both: αl=0.1αl​=0.1, αa=0.5αa​=0.5
+
+    For the 1250 dataset:
+        To minimize runtime: αl=0.1αl​=0.1, αa=0.3αa​=0.3
+        To minimize objective function value: αl=0.9αl​=0.9, αa=0.1αa​=0.1
+        For a balance between both: αl=0.1αl​=0.1, αa=0.5αa​=0.5
+
+    For the combined dataset (both 625 and 1250):
+        To minimize runtime: αl=0.1αl​=0.1, αa=0.3αa​=0.3
+        To minimize objective function value: αl=0.9αl​=0.9, αa=0.9αa​=0.9
+        For a balance between both: αl=0.3αl​=0.3, αa=0.3αa​=0.3
+
+Recommendation:
+
+Given that different αα combinations are optimal for different datasets and objectives, it's essential to consider the specific context in which you're working. If the priority is reducing computational time (runtime), then the recommended values from the combined dataset (which encapsulates both smaller and larger instances) would be αl=0.1αl​=0.1 and αa=0.3αa​=0.3. However, if the focus is on solution quality (minimizing the objective function), then αl=0.9αl​=0.9 and αa=0.9αa​=0.9 would be better.
+
+If you're looking for a more generalized approach that seeks a balance between both runtime and solution quality, then αl=0.3αl​=0.3 and αa=0.3αa​=0.3 from the combined dataset seem to be a good compromise. This is especially true if you're uncertain about the specific size or nature of future datasets you might be working with, as the combined dataset provides insights across both the 625 and 1250 instances.
+
+Ultimately, the best approach might also involve some further testing and validation on new datasets or instances to refine the choice of αα parameters.

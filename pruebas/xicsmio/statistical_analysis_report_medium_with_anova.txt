@@ -1,0 +1,35 @@
+
+Statistical Analysis Report: Medium (Larger) Instance Size Dataset
+
+1. Introduction:
+The dataset provided represents a medium-sized instance and contains results from experiments of a metaheuristic algorithm with varying parameters: alpha_a, alpha_l, and iters. The aim of the analysis was to deduce the optimal configuration of these parameters to both minimize runtime (TotalTimeGRASP) and the objective function value (ValueGRASP).
+
+2. Findings:
+
+2.1 Descriptive Statistics:
+- The combinations of alpha_a, alpha_l, and iters that produced the best average objective values also had the highest runtime. The values of alpha_a and alpha_l that stood out were 0.3, 0.9, while iters was consistently 90 for the top results.
+
+2.2 Influence of iters Parameter:
+- Increasing the number of iterations from 10 to 90 led to an improvement of approximately 1.541% in the objective function value.
+- However, this improvement came with a substantial increase in runtime, approximately 717.689%.
+
+3. Recommendations:
+Given the analysis on the medium-sized dataset, the significant factor affecting both runtime and objective function value remains the iters parameter. The values of alpha_a and alpha_l do not seem to impact the results as much.
+
+Based on the trade-offs:
+- For Faster Outcomes: If computational efficiency is essential, using 10 iterations might be more appropriate. The quality of solutions may be slightly compromised, but the process will be much quicker.
+- For Superior Solution Quality: If achieving the best quality is crucial, then 90 iterations seem optimal, especially if computational time isn't a significant concern.
+
+Considering the Pareto front and relative differences, the benefits of ramping up iterations from 10 to 90 might not be worth the immense leap in computational time for certain scenarios. However, if a slight boost in solution quality holds significant value, then the longer computational time might be worthwhile.
+
+4. Conclusion:
+For the medium-sized dataset, the best settings for the parameters are again largely determined by the application's specific needs and constraints. The iters parameter plays a pivotal role in the outcomes, while alpha_a and alpha_l have a minimal impact. Striking a balance between solution quality and computational time is crucial in finalizing the best settings for the parameters.
+
+
+5. One-Way ANOVA Results:
+
+For the iters parameter:
+- Objective Function Value (ValueGRASP): F-statistic = 31.4042, p-value = 0.0000
+- Runtime (TotalTimeGRASP): F-statistic = 28032.5192, p-value = 0.0000
+
+Note: The One-Way ANOVA results indicate statistically significant differences in both ValueGRASP and TotalTimeGRASP across the different levels of the iters parameter.

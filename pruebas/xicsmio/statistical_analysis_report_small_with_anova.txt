@@ -1,0 +1,47 @@
+
+Statistical Analysis Report: Small Instance Size Dataset
+
+1. Introduction:
+The dataset provided contains results from experiments involving a metaheuristic algorithm with varying parameters: alpha_a, alpha_l, and iters. The objective of the analysis was to determine the optimal configuration of these parameters to minimize both runtime (TotalTimeGRASP) and the objective function value (ValueGRASP).
+
+2. Findings:
+
+2.1 Descriptive Statistics:
+- The combinations of alpha_a, alpha_l, and iters that led to the best average objective values and relatively shorter runtimes were predominantly with alpha_a and alpha_l values of 0.3, 0.7, and 0.9, and iters of 10.
+
+2.2 One-Way ANOVA:
+- For the iters parameter, the ANOVA test on TotalTimeGRASP and ValueGRASP revealed statistically significant differences across the different levels of iters.
+- For the alpha_a and alpha_l parameters, the ANOVA test did not show statistically significant differences in TotalTimeGRASP or ValueGRASP across their different levels.
+
+2.3 Factorial ANOVA:
+- The results indicated that only the iters parameter had a statistically significant effect on both TotalTimeGRASP and ValueGRASP.
+- Interactions between the parameters were not statistically significant.
+
+2.4 Tukey HSD and Tukey-Kramer Tests:
+- The Tukey HSD test for iters showed significant differences in ValueGRASP between several pairs of iteration levels.
+- The Tukey-Kramer test for interactions between the parameters did not find any statistically significant interactions affecting the objective function value.
+
+2.5 Pareto Front Analysis:
+- The Pareto front comparing runtime vs. objective function value showed that for the best objective values and shortest runtimes, a lower number of iterations (like 10) seems to be optimal.
+- Increasing the number of iterations from 10 to 90 resulted in a relative improvement of 0.759% in the objective function value but caused a runtime increase of 694.017%.
+
+3. Recommendations:
+Given the analyses, the most influential parameter affecting both runtime and objective function value is iters. The alpha_a and alpha_l parameters, on the other hand, have minimal statistical impact on the outcomes. 
+
+Considering the trade-offs between solution quality and computational efficiency:
+- For Faster Results: If runtime efficiency is crucial, then using 10 iterations would be more suitable. The solutions will be slightly suboptimal, but the algorithm will complete much faster.
+- For Better Solution Quality: If the objective is to achieve the best solution quality, 90 iterations seem to be the best choice, especially if computational time is not a constraint.
+
+Based on the Pareto front and the relative differences in outcomes, the benefits of increasing iterations from 10 to 90 might not justify the substantial increase in computational time for some applications. However, if the slight improvement in solution quality is of significant value, then the higher computational time might be justifiable.
+
+4. Conclusion:
+For the small instance size dataset, the optimal settings for the parameters are heavily influenced by the specific requirements and constraints of the application. While the iters parameter significantly influences the outcomes, the alpha_a and alpha_l parameters have a minimal statistical impact. Balancing the trade-offs between solution quality and computational time will be key in determining the best parameter settings.
+
+
+5. One-Way ANOVA Results:
+
+For the iters parameter:
+- Objective Function Value (ValueGRASP): F-statistic = 0.9969, p-value = 0.4081
+- Runtime (TotalTimeGRASP): F-statistic = 1510.5402, p-value = 0.0000
+
+Note: The One-Way ANOVA results indicate statistically significant differences in both ValueGRASP and TotalTimeGRASP across the different levels of the iters parameter.
