@@ -1,15 +1,16 @@
-using Gurobi, JuMP, JLD2, CPLEX, HiGHS
+using Gurobi, JuMP, JLD2
 using Types
 using MathOptInterface
 const MOI = MathOptInterface
 
-function optimize_model(model::Model; verbose=true, solver=Gurobi::Module)
+function optimize_model(model::Model, number; verbose=true, solver=Gurobi::Module)
     set_optimizer(model, solver.Optimizer)
     set_time_limit_sec(model, 1800.0) # 30 minutos
     if !verbose
         set_silent(model)
     end
     # show(model)
+    set_optimizer_attribute(model, "LogFile", "log_$number.txt")
     optimize!(model)
     tiempo = MOI.get(model, MOI.SolveTimeSec())
     time_int = trunc(Int, tiempo)

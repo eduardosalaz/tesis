@@ -41,7 +41,8 @@ function solve(size, dir)
         println(number)
         instance = read_instance(path)
         model = build_model(instance)
-        X, Y, obj_val, time = optimize_model(model)
+
+        X, Y, obj_val, time = optimize_model(model, number)
         file_inst_path = "inst_$number" * "_" * size * ".jld2"
         file_sol_path = "sol_$number" * "_" * size * ".jld2"
         if obj_val == 0
@@ -53,11 +54,11 @@ function solve(size, dir)
         solution = Solution(instance, X, Y, obj_val, time)
         full_sol_path = sol_dir_path * file_sol_path
         full_inst_path = inst_dir_path * file_inst_path
-        plot_sol_path = plot_sol_dir_path * "sol$number" * "_" * size * ".png"
+        plot_sol_path = plot_sol_dir_path * "sol$number" * "_" * size *  ".png"
         plot_inst_path = plot_inst_dir_path * "inst$number" * "_" * size * ".png"
 
         write_solution(solution, full_sol_path)
-        plot_solution(solution, plot_sol_path)
+        #plot_solution(solution, plot_sol_path)
     end
 end
 

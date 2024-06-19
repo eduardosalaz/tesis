@@ -34,7 +34,7 @@ function generate_solve(size)
     if !isdir(plot_inst_dir_path)
         mkdir(plot_inst_dir_path)
     end
-    for i in 1:30
+    for i in 1:10
         BU_coords, S_coords = generate_coords(B, S)
         dist_mat = generate_dist(BU_coords, S_coords, B, S)
         parameters = generate_params(B, S, P)
@@ -42,7 +42,7 @@ function generate_solve(size)
         println("builded instance $i")
         model = build_model(instance)
         println("builded model $i")
-        X, Y, obj_val, time = optimize_model(model)
+        X, Y, obj_val, time = optimize_model(model, i)
         file_inst_path = "inst_$contador" * "_" * size * ".jld2"
         file_sol_path = "sol_$contador" * "_" * size * ".jld2"
         if obj_val == 0
