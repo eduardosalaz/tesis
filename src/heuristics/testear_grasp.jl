@@ -5,6 +5,7 @@ using DataFrames
 using CSV
 function main_test()
     entradas = readdir(ARGS[1])
+    println(entradas)
     arr_grasp = []
     for entrada in entradas
         path = ARGS[1] * entrada
@@ -28,11 +29,12 @@ function main_test()
         Y = Vector{Int64}(undef, S)
         D = instancia.D
         Weight = 0
-        test_αₗ = [0.1, 0.3, 0.5, 0.7, 0.9]
-        #test_αₗ = [0.1, 0.3]
-        test_αₐ = [0.1, 0.3, 0.5, 0.7, 0.9]
-        # test_αₐ = [0.1, 0.3]
-        test_iters = [10, 30, 50, 70, 90]
+        #test_αₗ = [0.1, 0.3, 0.5, 0.7, 0.9]
+        test_αₗ = [0.1]
+        #test_αₐ = [0.1, 0.3, 0.5, 0.7, 0.9]
+        test_αₐ = [0.3]
+        #test_iters = [10, 30, 50, 70, 90]
+        test_iters = [70]
         before = now()
         for αₗ in test_αₗ
             for αₐ in test_αₐ
@@ -40,10 +42,10 @@ function main_test()
                     println("$αₗ, $αₐ, $iters")
                     sol, time_grasp = grasp(αₗ, αₐ,  iters, instance)
                     if sol !== nothing
-                        str_path = "out\\solutions\\625_78_32\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * "$αₗ" * "_" * "$αₐ" * "_" * "$iters" * "_grasp"
+                        str_path = "out\\solutions\\625_78_32\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * "$αₗ" * "_" * "$αₐ" * "_" * "$iters" * "_grasp_final"
                         plot_str_path = str_path * ".png"
                         solution_str_path = str_path * ".jld2"
-                        Types.plot_solution(sol, plot_str_path)
+                        #Types.plot_solution(sol, plot_str_path)
                         Types.write_solution(sol, solution_str_path)
                         bestWeight = sol.Weight
                         gap_repaired = (1 - (weight_exac / bestWeight)) * 100
@@ -61,7 +63,7 @@ function main_test()
         end
         df1 = vcat(DataFrame.(arr_grasp)...)
         df1 = df1[:, sortperm(names(df1))]
-        CSV.write("df_grasp_625_all_combs.csv", df1)
+        CSV.write("df_grasp_625_78_32_70iters.csv", df1)
     end
 end
 

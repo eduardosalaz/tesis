@@ -474,7 +474,6 @@ function compute_assignments_and_opportunity_costs(D::Matrix{Int64}, Y::Vector{I
         # Calculate the opportunity cost as the largest difference among all possible assignments
         opp_cost = costs[end][1] - costs[1][1]  # Difference between largest and smallest costs
         # Use the smallest facility index for this client to form the unique key
-        # unique_key = encode_key(j, costs[1][2], max_facilities)
         enqueue!(pq, j, opp_cost)
     end
     return best_assignments, pq
@@ -742,6 +741,19 @@ function update_center_capacity(center, bu, values_matrix, risk_vec, targets, β
     end
     return falses
 end
+#=
+ \STATE \textbf{Input:} Distance matrix $d$, Decision Variable $Y$, $\lvert B \rvert$, $\lvert S \rvert$
+        \STATE \textbf{Output:} Opportunity Cost Matrix
+         \Procedure{OppCostMatrix}
+            \FOR{$j$ \in $1$ \to $ \lvert B \rvert$}
+                \STATE $minimal \gets$ \textbf{argmin}($d_[:, j]$)
+                \FOR{$i$ \in $1$ \to $\lvert S \rvert$}
+                    \STATE $oppMatrix[j, i] \gets D[j, i] - minimal$
+                \ENDFOR
+            \ENDFOR
+            \STATE \textbf{return} $oppMatrix$
+        \EndProcedure
+=#
 
 function oppCostAssignment(Y, instance::Types.Instance)
     D = copy(instance.D)

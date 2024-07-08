@@ -1,11 +1,11 @@
 using Types
 include("first_model.jl")
 #TODO fix this
-function solve(size, dir)
+function solve(dir)
     K = 5
     M = 3
     contador = 1
-    B, S, P = parse.(Int, split(size, "_"))
+    # B, S, P = parse.(Int, split(size, "_"))
     failed_dir_path = "instances/" * size * "/failed_instances/"
     inst_dir_path = "instances/" * size * "/"
     sol_dir_path = "out/solutions/" * size * "/"
@@ -62,4 +62,4 @@ function solve(size, dir)
     end
 end
 
-solve(ARGS[1], ARGS[2])
+solve(ARGS[1])

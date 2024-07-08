@@ -19,7 +19,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
     count_repair_1 = 0
     count_repair_2 = 0
     lockVar = ReentrantLock()
-    results = results = fill((iter=0, weight=0, time=0, factible=false, improving=false, curr_epoch=0.0), max_iters)
+    #results = results = fill((iter=0, weight=0, time=0, factible=false, improving=false, curr_epoch=0.0), max_iters)
     Threads.@threads for iter in 1:max_iters
         X = Matrix{Int64}(undef, S, B)
         Y = Vector{Int64}(undef, S)
@@ -111,29 +111,37 @@ function grasp(αₗ, αₐ, max_iters, instance)
             #println(isFactible(oldSol, true))
         end
         end_iter = now()
-        delta_iter = end_iter - start_iter
-        delta_iter_millis = round(delta_iter, Millisecond)
-        delta_iter_value = delta_iter_millis.value
+        #@show end_iter
+        delta_total = end_iter - start
+        delta_total_millis = round(delta_total, Millisecond)
+        if delta_total_millis.value >= 1800000 # 30 minutos en milisegundos
+            break
+        end
+        #delta_iter = end_iter - start_iter
+        #delta_iter_millis = round(delta_iter, Millisecond)
+        #delta_iter_value = delta_iter_millis.value
 
         lock(lockVar)
         try
             current_timestamp = Dates.datetime2unix(now(Dates.UTC))
             if oldSol !== nothing
+                #=
                 if !factible_after_repair
                     results[iter] = (iter=iter, weight=0, time=delta_iter_value, factible=false, improving=false, curr_epoch=current_timestamp)
                 else
+                    =#
                     improving = false
                     if oldSol.Weight < bestWeight
                         bestSol = oldSol
                         bestWeight = oldSol.Weight
                         improving = true
                     end
-                    results[iter] = (iter=iter, weight=oldSol.Weight, time=delta_iter_value, factible=true, improving=improving, curr_epoch=current_timestamp)
-                end
-            else
-                if !factible_after_repair
-                    results[iter] = (iter=iter, weight=0, time=delta_iter_value, factible=false, improving=false, curr_epoch=current_timestamp)
-                end
+                    #results[iter] = (iter=iter, weight=oldSol.Weight, time=delta_iter_value, factible=true, improving=improving, curr_epoch=current_timestamp)
+                #end
+            #else
+                #if !factible_after_repair
+                    #results[iter] = (iter=iter, weight=0, time=delta_iter_value, factible=false, improving=false, curr_epoch=current_timestamp)
+                #end
             end
         finally
             unlock(lockVar)
@@ -151,7 +159,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
     delta = finish - start
     delta_millis = round(delta, Millisecond)
     # println(delta_millis.value)
-    return bestSol, delta_millis.value, results
+    return bestSol, delta_millis.value # , results
 end
 
 
@@ -563,17 +571,19 @@ function main_grasp()
     file_name = ARGS[1]
     #file_name = "instances\\625_78_32\\inst_1_625_78_32.jld2"
     instance = read_instance(file_name)
-    αₗ = 0.2
-    αₐ = 0.2
+    αₗ = 0.3
+    αₐ = 0.3
     iters = parse(Int, ARGS[2])
-    bestSolution, totalTime, results = grasp(αₗ, αₐ, iters, instance)
+    bestSolution, totalTime = grasp(αₗ, αₐ, iters, instance)
     println(totalTime)
     println(bestSolution.Weight)
+    #=
     sorted_results_desc = sort(results, by=p -> p.curr_epoch) # al ordenar por epoch podeoms comparar contra el inmediato anterior?
     for var in sorted_results_desc
         println(var)
     end
-    write_solution(bestSolution, "solucion_grasp_625_nuevo10.jld2")
+    =#
+    write_solution(bestSolution, "solucion_grasp_2500_nuevo11.jld2")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

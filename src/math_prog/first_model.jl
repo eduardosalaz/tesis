@@ -5,12 +5,12 @@ const MOI = MathOptInterface
 
 function optimize_model(model::Model, number; verbose=true, solver=Gurobi::Module)
     set_optimizer(model, solver.Optimizer)
-    set_time_limit_sec(model, 1800.0) # 30 minutos
+    set_time_limit_sec(model, 7200.0) # 30 minutos
     if !verbose
         set_silent(model)
     end
     # show(model)
-    set_optimizer_attribute(model, "LogFile", "log_$number.txt")
+    set_optimizer_attribute(model, "LogFile", "log_2hrs_$number.txt")
     optimize!(model)
     tiempo = MOI.get(model, MOI.SolveTimeSec())
     time_int = trunc(Int, tiempo)
