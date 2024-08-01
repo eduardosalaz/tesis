@@ -1,0 +1,9 @@
+how to warmstart:
+1. read solution from file
+2. get instance from solution
+3. get X and Y from solution
+4. build_model(instance)
+5. refer to x and y variables from model (model[:x], model[:y])
+6. set_start_value.(x, X)
+7. set_start_value(.y, Y)
+8. profit
