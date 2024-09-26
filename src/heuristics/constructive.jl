@@ -208,90 +208,44 @@ end
 
 function pdisp_2(instance)
     before_init = Dates.now()
-    B = instance.B
     S = instance.S
-    D = instance.D
     Sk = instance.Sk
     Lk = instance.Lk
     Uk = instance.Uk
     P = instance.P
-    V = instance.V
-    μ = instance.μ
-    T = instance.T
-    R = instance.R
-    β = instance.β
-    k = 5
     s_coords = instance.S_coords
     metric = Distances.Euclidean()
     d = trunc.(Int, Distances.pairwise(metric, s_coords, dims=1))
-    coords_S1 = s_coords[Sk[1], :]
-    coords_S2 = s_coords[Sk[2], :]
-    coords_S3 = s_coords[Sk[3], :]
-    coords_S4 = s_coords[Sk[4], :]
-    coords_S5 = s_coords[Sk[5], :]
-
-    d1 = trunc.(Int, Distances.pairwise(metric, coords_S1, dims=1))
-    d2 = trunc.(Int, Distances.pairwise(metric, coords_S2, dims=1))
-    d3 = trunc.(Int, Distances.pairwise(metric, coords_S3, dims=1))
-    d4 = trunc.(Int, Distances.pairwise(metric, coords_S4, dims=1))
-    d5 = trunc.(Int, Distances.pairwise(metric, coords_S5, dims=1))
-    N1 = length(Sk[1])
-    N2 = length(Sk[2])
-    N3 = length(Sk[3])
-    N4 = length(Sk[4])
-    N5 = length(Sk[5])
-    p1 = Lk[1]
-    p2 = Lk[2]
-    p3 = Lk[3]
-    p4 = Lk[4]
-    p5 = Lk[5]
-
-    pdisp1 = pdisp_simple(d1, p1, N1)
-    pdisp2 = pdisp_simple(d2, p2, N2)
-    pdisp3 = pdisp_simple(d3, p3, N3)
-    pdisp4 = pdisp_simple(d4, p4, N4)
-    pdisp5 = pdisp_simple(d5, p5, N5)
-
-    pdisp1_fixed = Sk[1][pdisp1]
-    pdisp2_fixed = Sk[2][pdisp2]
-    pdisp3_fixed = Sk[3][pdisp3]
-    pdisp4_fixed = Sk[4][pdisp4]
-    pdisp5_fixed = Sk[5][pdisp5]
-
-    N = S
-    pdisp_ok = Set(vcat([pdisp1_fixed, pdisp2_fixed, pdisp3_fixed, pdisp4_fixed, pdisp5_fixed]...))
-    if length(pdisp_ok) != P
-        count = count_k(pdisp_ok, Sk)
-        while length(pdisp_ok) < P
-            # Find the node v that maximizes the distance to its closest neighbor in P
-            maxdist = 0
-            vbest = 0
-            for v in 1:N
-                if v in pdisp_ok
-                    continue
-                end
-                k = node_type(v, Sk)
-                if count[k] >= Uk[k]
-                    continue
-                end
-                dist = minimum([d[v, vprime] for vprime in pdisp_ok])
-                if dist > maxdist
-                    maxdist = dist
-                    vbest = v
-                end
+    
+    pdisp_ok = Set{Int}()
+    count = zeros(Int, length(Sk))
+    
+    while length(pdisp_ok) < P
+        maxdist = 0
+        vbest = 0
+        for v in 1:S
+            if v in pdisp_ok
+                continue
             end
-            # If no such node exists, stop the algorithm
-            if vbest == 0
-                @error "PDISP FAILED"
-                println("*******************************************************************************************")
-                break
+            k = node_type(v, Sk)
+            if count[k] >= Uk[k]
+                continue
             end
-            # Add the node vbest to the set P and update the counts
-            k = node_type(vbest, Sk)
-            count[k] += 1
-            push!(pdisp_ok, vbest)
+            dist = minimum([d[v, vprime] for vprime in pdisp_ok])
+            if dist > maxdist
+                maxdist = dist
+                vbest = v
+            end
         end
+        if vbest == 0
+            @error "PDISP FAILED"
+            break
+        end
+        k = node_type(vbest, Sk)
+        count[k] += 1
+        push!(pdisp_ok, vbest)
     end
+    
     after_init = Dates.now()
     delta_init = after_init - before_init
     delta_init_milli = round(delta_init, Millisecond)
@@ -522,50 +476,39 @@ function oppCostQueue(Y, instance::Types.Instance)
     B = instance.B
     M = instance.M
     V = instance.V
-    P = instance.P
     R = instance.R
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, zeros(S, M), zeros(S))
-    N = instance.P # podemos hacerlo en proporcion a P, no necesariamente tiene que ser P
+    N = instance.P
     best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
-    full_centers = Set()
-    assigned_bus = Set()
-    unassigned_bus = Set(collect(1:B))
+    full_centers = Set{Int}()
+    assigned_bus = Set{Int}()
+    unassigned_bus = Set(1:B)
+    
     while !isempty(pq) && length(assigned_bus) < B
         bu = dequeue!(pq)
         if bu ∉ assigned_bus
             for center in best_assignments[bu]
-                full = false
-                fulls_m = zeros(Int, M)
                 if center ∉ full_centers
-                    for m in 1:M
-                        values_matrix[center, m] += V[m][bu]
-                        if values_matrix[center, m] > targets[m]
-                            fulls_m[m] = 1
+                    if all(values_matrix[center, m] + V[m][bu] <= targets[m] for m in 1:M) &&
+                       risk_vec[center] + R[bu] <= β
+                        for m in 1:M
+                            values_matrix[center, m] += V[m][bu]
                         end
+                        risk_vec[center] += R[bu]
+                        push!(assigned_bus, bu)
+                        delete!(unassigned_bus, bu)
+                        X[center, bu] = 1
+                        if all(values_matrix[center, m] >= targets[m] for m in 1:M) ||
+                           risk_vec[center] >= β
+                            push!(full_centers, center)
+                        end
+                        break
                     end
-                    if all(x -> x == 1, fulls_m)
-                        push!(full_centers, center)
-                    end
-                    risk_vec[center] += R[bu]
-                    if risk_vec[center] > β
-                        push!(full_centers, center)
-                    end
-                    push!(assigned_bus, bu)
-                    pop!(unassigned_bus, bu)
-                    X[center, bu] = 1
-                    break
                 end
             end
         end
     end
-    todos = true
-    count = 0
-    for col in eachcol(X)
-        if all(x -> x == 0, col)
-            count += 1
-            todos = false
-        end
-    end
+    
     X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
     return X
 end
