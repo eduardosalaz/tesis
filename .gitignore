@@ -27,3 +27,8 @@ todos los csv/
 *.rar
 pruebas/new gaps/venv
 tex/
+*.txt
+*.pdf
+*.jpg
+*.eps
+*.svg
