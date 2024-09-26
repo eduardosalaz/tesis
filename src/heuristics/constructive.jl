@@ -7,7 +7,6 @@ using HiGHS
 using Dates
 using TimerOutputs
 using MathOptInterface
-const MOI = MathOptInterface
 using Dates
 using Random
 using DataStructures
@@ -339,24 +338,6 @@ function minimums(vec::Vector, n)::Tuple{Vector{Int64},Vector{Int64}}
 end
 #132407
 
-function maximums(matrix, n)::Tuple{Vector{Int64},Vector{CartesianIndex{2}}}
-    type = eltype(matrix)
-    vals = zeros(type, n)
-    indices = Array{Int64}(undef, n)
-    arr = Array{Tuple{type,CartesianIndex}}(undef, n)
-    @inbounds for i ∈ axes(matrix, 1), j ∈ axes(matrix, 2)
-        smallest, index = findmin(vals)
-        if matrix[i, j] > smallest
-            arr[index] = matrix[i, j], CartesianIndex(i, j)
-            vals[index] = matrix[i, j]
-        end
-    end
-    arr = sort(arr, by=x -> x[1], rev=true)
-    vals = [x[1] for x in arr]
-    indices = [x[2] for x in arr]
-    return vals, indices
-end
-
 function maximums3(M, n)
     v = vec(M)
     l = length(v)
@@ -366,25 +347,6 @@ function maximums3(M, n)
     return reverse!(indices)
 end
 
-function maximums2(M, n)
-    v = vec(M)
-    l = length(v)
-    ix = [1:l;]
-    partialsortperm!(ix, v, (l-n+1):l, initialized=true)
-    vals = v[ix[(l-n+1):l]]
-    indices = CartesianIndices(M)[ix[(l-n+1):l]]
-    return vals, indices
-end
-
-function maximums4(M, n)
-    v = vec(M)
-    l = length(v)
-    ix = [1:l;]
-    partialsortperm!(ix, v, (l-n+1):l, initialized=true)
-    indices = CartesianIndices(M)[ix[(l-n+1):l]]
-    vals = v[ix[(l-n+1):l]]
-    return reverse!(vals), reverse!(indices)
-end
 
 function calculate_target(instance)
     M = instance.M
@@ -577,7 +539,7 @@ function oppCostQueue(Y, instance::Types.Instance)
                 if center ∉ full_centers
                     for m in 1:M
                         values_matrix[center, m] += V[m][bu]
-                        if values_matrix[center, m] > targets[m] 
+                        if values_matrix[center, m] > targets[m]
                             fulls_m[m] = 1
                         end
                     end
@@ -684,63 +646,6 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
     return X
 end
 
-
-
-function handle_unassigned_clients(X, instance, best_assignments, unassigned_clients, values_matrix, risk_vec)
-    targets_upper = calculate_targets_upper(instance)
-    S = instance.S
-    M = instance.M
-    V = instance.V
-    β = instance.β[1]
-    R = instance.R
-    # Only loop over unassigned clients
-    for client in unassigned_clients
-        assigned = false
-        @show client
-        for facility in best_assignments[client]
-            potential_assignment_valid = true
-            for m in 1:M
-                if values_matrix[facility, m] + V[m][client] > targets_upper[m]
-                    potential_assignment_valid = false
-                    break
-                end
-            end
-            if risk_vec[facility] + R[client] > β
-                potential_assignment_valid = false
-                break
-            end
-            if potential_assignment_valid
-                X[facility, client] = 1
-                assigned = true
-                pop!(unassigned_clients, client)
-                for m in 1:M
-                    values_matrix[facility, m] += V[m][client]
-                end
-                risk_vec[facility] += R[client]
-                break  # Assign to the first valid facility and then exit the inner loop
-            end
-        end
-        if !assigned
-            @show client
-        end
-    end
-    @show length(unassigned_clients)
-    return X
-end
-
-function update_center_capacity(center, bu, values_matrix, risk_vec, targets, β, M, V, R)
-    for m in 1:M
-        values_matrix[center, m] += V[m][bu]
-        if values_matrix[center, m] > targets[m]
-            return true
-        end
-    end
-    risk_vec[center] += R[center]
-    if risk_vec[center] > β
-        return true
-    end
-    return falses
-end
 #=
  \STATE \textbf{Input:} Distance matrix $d$, Decision Variable $Y$, $\lvert B \rvert$, $\lvert S \rvert$
         \STATE \textbf{Output:} Opportunity Cost Matrix
@@ -862,7 +767,6 @@ function oppCostAssignment(Y, instance::Types.Instance)
     end
     return X
 end
-
 
 function pdisp(instance)
     P = instance.P
@@ -1150,5 +1054,3 @@ if abspath(PROGRAM_FILE) == @__FILE__
     println("hola")
     main_constructive(ARGS[2], ARGS[3]; path=ARGS[1])
 end
-
-# main_constructive("relax", "opp")

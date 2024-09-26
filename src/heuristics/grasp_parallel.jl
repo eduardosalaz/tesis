@@ -19,8 +19,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
     count_repair_1 = 0
     count_repair_2 = 0
     lockVar = ReentrantLock()
-    #results = results = fill((iter=0, weight=0, time=0, factible=false, improving=false, curr_epoch=0.0), max_iters)
-    Threads.@threads for iter in 1:max_iters
+    Threads.@threads for _ in 1:max_iters
         X = Matrix{Int64}(undef, S, B)
         Y = Vector{Int64}(undef, S)
         Weight = 0
@@ -35,6 +34,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
         end
         #@show Weight
         oldSol = Types.Solution(instance, X, Y, Weight, time_loc + time_alloc)
+        #println(isFactible(oldSol))
         repair_delta = 0
         factible_after_repair = false
         factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper, false)
@@ -65,6 +65,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
         #println(iter, " ", factible_after_repair)
         if factible_after_repair
             oldSol = repaired
+            #println(isFactible(oldSol, true))
         end
         improvement = true
         while improvement && factible_after_repair
@@ -95,6 +96,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
             end
             #println(isFactible(sol_interchanged_bu, true))
             # Third improvement function
+            
             sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
             new_weight_moved = sol_deactivated_center.Weight
             push!(improvements, new_weight_moved < prev_weight)
@@ -104,7 +106,6 @@ function grasp(αₗ, αₐ, max_iters, instance)
                 oldSol = sol_deactivated_center  # Update oldSol if there was an improvement
             end
             #println(isFactible(sol_deactivated_center, true))
-
             # Check for any improvements
 
             improvement = any(improvements)
@@ -162,16 +163,27 @@ function grasp(αₗ, αₐ, max_iters, instance)
     return bestSol, delta_millis.value # , results
 end
 
-
+function calculate_targets(instance)
+    M = instance.M
+    μ = instance.μ
+    T = instance.T
+    targets_lower = Vector{Float32}(undef, M)
+    targets_upper = Vector{Float32}(undef, M)
+    for m in 1:M
+        targets_lower[m] = (1 * μ[m][1] * (1 - T[m]))
+        targets_upper[m] = (1 * μ[m][1] * (1 + T[m]))
+    end
+    return targets_lower, targets_upper
+end
 
 
 function calculate_targets_upper(instance)
     M = instance.M
     μ = instance.μ
     T = instance.T
-    targets = Vector{Int64}(undef, M)
+    targets = Vector{Float32}(undef, M)
     for m in 1:M
-        targets[m] = round(Int, (1 * μ[m][1] * (1 + T[m]))) # corregir esto
+        targets[m] = (1 * μ[m][1] * (1 + T[m])) # corregir esto
     end
     return targets
 end
@@ -180,9 +192,9 @@ function calculate_targets_lower(instance)
     M = instance.M
     μ = instance.μ
     T = instance.T
-    targets = Vector{Int64}(undef, M)
+    targets = Vector{Float32}(undef, M)
     for m in 1:M
-        targets[m] = round(Int, (1 * μ[m][1] * (1 - T[m]))) # corregir esto
+        targets[m] = (1 * μ[m][1] * (1 - T[m])) # corregir esto
     end
     return targets
 end
@@ -567,25 +579,27 @@ function evalWeight(X, D)
     return Weight
 end
 
-function main_grasp()
-    file_name = ARGS[1]
+function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
     #file_name = "instances\\625_78_32\\inst_1_625_78_32.jld2"
-    instance = read_instance(file_name)
+    instance = read_instance(path)
     αₗ = 0.3
     αₐ = 0.3
     iters = parse(Int, ARGS[2])
     bestSolution, totalTime = grasp(αₗ, αₐ, iters, instance)
     println(totalTime)
     println(bestSolution.Weight)
+    println(isFactible(bestSolution))
     #=
     sorted_results_desc = sort(results, by=p -> p.curr_epoch) # al ordenar por epoch podeoms comparar contra el inmediato anterior?
     for var in sorted_results_desc
         println(var)
     end
     =#
-    write_solution(bestSolution, "solucion_grasp_2500_nuevo11.jld2")
+    write_solution(bestSolution, "solucion_grasp_1_1250_changes5.jld2")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
+    main_grasp(;path=ARGS[1], iters=parse(Int, ARGS[2]))
+else
     main_grasp()
 end
