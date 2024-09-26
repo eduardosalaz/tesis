@@ -14,3 +14,15 @@ instances/
 *.dll
 resultados/
 conacyt2022/
+logs/
+logs2hrs/
+logs 2 horas correcto/
+Tesis-TDP-V1/
+todos los csv/
+*.csv
+*.xlsx
+*.png
+*.jld2
+*.zip
+*.rar
+pruebas/new gaps/venv
