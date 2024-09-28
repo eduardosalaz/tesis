@@ -96,7 +96,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
             end
             #println(isFactible(sol_interchanged_bu, true))
             # Third improvement function
-            
+            #=
             sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
             new_weight_moved = sol_deactivated_center.Weight
             push!(improvements, new_weight_moved < prev_weight)
@@ -105,6 +105,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
                 #println("En el loop loop el movimiento desactivar mejora con un new_weight_moved")
                 oldSol = sol_deactivated_center  # Update oldSol if there was an improvement
             end
+            =#
             #println(isFactible(sol_deactivated_center, true))
             # Check for any improvements
 
@@ -209,6 +210,14 @@ function start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
     return values_matrix, risk_vec
 end
 
+function start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+    for m in eachindex(V)
+        mul!(view(values_matrix, :, m), X, V[m])
+    end
+    mul!(risk_vec, X, R)
+    return values_matrix, risk_vec
+end
+
 function update_constraints(M, V, R, i, j, values_matrix, risk_vec, targets, β)
     constraints = 0
     for m in 1:M
@@ -271,7 +280,10 @@ function oppCostQueueGRASP(Y, instance::Types.Instance, α)
     V = instance.V
     P = instance.P
     R = instance.R
-    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, zeros(S, M), zeros(S))
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+    #values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, zeros(S, M), zeros(S))
     N = instance.P # podemos hacerlo en proporcion a P, no necesariamente tiene que ser P
     best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
     full_centers = Set()
@@ -570,14 +582,6 @@ function pdisp_grasp(instance, αₗ)
     return Y_bool, delta_init_milli.value
 end
 
-function evalWeight(X, D)
-    Weight = 0
-    indices = findall(x -> x == 1, X)
-    for indice in indices
-        Weight += D[indice]
-    end
-    return Weight
-end
 
 function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
     #file_name = "instances\\625_78_32\\inst_1_625_78_32.jld2"
@@ -595,7 +599,7 @@ function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
         println(var)
     end
     =#
-    write_solution(bestSolution, "solucion_grasp_1_1250_changes5.jld2")
+    write_solution(bestSolution, "solucion_grasp_1_1250_changes7.jld2")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

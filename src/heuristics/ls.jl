@@ -1381,13 +1381,9 @@ function localSearch(solution)
 
     #println(isFactible(oldSol, true))
     #println(oldSol.Weight)
-    D_new = oldSol.Instance.D
-    println(D_og == D_new)
     return oldSol
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
    mainLocal(; path=ARGS[1])
-else
-    mainLocal()
 end
