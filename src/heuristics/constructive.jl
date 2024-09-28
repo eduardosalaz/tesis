@@ -10,6 +10,7 @@ using MathOptInterface
 using Dates
 using Random
 using DataStructures
+using LinearAlgebra
 
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
@@ -208,18 +209,12 @@ end
 
 function pdisp_2(instance)
     before_init = Dates.now()
-    B = instance.B
     S = instance.S
-    D = instance.D
     Sk = instance.Sk
     Lk = instance.Lk
     Uk = instance.Uk
     P = instance.P
-    V = instance.V
-    μ = instance.μ
-    T = instance.T
-    R = instance.R
-    β = instance.β
+
     k = 5
     s_coords = instance.S_coords
     metric = Distances.Euclidean()
@@ -391,6 +386,14 @@ function start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
     return values_matrix, risk_vec
 end
 
+function start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+    for m in eachindex(V)
+        mul!(view(values_matrix, :, m), X, V[m])
+    end
+    mul!(risk_vec, X, R)
+    return values_matrix, risk_vec
+end
+
 function update_constraints(M, V, R, i, j, values_matrix, risk_vec, targets, β)
     constraints = 0
     for m in 1:M
@@ -524,7 +527,9 @@ function oppCostQueue(Y, instance::Types.Instance)
     V = instance.V
     P = instance.P
     R = instance.R
-    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, zeros(S, M), zeros(S))
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
     N = instance.P # podemos hacerlo en proporcion a P, no necesariamente tiene que ser P
     best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
     full_centers = Set()
@@ -585,7 +590,6 @@ function calculate_violation(facility, client, targets_upper, V, M, R, β, value
     end
     return violation
 end
-
 
 
 function handle_unassigned_clients2(X, instance, best_assignments, unassigned_clients, values_matrix, risk_vec)
@@ -693,7 +697,7 @@ function oppCostAssignment(Y, instance::Types.Instance)
     n = round(Int, (P / 2)) # falta tweakear
     while !todos
         indices::Vector{CartesianIndex{2}} = maximums3(oppMatrix, n)
-        values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
+        values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
         constraints = Int64[]
         # aqui calculamos inicialmente las constraints
         # vjm <= μim para cada i en 1:S, para cada m en 1:3, son S*3 constraints
