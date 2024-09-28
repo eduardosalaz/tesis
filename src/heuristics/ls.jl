@@ -2,7 +2,6 @@ using Types, BenchmarkTools, DelimitedFiles
 using TimerOutputs
 using LinearAlgebra
 using Dates
-
 function isFactible(solution::Types.Solution, verbose=true)
     number_constraints_violated = 0
     instance = solution.Instance
@@ -89,7 +88,7 @@ function isFactible(solution::Types.Solution, verbose=true)
             if !(Y[i] * μ[m][i] * (1 - T[m]) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
-                    println("μ: ", round(Int, Y[i] * μ[m][i] * (1 - T[m])))
+                    println("μ: ", (Y[i] * μ[m][i] * (1 - T[m])))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
@@ -97,7 +96,7 @@ function isFactible(solution::Types.Solution, verbose=true)
             if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
-                    println("μ: ", round(Int, Y[i] * μ[m][i] * (1 + T[m])))
+                    println("μ: ", (Y[i] * μ[m][i] * (1 + T[m])))   
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
@@ -348,8 +347,8 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
     n = round(Int, (P - 1))
     usables_i = findall(==(1), Y)
     not_usables_i = Set(findall(==(0), Y))
-    values_matrix = Matrix{Int64}(undef, S, M)
-    risk_vec = Vector{Int64}(undef, S)
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
 
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
     cant_fix = false
@@ -527,8 +526,8 @@ function repair_solution2(solution, cons, targets_lower, targets_upper, remove, 
     n = round(Int, (P - 1))
     not_usables_i = Set(findall(==(0), Y))
     usables_i = Set(findall(==(1), Y))
-    values_matrix = Matrix{Int64}(undef, S, M)
-    risk_vec = Vector{Int64}(undef, S)
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
     remove_vec = collect(remove) |> sort!
     remove_vec_fixed = collect(remove) |> sort!
     add_vec = collect(add) |> sort!
@@ -698,51 +697,40 @@ function repair_solution2(solution, cons, targets_lower, targets_upper, remove, 
 end
 
 function interchange_bu_improve(solution, targets_lower, targets_upper, strategy)
-    X = copy(solution.X)
-    Y = copy(solution.Y)
+    X, Y = solution.X, solution.Y
     instance = solution.Instance
-    B = instance.B
-    S = instance.S
-    D = copy(instance.D)
-    M = instance.M
-    V = instance.V
-    R = instance.R
-    β = instance.β[1]
-    P = instance.P
+    B, S, M, V, R, β, P = instance.B, instance.S, instance.M, instance.V, instance.R, instance.β[1], instance.P
+    D = instance.D
     Weight = solution.Weight
-    values_matrix = Matrix{Int64}(undef, S, M)
-    risk_vec = Vector{Int64}(undef, S)
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
 
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
     improvement = true
     while improvement
         improvement = false
-        best_ĩ = 0
-        best_i✶ = 0
-        best_j₁ = 0
-        best_j₂ = 0
+        best_ĩ, best_i✶, best_j₁, best_j₂ = 0, 0, 0, 0
         best_improvement = 0
-        for j₁ in 1:B
-            ĩ = findfirst(==(1), @views X[:, j₁])
-            for j₂ in j₁+1:B
-                i✶ = findfirst(==(1), @views X[:, j₂])
-                weight_diff = -D[ĩ, j₁] - D[i✶, j₂] + D[ĩ, j₂] + D[i✶, j₁]
+        @inbounds for j₁ in 1:B-1
+            ĩ = findfirst(==(1), @view X[:, j₁])
+            @inbounds for j₂ in j₁+1:B
+                i✶ = findfirst(==(1), @view X[:, j₂])
+                weight_diff =  D[i✶, j₁] + D[ĩ, j₂] - D[ĩ, j₁] - D[i✶, j₂]
                 if weight_diff < 0 # si el peso mejora, revisa el estado del movimiento
                     can_do_move = true
-                    values_ĩ = Vector{Int}(undef, 3)
-                    values_i✶ = Vector{Int}(undef, 3)
-                    for m in 1:3
+                    values_ĩ = Vector{Float32}(undef, 3)
+                    values_i✶ = Vector{Float32}(undef, 3)
+                    @simd for m in 1:3
                         values_ĩ[m] = values_matrix[ĩ, m] - V[m][j₁] + V[m][j₂]
                         values_i✶[m] = values_matrix[i✶, m] + V[m][j₁] - V[m][j₂]
-                        if values_ĩ[m] > targets_upper[m] || values_i✶[m] > targets_upper[m] || values_ĩ[m] < targets_lower[m] || values_i✶[m] < targets_lower[m]
+                        if values_ĩ[m] > targets_upper[m] || values_i✶[m] > targets_upper[m] || 
+                            values_ĩ[m] < targets_lower[m] || values_i✶[m] < targets_lower[m]
                             can_do_move = false
-                            break
                         end
                     end
                     risk_ĩ = risk_vec[ĩ] - R[j₁] + R[j₂]
                     risk_i✶ = risk_vec[i✶] + R[j₁] - R[j₂]
                     if risk_ĩ > β || risk_i✶ > β
-                        # si yo le agrego, no deberia de pasar esto porque cambia infactibilidad
                         can_do_move = false
                     end
                     if can_do_move
@@ -750,34 +738,23 @@ function interchange_bu_improve(solution, targets_lower, targets_upper, strategy
                         abs_improvement = -weight_diff #inviertele el signo para hacerlo positivo
                         if newWeight < Weight
                             if strategy == :ff
-                                #println("Intercambiando $ĩ por $i✶ la j $j₁ por la j $j₂")
-                                X[ĩ, j₁] = 0
-                                X[i✶, j₂] = 0
-                                X[ĩ, j₂] = 1
-                                X[i✶, j₁] = 1
+                                X[ĩ, j₁], X[i✶, j₂] = 0, 0
+                                X[ĩ, j₂], X[i✶, j₁] = 1, 1
                                 improvement = true
                                 Weight = newWeight
-                                for m in 1:M
-                                    values_matrix[ĩ, m] -= V[m][j₁] # restale a ĩ, previo
-                                    values_matrix[i✶, m] -= V[m][j₂] # restale a i✶, previo
-                                    values_matrix[ĩ, m] += V[m][j₂] # sumale a ĩ, nuevo
-                                    values_matrix[i✶, m] += V[m][j₁] # sumale a i✶, nuevo
+                                @simd for m in 1:M
+                                    values_matrix[ĩ, m] += V[m][j₂] - V[m][j₁]
+                                    values_matrix[i✶, m] += V[m][j₁] - V[m][j₂]
                                 end
-                                risk_vec[ĩ] -= R[j₁] # restale a ĩ el viejo
-                                risk_vec[i✶] -= R[j₂] # restale a i✶ el viejo
-                                risk_vec[ĩ] += R[j₂] # sumale a i✶ el nuevo
-                                risk_vec[i✶] += R[j₁] # sumale a ĩ el nuevo
+                                risk_vec[ĩ] += R[j₂] - R[j₁]
+                                risk_vec[i✶] += R[j₁] - R[j₂]
                                 aux = ĩ
                                 ĩ = i✶
                                 i✶ = aux
-                                #newSol = Solution(instance, X, Y, Weight, solution.Time)
-                                #println(isFactible(newSol, true))
                             else
                                 if abs_improvement > best_improvement
-                                    best_ĩ = ĩ
-                                    best_i✶ = i✶
-                                    best_j₁ = j₁
-                                    best_j₂ = j₂
+                                    best_ĩ, best_i✶ = ĩ, i✶
+                                    best_j₁, best_j₂ = j₁, j₂
                                     best_improvement = abs_improvement
                                 end
                             end
@@ -788,31 +765,21 @@ function interchange_bu_improve(solution, targets_lower, targets_upper, strategy
         end
         if strategy == :bf
             if best_ĩ != 0
-                X[best_ĩ, best_j₁] = 0
-                X[best_i✶, best_j₂] = 0
-                X[best_ĩ, best_j₂] = 1
-                X[best_i✶, best_j₁] = 1
-                indices = findall(x -> x == 1, X)
-                newWeight = 0
-                for indice in indices
-                    newWeight += instance.D[indice]
-                end
+                X[best_ĩ, best_j₁], X[best_i✶, best_j₂] = 0, 0
+                X[best_ĩ, best_j₂], X[best_i✶, best_j₁] = 1, 1
+                newWeight = dot(X, D)
                 Weight = newWeight
                 improvement = true
-                for m in 1:M
-                    values_matrix[best_ĩ, m] -= V[m][best_j₁] # restale a ĩ, previo
-                    values_matrix[best_i✶, m] -= V[m][best_j₂] # restale a i✶, previo
-                    values_matrix[best_ĩ, m] += V[m][best_j₂] # sumale a ĩ, nuevo
-                    values_matrix[best_i✶, m] += V[m][best_j₁] # sumale a i✶, nuevo
+                @simd for m in 1:M
+                    values_matrix[best_ĩ, m] += V[m][best_j₂] - V[m][best_j₁]
+                    values_matrix[best_i✶, m] += V[m][best_j₁] - V[m][best_j₂]
                 end
-                risk_vec[best_ĩ] -= R[best_j₁] # restale a ĩ el viejo
-                risk_vec[best_i✶] -= R[best_j₂] # restale a i✶ el viejo
-                risk_vec[best_ĩ] += R[best_j₂] # sumale a i✶ el nuevo
-                risk_vec[best_i✶] += R[best_j₁] # sumale a ĩ el nuevo
+                risk_vec[best_ĩ] += R[best_j₂] - R[best_j₁]
+                risk_vec[best_i✶] += R[best_j₁] - R[best_j₂]
             end
         end
     end
-    Weight = sum(X .* D)
+    Weight = dot(X, D)
 
     return Solution(instance, X, Y, Weight, solution.Time)
 end
@@ -868,7 +835,7 @@ function get_best_clients_for_centers(D, N)
     end
     return best_clients
 end
-
+#=
 """
 Pre-Processing:
 
@@ -950,6 +917,7 @@ end
 # Post-Processing
 return best_solution
 """
+=#
 
 function deactivate_center_improve(solution, targets_lower, targets_upper, strategy=:bf)
     X = copy(solution.X)
@@ -970,8 +938,8 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     Weight = solution.Weight
     not_usables_i = Set(findall(==(0), Y))
     usables_i = Set(findall(==(1), Y))
-    values_matrix = Matrix{Int64}(undef, S, M)
-    risk_vec = Vector{Int64}(undef, S)
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
     best_assignments_clients = get_best_assignments(D, P)
     best_clients_for_centers = get_best_clients_for_centers(D, B)
@@ -985,7 +953,6 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
         improvement = false
         for ĩ in usables_i
             for i✶ in not_usables_i
-                
                 start = now()
                 #@timeit to "Start constraints optimized" values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
                 finish = now()
@@ -994,8 +961,8 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                 delta_val = delta_millis.value
                 total_time_spent += delta_val
                 modified_X = Dict{Tuple{Int,Int},Int}()
-                modified_values_matrix = Dict{Tuple{Int,Int},Int64}()
-                modified_risk = Dict{Int,Int64}()
+                modified_values_matrix = Dict{Tuple{Int,Int},Float32}()
+                modified_risk = Dict{Int,Float32}()
                 useful = true
                 ĩₖ = node_type(ĩ, Sk)
                 i✶ₖ = node_type(i✶, Sk)
@@ -1158,7 +1125,6 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                         end
                     end
                     if useful && weight_new_branch < weight_old_branch
-                        #println("Intercambiado $ĩ por $i✶")
                         Y[ĩ] = 0
                         Y[i✶] = 1
                         improvement = true
@@ -1169,53 +1135,12 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
                         Weight = sum(X .* D)
                         count[ĩₖ] -= 1
                         count[i✶ₖ] += 1
-                        #=
-                        sol = Solution(instance, X, Y, Weight, solution.Time)
-                        feasible, cons = isFactible(sol)
-                        verbose=true
-                        if !feasible
-                            println(out, "-----------------------------------------------------------------------------------------------")
-                            println(out, "k of ī is $ĩₖ, k of other is $i✶ₖ")
-                            println(out, "The count of $ĩ is $count_ĩ\nThe count of $i✶ is $count_i✶")
-                            println(out, "Lk of ī is $(Lk[ĩₖ]), Uk of ī is $(Uk[ĩₖ])\nLk of i✶ is $(Lk[i✶ₖ]), Uk of ī is $(Uk[i✶ₖ])")
-                            println(out, "count_ĩ <= Uk[ĩₖ] && count_ĩ >= Lk[ĩₖ] && count_i✶ <= Uk[i✶ₖ] && count_i✶ >= Lk[i✶ₖ]")
-                            println(out, "$count_ĩ <= $(Uk[ĩₖ]) && $(count_ĩ) >= $(Lk[ĩₖ]) && $(count_i✶) <= $(Uk[i✶ₖ]) && $count_i✶ >= $(Lk[i✶ₖ])")
-                            counts_k = []
-                            for k_type in 1:K
-                                indices_k_type = Sk[k_type]
-                                count_k_type = 0
-                                for indice in indices_k_type
-                                    if Y[indice] == 1
-                                        count_k_type += 1
-                                    end
-                                end
-                                push!(counts_k, count_k_type)
-                            end
-                            for k in 1:K
-                                if counts_k[k] <= Lk[k]
-                                    if verbose
-                                        println(out, "Violando Lk en $k")
-                                        println(out, "k $(k), ck $(counts_k[k]), Lk $(Lk[k])")
-                                    end
-                                    #number_constraints_violated += 1
-                                end
-                                if counts_k[k] >= Uk[k]
-                                    if verbose
-                                        println(out, "Violando Uk en $k")
-                                    end
-                                    #number_constraints_violated += 1
-                                end
-                            end
-                        end
-                        =#
-                        
                     else
                         for item in modified_X
                             i, j = item[1]
                             val = item[2]
                             X[i, j] = val
                         end
-                        ##=
                         for (center, m) in keys(modified_values_matrix)
                             values_matrix[center, m] = modified_values_matrix[(center, m)]
                         end
@@ -1234,123 +1159,119 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
-function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
-    X = copy(solution.X)
-    Y = copy(solution.Y)
-    instance = solution.Instance
-    B = instance.B
-    S = instance.S
-    D = copy(instance.D)
-    M = instance.M
-    V = instance.V
-    R = instance.R
-    β = instance.β[1]
-    P = instance.P
-    Weight = solution.Weight
-    n = round(Int, (P / 2))
-    not_usables_i = Set(findall(==(0), Y))
-    usables_i = Set(findall(==(1), Y))
-    values_matrix = Matrix{Int64}(undef, S, M)
-    risk_vec = Vector{Int64}(undef, S)
+function can_do_move(values_matrix, V, i, ĩ, j, risk_vec, R, β, targets_upper, targets_lower)
+    values_ĩ = Vector{Float32}(undef, 3)
+    values_i = Vector{Float32}(undef, 3)
+    for m in 1:3
+        values_ĩ[m] = values_matrix[ĩ, m] - V[m][j]
+        values_i[m] = values_matrix[i, m] + V[m][j]
+        if values_ĩ[m] > targets_upper[m] || values_ĩ[m] < targets_lower[m] || values_i[m] > targets_upper[m] || values_i[m] < targets_lower[m]
+            return false
+        end
+    end
+    risk_ĩ = risk_vec[ĩ] - R[j]
+    risk_i = risk_vec[i] + R[j]
+    if risk_ĩ > β || risk_i > β
+        return false
+    end
+    return true
+end
 
+function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
+    # Unpack solution and instance variables
+    X, Y = solution.X, solution.Y
+    instance = solution.Instance
+    B, S, M, V, R, β, P = instance.B, instance.S, instance.M, instance.V, instance.R, instance.β[1], instance.P
+    D = instance.D
+    Weight = solution.Weight
+
+    # Initialize sets and matrices
+    not_usables_i = BitSet(findall(==(0), Y))
+    usables_i = BitSet(findall(==(1), Y))
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
+
+    # Set up logging
+    outfile = "log_ls_simple2_ff.txt"
+    out = open(outfile, "w")
+    println(out, "START")
+
+    # Preprocess D matrix
     for j in not_usables_i
-        D[j, :] .= 10000000000000 # fix esto
+        D[j, :] .= typemax(Int64)
     end
 
+    # Initialize constraints
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
-    improvement = true
 
+    improvement = true
     while improvement
         improvement = false
-        best_new_i = 0
-        best_old_i = 0
-        best_j = 0
-        best_improvement = 0
+        best_move = nothing
         for j in 1:B
-            ĩ = findfirst(==(1), @views X[:, j]) # asignacion previa ĩ, j = 1
-            min_index = argmin(D[:, j]) # minimo de j
-            if ĩ == min_index
-                #println("saltandome mejor asignacion")
-                continue # no tiene caso intentar mover una BU que ya tiene asignacion optima
-            end
-            usables_i_without_ĩ = setdiff(usables_i, ĩ)
-            for i in usables_i_without_ĩ
-                weight_diff = -D[ĩ, j] + D[i, j]
-                if weight_diff < 0 # si el peso mejora, revisa el estado del movimiento
-                    can_do_move = true
-                    values_ĩ = Vector{Int}(undef, 3)
-                    values_i = Vector{Int}(undef, 3)
-                    for m in 1:3
-                        values_ĩ[m] = values_matrix[ĩ, m] - V[m][j]
-                        values_i[m] = values_matrix[i, m] + V[m][j]
-                        if values_ĩ[m] > targets_upper[m] || values_ĩ[m] < targets_lower[m] || values_i[m] > targets_upper[m] || values_i[m] < targets_lower[m]
-                            can_do_move = false
-                            break
-                        end
-                    end
-                    risk_ĩ = risk_vec[ĩ] - R[j]
-                    risk_i = risk_vec[i] + R[j]
-                    if !can_do_move || risk_ĩ > β || risk_i > β
-                        continue
-                    end
-                    if can_do_move
-                        newWeight = Weight + weight_diff
-                        abs_improvement = -weight_diff
-                        if newWeight < Weight
-                            if strategy == :ff # first found
-                                X[ĩ, j] = 0
-                                X[i, j] = 1
-                                improvement = true
-                                for m in 1:M
-                                    values_matrix[ĩ, m] -= V[m][j] # restale a ĩ, previo
-                                    values_matrix[i, m] += V[m][j] # restale a i✶, previo
-                                end
-                                risk_vec[ĩ] -= R[j] # restale a ĩ el viejo
-                                risk_vec[i] += R[j] # restale a i✶ el viejo
-                                Weight = newWeight
-                                ĩ = i # duh
-                            elseif strategy == :bf
-                                if abs_improvement > best_improvement
-                                    best_new_i = i
-                                    best_old_i = ĩ
-                                    best_j = j
-                                    best_improvement = abs_improvement
-                                end
-                            end
-                        end
-                    end
+            ĩ = findfirst(==(1), @view X[:, j])
+            min_index = argmin(@view D[:, j])
+
+            ĩ == min_index && continue
+
+            for i in usables_i
+                i == ĩ && continue
+
+                weight_diff = D[i, j] - D[ĩ, j]
+                weight_diff >= 0 && continue
+
+                can_move = can_do_move(values_matrix, V, i, ĩ, j, risk_vec, R, β, targets_upper, targets_lower)
+                !can_move && continue
+
+                new_weight = Weight + weight_diff
+                new_weight >= Weight && continue
+
+                if strategy == :ff
+                    apply_move!(X, values_matrix, risk_vec, (new_i=i, old_i=ĩ, j=j), V, R)
+                    Weight = new_weight
+                    improvement = true
+                    #log_move(out, (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff))
+                    break
+                elseif strategy == :bf && (best_move === nothing || weight_diff < best_move.weight_diff)
+                    best_move = (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff)
                 end
             end
+            strategy == :ff && improvement && break
         end
-        if strategy == :bf
-            if best_new_i != 0
-                X[best_new_i, best_j] = 1
-                X[best_old_i, best_j] = 0
-                for m in 1:M
-                    values_matrix[best_old_i, m] -= V[m][best_j] # restale a ĩ, previo
-                    values_matrix[best_new_i, m] += V[m][best_j] # restale a i✶, previo
-                end
-                risk_vec[best_new_i] += R[best_j]
-                risk_vec[best_old_i] -= R[best_j]
-                improvement = true
-            else
-                improvement = false
-            end
+
+        if strategy == :bf && best_move !== nothing
+            apply_move!(X, values_matrix, risk_vec, best_move, V, R)
+            Weight += best_move.weight_diff
+            improvement = true
+            #log_move(out, best_move)
         end
     end
-    indices = findall(x -> x == 1, X)
-    Weight = 0
-    for indice in indices
-        Weight += instance.D[indice]
-    end
-    sol = Solution(instance, X, Y, Weight, solution.Time)
+
+    close(out)
+
+    # Recalculate weight
+    Weight = dot(X, D)
+
     return Solution(instance, X, Y, Weight, solution.Time)
+end
+
+function apply_move!(X, values_matrix, risk_vec, move, V, R)
+    X[move.old_i, move.j] = 0
+    X[move.new_i, move.j] = 1
+    for m in axes(values_matrix, 2)
+        values_matrix[move.old_i, m] -= V[m][move.j]
+        values_matrix[move.new_i, m] += V[m][move.j]
+    end
+    risk_vec[move.old_i] -= R[move.j]
+    risk_vec[move.new_i] += R[move.j]
 end
 
 function mainLocal(; path="solucion_grasp_16_625_feas.jld2")
     solution = read_solution(path)
     newSolution = localSearch(solution)
-    write_solution(newSolution, "sol_ls_625_firstsecond.jld2")
+    println(isFactible(newSolution))
+    println(newSolution.Weight)
+    write_solution(newSolution, "sol_ls_625_onlysimpleok.jld2")
     #plot_solution(newSolution, "plot_sol_2_1250_viejo_relax_ls.png")
     return newSolution
 end
@@ -1361,18 +1282,18 @@ function localSearch(solution)
     instance = solution.Instance
     factible_after_repair = false
     targets_lower, targets_upper = calculate_targets(instance)
-    #println(isFactible(oldSol))
+    println("is factible oldSol ", isFactible(oldSol))
     factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
-    #println(isFactible4(oldSol, targets_lower, targets_upper))
+    println("is factible4 oldsol ", isFactible4(oldSol, targets_lower, targets_upper))
     repaired = oldSol
     original_weight = 10000000000000
     if factible
-        #println("Factible")
+        println("Factible")
         original_weight = solution.Weight
         #println(original_weight)
         factible_after_repair = true
     else
-        #Reparando")
+        println("Reparando")
         repaired_1 = repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
         fac_repaired_1, cons = isFactible(repaired_1, false)
         #println(fac_repaired_1)
@@ -1394,7 +1315,7 @@ function localSearch(solution)
         if factible_after_repair
             original_weight = repaired.Weight
             #println(repaired.Weight)
-            #println("Reparada ")
+            println("Reparada ")
         end
     end
     if !factible_after_repair
@@ -1405,6 +1326,7 @@ function localSearch(solution)
     improvement = true
     loop = 0
     while improvement
+        loop+=1
         improvement = false  # Reset the flag at the start of each loop iteration
         prev_weight = oldSol.Weight
 
@@ -1412,6 +1334,7 @@ function localSearch(solution)
         improvements = Bool[]
         
         # First improvement function
+        println(@benchmark simple_bu_improve($oldSol, $targets_lower, $targets_upper, :bf))
         sol_moved_bu = simple_bu_improve(oldSol, targets_lower, targets_upper, :bf)
         new_weight_moved = sol_moved_bu.Weight
         push!(improvements, new_weight_moved < prev_weight)
@@ -1420,20 +1343,23 @@ function localSearch(solution)
             #println("En el loop loop el movimiento simple mejora con un new_weight_moved")
             oldSol = sol_moved_bu  # Update oldSol if there was an improvement
         end
+        println("acabando loop")
         #println(isFactible(sol_moved_bu, true))
-        
+        #=
         # Second improvement function
-        
-        sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :bf)
+        println(@benchmark interchange_bu_improve($oldSol, $targets_lower, $targets_upper, :ff))
+        sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :ff)
         new_weight_moved = sol_interchanged_bu.Weight
+        println(new_weight_moved)
         push!(improvements, new_weight_moved < prev_weight)
         if improvements[end]
             prev_weight = new_weight_moved
             #println("En el loop loop el movimiento intercambio mejora con un new_weight_moved")
             oldSol = sol_interchanged_bu  # Update oldSol if there was an improvement
         end
+        =#
         #println(isFactible(sol_interchanged_bu, true))
-
+        #=
         # Third improvement function
         sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
         new_weight_moved = sol_deactivated_center.Weight
@@ -1443,7 +1369,7 @@ function localSearch(solution)
             #println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
             oldSol = sol_deactivated_center  # Update oldSol if there was an improvement
         end
-        
+        =#
         #println(isFactible(sol_deactivated_center, true))
 
         # Check for any improvements
@@ -1455,6 +1381,8 @@ function localSearch(solution)
 
     #println(isFactible(oldSol, true))
     #println(oldSol.Weight)
+    D_new = oldSol.Instance.D
+    println(D_og == D_new)
     return oldSol
 end
 
