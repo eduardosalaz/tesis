@@ -208,44 +208,90 @@ end
 
 function pdisp_2(instance)
     before_init = Dates.now()
+    B = instance.B
     S = instance.S
+    D = instance.D
     Sk = instance.Sk
     Lk = instance.Lk
     Uk = instance.Uk
     P = instance.P
+    V = instance.V
+    μ = instance.μ
+    T = instance.T
+    R = instance.R
+    β = instance.β
+    k = 5
     s_coords = instance.S_coords
     metric = Distances.Euclidean()
     d = trunc.(Int, Distances.pairwise(metric, s_coords, dims=1))
-    
-    pdisp_ok = Set{Int}()
-    count = zeros(Int, length(Sk))
-    
-    while length(pdisp_ok) < P
-        maxdist = 0
-        vbest = 0
-        for v in 1:S
-            if v in pdisp_ok
-                continue
+    coords_S1 = s_coords[Sk[1], :]
+    coords_S2 = s_coords[Sk[2], :]
+    coords_S3 = s_coords[Sk[3], :]
+    coords_S4 = s_coords[Sk[4], :]
+    coords_S5 = s_coords[Sk[5], :]
+
+    d1 = trunc.(Int, Distances.pairwise(metric, coords_S1, dims=1))
+    d2 = trunc.(Int, Distances.pairwise(metric, coords_S2, dims=1))
+    d3 = trunc.(Int, Distances.pairwise(metric, coords_S3, dims=1))
+    d4 = trunc.(Int, Distances.pairwise(metric, coords_S4, dims=1))
+    d5 = trunc.(Int, Distances.pairwise(metric, coords_S5, dims=1))
+    N1 = length(Sk[1])
+    N2 = length(Sk[2])
+    N3 = length(Sk[3])
+    N4 = length(Sk[4])
+    N5 = length(Sk[5])
+    p1 = Lk[1]
+    p2 = Lk[2]
+    p3 = Lk[3]
+    p4 = Lk[4]
+    p5 = Lk[5]
+
+    pdisp1 = pdisp_simple(d1, p1, N1)
+    pdisp2 = pdisp_simple(d2, p2, N2)
+    pdisp3 = pdisp_simple(d3, p3, N3)
+    pdisp4 = pdisp_simple(d4, p4, N4)
+    pdisp5 = pdisp_simple(d5, p5, N5)
+
+    pdisp1_fixed = Sk[1][pdisp1]
+    pdisp2_fixed = Sk[2][pdisp2]
+    pdisp3_fixed = Sk[3][pdisp3]
+    pdisp4_fixed = Sk[4][pdisp4]
+    pdisp5_fixed = Sk[5][pdisp5]
+
+    N = S
+    pdisp_ok = Set(vcat([pdisp1_fixed, pdisp2_fixed, pdisp3_fixed, pdisp4_fixed, pdisp5_fixed]...))
+    if length(pdisp_ok) != P
+        count = count_k(pdisp_ok, Sk)
+        while length(pdisp_ok) < P
+            # Find the node v that maximizes the distance to its closest neighbor in P
+            maxdist = 0
+            vbest = 0
+            for v in 1:N
+                if v in pdisp_ok
+                    continue
+                end
+                k = node_type(v, Sk)
+                if count[k] >= Uk[k]
+                    continue
+                end
+                dist = minimum([d[v, vprime] for vprime in pdisp_ok])
+                if dist > maxdist
+                    maxdist = dist
+                    vbest = v
+                end
             end
-            k = node_type(v, Sk)
-            if count[k] >= Uk[k]
-                continue
+            # If no such node exists, stop the algorithm
+            if vbest == 0
+                @error "PDISP FAILED"
+                println("*******************************************************************************************")
+                break
             end
-            dist = minimum([d[v, vprime] for vprime in pdisp_ok])
-            if dist > maxdist
-                maxdist = dist
-                vbest = v
-            end
+            # Add the node vbest to the set P and update the counts
+            k = node_type(vbest, Sk)
+            count[k] += 1
+            push!(pdisp_ok, vbest)
         end
-        if vbest == 0
-            @error "PDISP FAILED"
-            break
-        end
-        k = node_type(vbest, Sk)
-        count[k] += 1
-        push!(pdisp_ok, vbest)
     end
-    
     after_init = Dates.now()
     delta_init = after_init - before_init
     delta_init_milli = round(delta_init, Millisecond)
@@ -306,9 +352,9 @@ function calculate_target(instance)
     M = instance.M
     μ = instance.μ
     T = instance.T
-    targets = Vector{Int64}(undef, M)
+    targets = Vector{Float32}(undef, M)
     for m in 1:M
-        targets[m] = round(Int, (1 * μ[m][1] * (1 + T[m]))) # corregir esto
+        targets[m] = 1 * μ[m][1] * (1 + T[m]) # corregir esto
     end
     return targets
 end
@@ -317,9 +363,9 @@ function calculate_targets_upper(instance)
     M = instance.M
     μ = instance.μ
     T = instance.T
-    targets = Vector{Int64}(undef, M)
+    targets = Vector{Float32}(undef, M)
     for m in 1:M
-        targets[m] = round(Int, (1 * μ[m][1] * (1 + T[m]))) # corregir esto
+        targets[m] = 1 * μ[m][1] * (1 + T[m]) # corregir esto
     end
     return targets
 end
@@ -328,9 +374,9 @@ function calculate_targets_lower(instance)
     M = instance.M
     μ = instance.μ
     T = instance.T
-    targets = Vector{Int64}(undef, M)
+    targets = Vector{Float32}(undef, M)
     for m in 1:M
-        targets[m] = round(Int, (1 * μ[m][1] * (1 - T[m]))) # corregir esto
+        targets[m] = 1 * μ[m][1] * (1 - T[m]) # corregir esto
     end
     return targets
 end
@@ -476,42 +522,54 @@ function oppCostQueue(Y, instance::Types.Instance)
     B = instance.B
     M = instance.M
     V = instance.V
+    P = instance.P
     R = instance.R
     values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, zeros(S, M), zeros(S))
-    N = instance.P
+    N = instance.P # podemos hacerlo en proporcion a P, no necesariamente tiene que ser P
     best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
-    full_centers = Set{Int}()
-    assigned_bus = Set{Int}()
-    unassigned_bus = Set(1:B)
-    
+    full_centers = Set()
+    assigned_bus = Set()
+    unassigned_bus = Set(collect(1:B))
     while !isempty(pq) && length(assigned_bus) < B
         bu = dequeue!(pq)
         if bu ∉ assigned_bus
             for center in best_assignments[bu]
+                full = false
+                fulls_m = zeros(Int, M)
                 if center ∉ full_centers
-                    if all(values_matrix[center, m] + V[m][bu] <= targets[m] for m in 1:M) &&
-                       risk_vec[center] + R[bu] <= β
-                        for m in 1:M
-                            values_matrix[center, m] += V[m][bu]
+                    for m in 1:M
+                        values_matrix[center, m] += V[m][bu]
+                        if values_matrix[center, m] > targets[m]
+                            fulls_m[m] = 1
                         end
-                        risk_vec[center] += R[bu]
-                        push!(assigned_bus, bu)
-                        delete!(unassigned_bus, bu)
-                        X[center, bu] = 1
-                        if all(values_matrix[center, m] >= targets[m] for m in 1:M) ||
-                           risk_vec[center] >= β
-                            push!(full_centers, center)
-                        end
-                        break
                     end
+                    if all(x -> x == 1, fulls_m)
+                        push!(full_centers, center)
+                    end
+                    risk_vec[center] += R[bu]
+                    if risk_vec[center] > β
+                        push!(full_centers, center)
+                    end
+                    push!(assigned_bus, bu)
+                    pop!(unassigned_bus, bu)
+                    X[center, bu] = 1
+                    break
                 end
             end
         end
     end
-    
+    todos = true
+    count = 0
+    for col in eachcol(X)
+        if all(x -> x == 0, col)
+            count += 1
+            todos = false
+        end
+    end
     X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
     return X
 end
+
 # Function to calculate how much an assignment violates constraints
 function calculate_violation(facility, client, targets_upper, V, M, R, β, values_matrix, risk_vec)
     violation = 0
@@ -630,8 +688,8 @@ function oppCostAssignment(Y, instance::Types.Instance)
     count = 0
     todos = false
     targets = calculate_target(instance)
-    values_matrix = Matrix{Int64}(undef, S, M)
-    risk_vec = Vector{Int64}(undef, S)
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
     n = round(Int, (P / 2)) # falta tweakear
     while !todos
         indices::Vector{CartesianIndex{2}} = maximums3(oppMatrix, n)
@@ -927,18 +985,18 @@ function isFactible(solution::Types.Solution, verbose=true)
 
     for i in 1:S
         for m in 1:M
-            if !(round(Int, Y[i] * μ[m][i] * (1 - T[m])) <= sum(X[i, j] * V[m][j] for j in 1:B))
+            if !(Y[i] * μ[m][i] * (1 - T[m]) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
-                    println("μ: ", round(Int, Y[i] * μ[m][i] * (1 - T[m])))
+                    println("μ: ",  Y[i] * μ[m][i] * (1 - T[m]))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
             end
-            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= round(Int, Y[i] * μ[m][i] * (1 + T[m])))
+            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
-                    println("μ: ", round(Int, Y[i] * μ[m][i] * (1 + T[m])))
+                    println("μ: ",  [i] * μ[m][i] * (1 + T[m]))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
@@ -987,8 +1045,9 @@ function main_constructive(init_method, assign_method; path="inst", read_file=tr
     println("hola 3")
 
     solution = constructive(instance, number, init_method, assign_method)
-    #sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_sirev.jld2"
-    #write_solution(solution, sol_path)
+    println(isFactible(solution))
+    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_rev.jld2"
+    write_solution(solution, sol_path)
     println("\a")
     return solution
 end
