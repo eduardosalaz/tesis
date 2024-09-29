@@ -1235,10 +1235,6 @@ function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
     usables_i = BitSet(findall(==(1), Y))
     values_matrix = Matrix{Float32}(undef, S, M)
     risk_vec = Vector{Float32}(undef, S)
-    # Preprocess D matrix
-    #for j in not_usables_i
-    #    D[j, :] .= typemax(Int64)
-    #end
 
     # Initialize constraints
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
@@ -1252,29 +1248,33 @@ function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
             ĩ = find_one_in_column_unrolled(X, j)
             min_index = argmin(@view D[:, j])
 
-            ĩ == min_index && continue
-
+            if ĩ == min_index
+                continue
+            end
             for i in usables_i
                 i == ĩ && continue
                 weight_diff = D[i, j] - D[ĩ, j]
-                weight_diff >= 0 && continue
-
-                can_move = can_do_move(values_matrix, V, i, ĩ, j, risk_vec, R, β, targets_upper, targets_lower)
-                !can_move && continue
-
-                new_weight = Weight + weight_diff
-                new_weight >= Weight && continue
-
-                if strategy == :ff
-                    
-                    apply_move!(X, values_matrix, risk_vec, (new_i=i, old_i=ĩ, j=j), V, R)
-                    Weight = new_weight
-                    improvement = true
-                    ĩ = i # duh
-                    #log_move(out, (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff))
-                    break
-                elseif strategy == :bf && (best_move === nothing || weight_diff < best_move.weight_diff)
-                    best_move = (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff)
+                if weight_diff < 0
+                    can_move = can_do_move(values_matrix, V, i, ĩ, j, risk_vec, R, β, targets_upper, targets_lower)
+                    if !can_move
+                        continue
+                    end
+                    new_weight = Weight + weight_diff
+                    if new_weight < Weight
+                        if strategy == :ff
+                        
+                            apply_move!(X, values_matrix, risk_vec, (new_i=i, old_i=ĩ, j=j), V, R)
+                            Weight = new_weight
+                            improvement = true
+                            ĩ = i # duh
+                            #log_move(out, (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff))
+                            #break
+                        elseif strategy == :bf && (best_move === nothing || weight_diff < best_move.weight_diff)
+                            best_move = (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff)
+                        end
+                    else
+                        println("hmmmmmmmmmm")
+                    end 
                 end
             end
             # strategy == :ff && improvement && break
