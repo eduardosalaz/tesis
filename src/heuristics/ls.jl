@@ -89,7 +89,7 @@ function isFactible(solution::Types.Solution, verbose=true)
             if !(Y[i] * μ[m][i] * (1 - T[m]) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
-                    println("μ: ", round(Int, Y[i] * μ[m][i] * (1 - T[m])))
+                    println("μ: ", Y[i] * μ[m][i] * (1 - T[m]))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
@@ -97,7 +97,7 @@ function isFactible(solution::Types.Solution, verbose=true)
             if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
-                    println("μ: ", round(Int, Y[i] * μ[m][i] * (1 + T[m])))
+                    println("μ: ", Y[i] * μ[m][i] * (1 + T[m]))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
@@ -1361,7 +1361,7 @@ function localSearch(solution)
     instance = solution.Instance
     factible_after_repair = false
     targets_lower, targets_upper = calculate_targets(instance)
-    #println(isFactible(oldSol))
+    println(isFactible(oldSol))
     factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
     #println(isFactible4(oldSol, targets_lower, targets_upper))
     repaired = oldSol
@@ -1410,8 +1410,7 @@ function localSearch(solution)
 
         # Array to keep track of individual improvements
         improvements = Bool[]
-        
-        # First improvement function
+        println(@benchmark simple_bu_improve($oldSol, $targets_lower, $targets_upper, :bf))
         sol_moved_bu = simple_bu_improve(oldSol, targets_lower, targets_upper, :bf)
         new_weight_moved = sol_moved_bu.Weight
         push!(improvements, new_weight_moved < prev_weight)
@@ -1420,20 +1419,23 @@ function localSearch(solution)
             #println("En el loop loop el movimiento simple mejora con un new_weight_moved")
             oldSol = sol_moved_bu  # Update oldSol if there was an improvement
         end
+        println("acabando loop")
         #println(isFactible(sol_moved_bu, true))
         
         # Second improvement function
-        
-        sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :bf)
+        println(@benchmark interchange_bu_improve($oldSol, $targets_lower, $targets_upper, :ff))
+        sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :ff)
         new_weight_moved = sol_interchanged_bu.Weight
+        println(new_weight_moved)
         push!(improvements, new_weight_moved < prev_weight)
         if improvements[end]
             prev_weight = new_weight_moved
             #println("En el loop loop el movimiento intercambio mejora con un new_weight_moved")
             oldSol = sol_interchanged_bu  # Update oldSol if there was an improvement
         end
+        
         #println(isFactible(sol_interchanged_bu, true))
-
+        
         # Third improvement function
         sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
         new_weight_moved = sol_deactivated_center.Weight
