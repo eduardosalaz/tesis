@@ -968,8 +968,8 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     Uk = instance.Uk
     P = instance.P
     Weight = solution.Weight
-    not_usables_i = Set(findall(==(0), Y))
-    usables_i = Set(findall(==(1), Y))
+    not_usables_i = BitSet(findall(==(0), Y))
+    usables_i = BitSet(findall(==(1), Y))
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
@@ -1248,8 +1248,8 @@ function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
     P = instance.P
     Weight = solution.Weight
     n = round(Int, (P / 2))
-    not_usables_i = Set(findall(==(0), Y))
-    usables_i = Set(findall(==(1), Y))
+    not_usables_i = BitSet(findall(==(0), Y))
+    usables_i = BitSet(findall(==(1), Y))
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
 
