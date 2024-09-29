@@ -1454,12 +1454,12 @@ function localSearch(solution)
     #show(to2)
 
     #println(isFactible(oldSol, true))
-    #println(oldSol.Weight)
+    println(oldSol.Weight)
     return oldSol
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
    mainLocal(; path=ARGS[1])
 else
-    mainLocal()
+    #mainLocal()
 end
