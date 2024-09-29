@@ -1353,8 +1353,8 @@ function localSearch(solution)
         #println(isFactible(sol_moved_bu, true))
         
         # Second improvement function
-        println(@benchmark interchange_bu_improve($oldSol, $targets_lower, $targets_upper, :ff))
-        sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :ff)
+        println(@benchmark interchange_bu_improve($oldSol, $targets_lower, $targets_upper, :bf))
+        sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :bf)
         new_weight_moved = sol_interchanged_bu.Weight
         println(new_weight_moved)
         push!(improvements, new_weight_moved < prev_weight)
