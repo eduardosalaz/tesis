@@ -1248,9 +1248,7 @@ function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
             ĩ = find_one_in_column_unrolled(X, j)
             min_index = argmin(@view D[:, j])
 
-            if ĩ == min_index
-                continue
-            end
+            ĩ == min_index && continue
             for i in usables_i
                 i == ĩ && continue
                 weight_diff = D[i, j] - D[ĩ, j]
@@ -1260,21 +1258,16 @@ function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
                         continue
                     end
                     new_weight = Weight + weight_diff
-                    if new_weight < Weight
-                        if strategy == :ff
-                        
-                            apply_move!(X, values_matrix, risk_vec, (new_i=i, old_i=ĩ, j=j), V, R)
-                            Weight = new_weight
-                            improvement = true
-                            ĩ = i # duh
-                            #log_move(out, (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff))
-                            #break
-                        elseif strategy == :bf && (best_move === nothing || weight_diff < best_move.weight_diff)
-                            best_move = (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff)
-                        end
-                    else
-                        println("hmmmmmmmmmm")
-                    end 
+                    if strategy == :ff
+                        apply_move!(X, values_matrix, risk_vec, (new_i=i, old_i=ĩ, j=j), V, R)
+                        Weight = new_weight
+                        improvement = true
+                        ĩ = i # duh
+                        #log_move(out, (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff))
+                        #break
+                    elseif strategy == :bf && (best_move === nothing || weight_diff < best_move.weight_diff)
+                        best_move = (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff)
+                    end
                 end
             end
             # strategy == :ff && improvement && break
