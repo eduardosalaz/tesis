@@ -1349,7 +1349,7 @@ function localSearch(solution)
         end
         println("acabando loop")
         #println(isFactible(sol_moved_bu, true))
-        #=
+        
         # Second improvement function
         println(@benchmark interchange_bu_improve($oldSol, $targets_lower, $targets_upper, :ff))
         sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :ff)
@@ -1361,9 +1361,9 @@ function localSearch(solution)
             #println("En el loop loop el movimiento intercambio mejora con un new_weight_moved")
             oldSol = sol_interchanged_bu  # Update oldSol if there was an improvement
         end
-        =#
+        
         #println(isFactible(sol_interchanged_bu, true))
-        #=
+        
         # Third improvement function
         sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
         new_weight_moved = sol_deactivated_center.Weight
@@ -1373,7 +1373,7 @@ function localSearch(solution)
             #println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
             oldSol = sol_deactivated_center  # Update oldSol if there was an improvement
         end
-        =#
+        
         #println(isFactible(sol_deactivated_center, true))
 
         # Check for any improvements
