@@ -558,7 +558,7 @@ function oppCostQueue(Y, instance::Types.Instance)
                     push!(assigned_bus, bu)
                     pop!(unassigned_bus, bu)
                     X[center, bu] = 1
-                    break
+                    # break
                 end
             end
         end
