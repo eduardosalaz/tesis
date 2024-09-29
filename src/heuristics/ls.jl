@@ -701,8 +701,8 @@ function interchange_bu_improve(solution, targets_lower, targets_upper, strategy
     X, Y = solution.X, solution.Y
     instance = solution.Instance
     B, S, M, V, R, β, P = instance.B, instance.S, instance.M, instance.V, instance.R, instance.β[1], instance.P
-    D = copy(instance.D)
-    #D = instance.D
+    # D = copy(instance.D)
+    D = instance.D
     Weight = solution.Weight
     values_matrix = Matrix{Float32}(undef, S, M)
     risk_vec = Vector{Float32}(undef, S)
@@ -1185,8 +1185,8 @@ function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
     X, Y = solution.X, solution.Y
     instance = solution.Instance
     B, S, M, V, R, β, P = instance.B, instance.S, instance.M, instance.V, instance.R, instance.β[1], instance.P
-    D = copy(instance.D)
-    #D = instance.D
+    #D = copy(instance.D)
+    D = instance.D
     Weight = solution.Weight
 
     # Initialize sets and matrices
@@ -1201,9 +1201,9 @@ function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
     println(out, "START")
 
     # Preprocess D matrix
-    for j in not_usables_i
-        D[j, :] .= typemax(Int64)
-    end
+    #for j in not_usables_i
+    #    D[j, :] .= typemax(Int64)
+    #end
 
     # Initialize constraints
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
@@ -1290,6 +1290,7 @@ function localSearch(solution)
     factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
     println("is factible4 oldsol ", isFactible4(oldSol, targets_lower, targets_upper))
     repaired = oldSol
+
     original_weight = 10000000000000
     if factible
         println("Factible")
@@ -1327,6 +1328,7 @@ function localSearch(solution)
         return 0
     end
     oldSol = repaired
+    D_original = oldSol.Instance.D
     improvement = true
     loop = 0
     while improvement
