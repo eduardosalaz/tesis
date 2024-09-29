@@ -592,14 +592,14 @@ function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
     bestSolution, totalTime = grasp(αₗ, αₐ, iters, instance)
     println(totalTime)
     println(bestSolution.Weight)
-    #println(isFactible(bestSolution))
+    println(isFactible(bestSolution))
     #=
     sorted_results_desc = sort(results, by=p -> p.curr_epoch) # al ordenar por epoch podeoms comparar contra el inmediato anterior?
     for var in sorted_results_desc
         println(var)
     end
     =#
-    write_solution(bestSolution, "solucion_grasp_1_1250_changes7.jld2")
+    write_solution(bestSolution, "solucion_grasp_1_1250_changes8.jld2")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
