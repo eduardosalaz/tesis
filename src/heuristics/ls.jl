@@ -697,10 +697,12 @@ function repair_solution2(solution, cons, targets_lower, targets_upper, remove, 
 end
 
 function interchange_bu_improve(solution, targets_lower, targets_upper, strategy)
+    #X, Y = copy(solution.X), copy(solution.Y)
     X, Y = solution.X, solution.Y
     instance = solution.Instance
     B, S, M, V, R, β, P = instance.B, instance.S, instance.M, instance.V, instance.R, instance.β[1], instance.P
-    D = instance.D
+    D = copy(instance.D)
+    #D = instance.D
     Weight = solution.Weight
     values_matrix = Matrix{Float32}(undef, S, M)
     risk_vec = Vector{Float32}(undef, S)
@@ -1179,10 +1181,12 @@ end
 
 function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
     # Unpack solution and instance variables
+    #X, Y = copy(solution.X), copy(solution.Y)
     X, Y = solution.X, solution.Y
     instance = solution.Instance
     B, S, M, V, R, β, P = instance.B, instance.S, instance.M, instance.V, instance.R, instance.β[1], instance.P
-    D = instance.D
+    D = copy(instance.D)
+    #D = instance.D
     Weight = solution.Weight
 
     # Initialize sets and matrices

@@ -96,7 +96,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
             end
             #println(isFactible(sol_interchanged_bu, true))
             # Third improvement function
-            #=
+            
             sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
             new_weight_moved = sol_deactivated_center.Weight
             push!(improvements, new_weight_moved < prev_weight)
@@ -105,7 +105,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
                 #println("En el loop loop el movimiento desactivar mejora con un new_weight_moved")
                 oldSol = sol_deactivated_center  # Update oldSol if there was an improvement
             end
-            =#
+            
             #println(isFactible(sol_deactivated_center, true))
             # Check for any improvements
 
@@ -592,7 +592,7 @@ function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
     bestSolution, totalTime = grasp(αₗ, αₐ, iters, instance)
     println(totalTime)
     println(bestSolution.Weight)
-    println(isFactible(bestSolution))
+    #println(isFactible(bestSolution))
     #=
     sorted_results_desc = sort(results, by=p -> p.curr_epoch) # al ordenar por epoch podeoms comparar contra el inmediato anterior?
     for var in sorted_results_desc
