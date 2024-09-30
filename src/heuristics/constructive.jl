@@ -10,6 +10,7 @@ using MathOptInterface
 using Dates
 using Random
 using DataStructures
+using LinearAlgebra
 
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
@@ -208,18 +209,12 @@ end
 
 function pdisp_2(instance)
     before_init = Dates.now()
-    B = instance.B
     S = instance.S
-    D = instance.D
     Sk = instance.Sk
     Lk = instance.Lk
     Uk = instance.Uk
     P = instance.P
-    V = instance.V
-    μ = instance.μ
-    T = instance.T
-    R = instance.R
-    β = instance.β
+
     k = 5
     s_coords = instance.S_coords
     metric = Distances.Euclidean()
@@ -352,9 +347,9 @@ function calculate_target(instance)
     M = instance.M
     μ = instance.μ
     T = instance.T
-    targets = Vector{Int64}(undef, M)
+    targets = Vector{Float32}(undef, M)
     for m in 1:M
-        targets[m] = round(Int, (1 * μ[m][1] * (1 + T[m]))) # corregir esto
+        targets[m] = 1 * μ[m][1] * (1 + T[m]) # corregir esto
     end
     return targets
 end
@@ -363,9 +358,9 @@ function calculate_targets_upper(instance)
     M = instance.M
     μ = instance.μ
     T = instance.T
-    targets = Vector{Int64}(undef, M)
+    targets = Vector{Float32}(undef, M)
     for m in 1:M
-        targets[m] = round(Int, (1 * μ[m][1] * (1 + T[m]))) # corregir esto
+        targets[m] = 1 * μ[m][1] * (1 + T[m]) # corregir esto
     end
     return targets
 end
@@ -374,9 +369,9 @@ function calculate_targets_lower(instance)
     M = instance.M
     μ = instance.μ
     T = instance.T
-    targets = Vector{Int64}(undef, M)
+    targets = Vector{Float32}(undef, M)
     for m in 1:M
-        targets[m] = round(Int, (1 * μ[m][1] * (1 - T[m]))) # corregir esto
+        targets[m] = 1 * μ[m][1] * (1 - T[m]) # corregir esto
     end
     return targets
 end
@@ -388,6 +383,14 @@ function start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
         end
         risk_vec[i] = sum(X[i, j] * R[j] for j in 1:B)
     end
+    return values_matrix, risk_vec
+end
+
+function start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+    for m in eachindex(V)
+        mul!(view(values_matrix, :, m), X, V[m])
+    end
+    mul!(risk_vec, X, R)
     return values_matrix, risk_vec
 end
 
@@ -524,7 +527,9 @@ function oppCostQueue(Y, instance::Types.Instance)
     V = instance.V
     P = instance.P
     R = instance.R
-    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, zeros(S, M), zeros(S))
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
     N = instance.P # podemos hacerlo en proporcion a P, no necesariamente tiene que ser P
     best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
     full_centers = Set()
@@ -553,7 +558,7 @@ function oppCostQueue(Y, instance::Types.Instance)
                     push!(assigned_bus, bu)
                     pop!(unassigned_bus, bu)
                     X[center, bu] = 1
-                    break
+                    # break
                 end
             end
         end
@@ -569,6 +574,7 @@ function oppCostQueue(Y, instance::Types.Instance)
     X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
     return X
 end
+
 # Function to calculate how much an assignment violates constraints
 function calculate_violation(facility, client, targets_upper, V, M, R, β, values_matrix, risk_vec)
     violation = 0
@@ -584,7 +590,6 @@ function calculate_violation(facility, client, targets_upper, V, M, R, β, value
     end
     return violation
 end
-
 
 
 function handle_unassigned_clients2(X, instance, best_assignments, unassigned_clients, values_matrix, risk_vec)
@@ -687,12 +692,12 @@ function oppCostAssignment(Y, instance::Types.Instance)
     count = 0
     todos = false
     targets = calculate_target(instance)
-    values_matrix = Matrix{Int64}(undef, S, M)
-    risk_vec = Vector{Int64}(undef, S)
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
     n = round(Int, (P / 2)) # falta tweakear
     while !todos
         indices::Vector{CartesianIndex{2}} = maximums3(oppMatrix, n)
-        values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
+        values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
         constraints = Int64[]
         # aqui calculamos inicialmente las constraints
         # vjm <= μim para cada i en 1:S, para cada m en 1:3, son S*3 constraints
@@ -984,18 +989,18 @@ function isFactible(solution::Types.Solution, verbose=true)
 
     for i in 1:S
         for m in 1:M
-            if !(round(Int, Y[i] * μ[m][i] * (1 - T[m])) <= sum(X[i, j] * V[m][j] for j in 1:B))
+            if !(Y[i] * μ[m][i] * (1 - T[m]) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
-                    println("μ: ", round(Int, Y[i] * μ[m][i] * (1 - T[m])))
+                    println("μ: ",  Y[i] * μ[m][i] * (1 - T[m]))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
             end
-            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= round(Int, Y[i] * μ[m][i] * (1 + T[m])))
+            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
-                    println("μ: ", round(Int, Y[i] * μ[m][i] * (1 + T[m])))
+                    println("μ: ",  [i] * μ[m][i] * (1 + T[m]))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
@@ -1044,8 +1049,9 @@ function main_constructive(init_method, assign_method; path="inst", read_file=tr
     println("hola 3")
 
     solution = constructive(instance, number, init_method, assign_method)
-    #sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_sirev.jld2"
-    #write_solution(solution, sol_path)
+    println(isFactible(solution))
+    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_rev.jld2"
+    write_solution(solution, sol_path)
     println("\a")
     return solution
 end
