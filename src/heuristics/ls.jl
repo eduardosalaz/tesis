@@ -144,7 +144,7 @@ function isFactible(solution::Types.Solution, verbose=true)
             if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
-                    println("μ: ", (Y[i] * μ[m][i] * (1 + T[m])))   
+                    println("μ: ", (Y[i] * μ[m][i] * (1 + T[m]))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
@@ -1323,8 +1323,8 @@ function simple_bu_improve2(solution, targets_lower, targets_upper, strategy)
     P = instance.P
     Weight = solution.Weight
     n = round(Int, (P / 2))
-    not_usables_i = Set(findall(==(0), Y))
-    usables_i = Set(findall(==(1), Y))
+    not_usables_i = BitSet(findall(==(0), Y))
+    usables_i = BitSet(findall(==(1), Y))
     values_matrix = Matrix{Int64}(undef, S, M)
     risk_vec = Vector{Int64}(undef, S)
 
@@ -1429,7 +1429,7 @@ function localSearch(solution)
     instance = solution.Instance
     factible_after_repair = false
     targets_lower, targets_upper = calculate_targets(instance)
-    println("is factible oldSol ", isFactible(oldSol))
+    println(isFactible(oldSol))
     factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
     println("is factible4 oldsol ", isFactible4(oldSol, targets_lower, targets_upper))
     repaired = oldSol
@@ -1482,7 +1482,6 @@ function localSearch(solution)
 
         # Array to keep track of individual improvements
         improvements = Bool[]
-        
         # First improvement function
         println(@benchmark simple_bu_improve($oldSol, $targets_lower, $targets_upper, :ff))
         sol_moved_bu = simple_bu_improve(oldSol, targets_lower, targets_upper, :ff)
@@ -1532,7 +1531,7 @@ function localSearch(solution)
     #show(to2)
 
     #println(isFactible(oldSol, true))
-    #println(oldSol.Weight)
+    println(oldSol.Weight)
     return oldSol
 end
 
