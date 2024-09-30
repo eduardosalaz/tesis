@@ -26,7 +26,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
         start_iter = now()
         #println(iter)
         Y, time_loc = pdisp_grasp(instance, αₗ)
-        X, time_alloc = oppCostQueueGRASP(Y, instance, αₐ)
+        X, time_alloc = oppCostQueueGRASPnew(Y, instance, αₐ)
         Weight = 0
         indices = findall(x -> x == 1, X)
         for indice in indices
@@ -34,7 +34,6 @@ function grasp(αₗ, αₐ, max_iters, instance)
         end
         #@show Weight
         oldSol = Types.Solution(instance, X, Y, Weight, time_loc + time_alloc)
-        #println(isFactible(oldSol))
         repair_delta = 0
         factible_after_repair = false
         factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper, false)
@@ -268,7 +267,7 @@ function pick_center_from_rcl(rcl, full_centers)
     return rand(feasible_rcl)
 end
 
-function oppCostQueueGRASP(Y, instance::Types.Instance, α)
+function oppCostQueueGRASPnew(Y, instance::Types.Instance, α)
     before_alloc = Dates.now()
     D = copy(instance.D)
     X = zeros(Int, size(D))
@@ -289,17 +288,107 @@ function oppCostQueueGRASP(Y, instance::Types.Instance, α)
     full_centers = Set()
     assigned_bus = Set()
     unassigned_bus = Set(collect(1:B))
+    X = zeros(Int, S, B)
     while !isempty(pq) && length(assigned_bus) < B
         bu = dequeue!(pq)
+        if bu ∉ assigned_bus
+            # Get the sorted list of assignments for this bus
+            assignments = best_assignments[bu]
+            
+            # Calculate ϕ values for all non-full centers
+            ϕ = OrderedDict()
+            for center in best_assignments[bu]
+                if center ∉ full_centers
+                    ϕ[center] = D[center, bu]  # Direct distance calculation
+                end
+            end
+            
+            # If all centers are full, continue to the next bus
+            if isempty(ϕ)
+                continue
+            end
+            
+            # ϕ_min and ϕ_max are now the first and last values in the ordered dictionary
+            ϕ_values = collect(values(ϕ))
+            ϕ_min = ϕ_values[1]
+            ϕ_max = ϕ_values[end]
+            
+            # Define RCL based on actual distances for minimization
+            RCL = [center for (center, dist) in ϕ if dist <= ϕ_min + α * (ϕ_max - ϕ_min)]
+            
+            # Select a random center from RCL
+            if !isempty(RCL)
+                center = rand(RCL)
+                
+                # Update values_matrix and check targets
+                fulls_m = zeros(Int, M)
+                for m in 1:M
+                    values_matrix[center, m] += V[m][bu]
+                    if values_matrix[center, m] > targets[m]
+                        fulls_m[m] = 1
+                    end
+                end
+
+                # Check if center is full for all target types
+                if all(x -> x == 1, fulls_m)
+                    push!(full_centers, center)
+                end
+
+                # Update risk and check risk threshold
+                risk_vec[center] += R[bu]
+                if risk_vec[center] > β
+                    push!(full_centers, center)
+                end
+
+                # Assign bus to center
+                push!(assigned_bus, bu)
+                pop!(unassigned_bus, bu)
+                X[center, bu] = 1
+            end
+        end
+    end
+    # Check if all buses are assigned
+    X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
+    after_alloc = Dates.now()
+    delta_alloc = after_alloc - before_alloc
+    delta_alloc_milli = round(delta_alloc, Millisecond)
+    return X, delta_alloc_milli.value
+end
+
+function oppCostQueueGRASP(Y, instance::Types.Instance, α)
+    before_alloc = Dates.now()
+    D = copy(instance.D)
+    X = zeros(Int, size(D))
+    targets = calculate_targets_lower(instance)
+    β = instance.β[1]
+    S = instance.S
+    B = instance.B
+    M = instance.M
+    V = instance.V
+    P = instance.P
+    R = instance.R
+    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, zeros(S, M), zeros(S))
+    
+    N = instance.P # podemos hacerlo en proporcion a P, no necesariamente tiene que ser P
+    best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
+    full_centers = Set()
+    assigned_bus = Set()
+    unassigned_bus = Set(collect(1:B))
+    #println(unassigned_bus)
+    while !isempty(pq) && length(assigned_bus) < B
+        bu = dequeue!(pq)
+        #println(bu)
         if bu ∉ assigned_bus
             best_value = first(best_assignments[bu])[1]
             threshold = best_value * (1 + α)
             RCL = [facility for facility in best_assignments[bu] if facility[1] <= threshold]
+            #println(RCL)
             center = pick_center_from_rcl(RCL, full_centers)
             if center !== nothing
                 full = false
                 fulls_m = zeros(Int, M)
                 if center ∉ full_centers
+                   # println("centroo $center")
                     for m in 1:M
                         values_matrix[center, m] += V[m][bu]
                         if values_matrix[center, m] > targets[m]
@@ -307,6 +396,7 @@ function oppCostQueueGRASP(Y, instance::Types.Instance, α)
                         end
                     end
                     if all(x -> x == 1, fulls_m)
+                        #println("lleno $center")
                         push!(full_centers, center)
                     end
                     risk_vec[center] += R[bu]
@@ -315,12 +405,14 @@ function oppCostQueueGRASP(Y, instance::Types.Instance, α)
                     end
                     push!(assigned_bus, bu)
                     pop!(unassigned_bus, bu)
+                    #println(unassigned_bus)
+                    #println("asignando")
                     X[center, bu] = 1
-                    break
                 end
             end
         end
     end
+    
     todos = true
     count = 0
     for col in eachcol(X)
@@ -329,6 +421,7 @@ function oppCostQueueGRASP(Y, instance::Types.Instance, α)
             todos = false
         end
     end
+    #@show values_matrix
     X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
     after_alloc = Dates.now()
     delta_alloc = after_alloc - before_alloc
@@ -343,6 +436,7 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
     V = instance.V
     β = instance.β[1]
     R = instance.R
+    # @show length(unassigned_clients)
 
     # Only loop over unassigned clients
     for client in unassigned_clients
@@ -446,7 +540,7 @@ function pdisp_simple_grasp(d, p, N, α)
                     mindist = d[v, vprime]
                 end
             end
-            if mindist >= round(Int, (maxdist - maxdist * α))
+            if mindist >= (maxdist - maxdist * α)
                 push!(rcl, v)
             end
         end
@@ -462,6 +556,52 @@ function pdisp_simple_grasp(d, p, N, α)
     collection = collect(P)
     return collection
 end
+
+function pdisp_simple_grasp_new(d, p, N, α)
+    maxdist = 0
+    bestpair = (0, 1)
+    for i in 1:N
+        for j in i+1:N
+            if d[i, j] > maxdist
+                maxdist = d[i, j]
+                bestpair = (i, j)
+            end
+        end
+    end
+    
+    P = Set([bestpair[1], bestpair[2]])
+    
+    while length(P) < p
+        ϕ = Dict()
+        ϕ_max = -Inf
+        ϕ_min = Inf
+        
+        for v in 1:N
+            if v in P
+                continue
+            end
+            ϕ[v] = minimum(d[v, vprime] for vprime in P)
+            ϕ_max = max(ϕ_max, ϕ[v])
+            ϕ_min = min(ϕ_min, ϕ[v])
+        end
+        
+        rcl = [v for v in keys(ϕ) if ϕ[v] >= ϕ_max - α * (ϕ_max - ϕ_min)]
+        #println("ϕ_max: $(ϕ_max)")
+        if !isempty(rcl)
+            v_candidate = rand(rcl)
+            push!(P, v_candidate)
+            #println("pushing to P $v_candidate")
+        else
+            #println("empty")
+            # If RCL is empty, choose the point with the maximum ϕ value
+            v_candidate = argmax(ϕ)
+            push!(P, v_candidate)
+        end
+    end
+    
+    return collect(P)
+end
+
 
 function pdisp_grasp(instance, αₗ)
     before_init = Dates.now()
@@ -582,12 +722,120 @@ function pdisp_grasp(instance, αₗ)
     return Y_bool, delta_init_milli.value
 end
 
+function pdisp_grasp_new(instance, αₗ)
+    before_init = Dates.now()
+    B = instance.B
+    S = instance.S
+    D = instance.D
+    Sk = instance.Sk
+    Lk = instance.Lk
+    Uk = instance.Uk
+    P = instance.P
+    V = instance.V
+    μ = instance.μ
+    T = instance.T
+    R = instance.R
+    β = instance.β
+    k = 5
+    s_coords = instance.S_coords
+    metric = Distances.Euclidean()
+    d = trunc.(Int, Distances.pairwise(metric, s_coords, dims=1))
+    coords_S1 = s_coords[Sk[1], :]
+    coords_S2 = s_coords[Sk[2], :]
+    coords_S3 = s_coords[Sk[3], :]
+    coords_S4 = s_coords[Sk[4], :]
+    coords_S5 = s_coords[Sk[5], :]
+
+    d1 = trunc.(Int, Distances.pairwise(metric, coords_S1, dims=1))
+    d2 = trunc.(Int, Distances.pairwise(metric, coords_S2, dims=1))
+    d3 = trunc.(Int, Distances.pairwise(metric, coords_S3, dims=1))
+    d4 = trunc.(Int, Distances.pairwise(metric, coords_S4, dims=1))
+    d5 = trunc.(Int, Distances.pairwise(metric, coords_S5, dims=1))
+    N1 = length(Sk[1])
+    N2 = length(Sk[2])
+    N3 = length(Sk[3])
+    N4 = length(Sk[4])
+    N5 = length(Sk[5])
+    p1 = Lk[1]
+    p2 = Lk[2]
+    p3 = Lk[3]
+    p4 = Lk[4]
+    p5 = Lk[5]
+
+    pdisp1 = pdisp_simple_grasp_new(d1, p1, N1, αₗ)
+    pdisp2 = pdisp_simple_grasp_new(d2, p2, N2, αₗ)
+    pdisp3 = pdisp_simple_grasp_new(d3, p3, N3, αₗ)
+    pdisp4 = pdisp_simple_grasp_new(d4, p4, N4, αₗ)
+    pdisp5 = pdisp_simple_grasp_new(d5, p5, N5, αₗ)
+
+    pdisp1_fixed = Sk[1][pdisp1]
+    pdisp2_fixed = Sk[2][pdisp2]
+    pdisp3_fixed = Sk[3][pdisp3]
+    pdisp4_fixed = Sk[4][pdisp4]
+    pdisp5_fixed = Sk[5][pdisp5]
+
+    N = S
+    pdisp_ok = Set(vcat([pdisp1_fixed, pdisp2_fixed, pdisp3_fixed, pdisp4_fixed, pdisp5_fixed]...))
+    if length(pdisp_ok) != P
+        count = count_k(pdisp_ok, Sk)
+        while length(pdisp_ok) < P
+            ϕ = Dict()
+            ϕ_max = -Inf
+            ϕ_min = Inf
+            
+            # Calculate ϕ(v) for all eligible nodes
+            for v in 1:N
+                if v in pdisp_ok
+                    continue
+                end
+                k = node_type(v, Sk)
+                if count[k] >= Uk[k]
+                    continue
+                end
+                ϕ[v] = minimum(d[v, vprime] for vprime in pdisp_ok)
+                ϕ_max = max(ϕ_max, ϕ[v])
+                ϕ_min = min(ϕ_min, ϕ[v])
+            end
+            
+            # Create the RCL based on the new GRASP logic
+            rcl = [v for v in keys(ϕ) if ϕ[v] >= ϕ_max - αₗ * (ϕ_max - ϕ_min)]
+            
+            # If RCL is empty, choose the point with the maximum ϕ value
+            if isempty(rcl)
+                vbest = argmax(ϕ)
+            else
+                vbest = rand(rcl)
+            end
+            
+            # If no eligible node exists, stop the algorithm
+            if vbest == 0
+                @error "P DISP ERROR"
+                break
+            end
+            
+            # Add the node vbest to the set P and update the counts
+            k = node_type(vbest, Sk)
+            count[k] += 1
+            push!(pdisp_ok, vbest)
+        end
+    end
+    collection = collect(pdisp_ok)
+    after_init = Dates.now()
+    delta_init = after_init - before_init
+    delta_init_milli = round(delta_init, Millisecond)
+    Y_bool = zeros(Int, instance.S)
+    for idx in collection
+        Y_bool[idx] = 1
+    end
+    return Y_bool, delta_init_milli.value
+end
+
 
 function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
     #file_name = "instances\\625_78_32\\inst_1_625_78_32.jld2"
     instance = read_instance(path)
-    αₗ = 0.3
-    αₐ = 0.3
+    αₗ = 0.1
+    αₐ = 0.2    
     iters = parse(Int, ARGS[2])
     bestSolution, totalTime = grasp(αₗ, αₐ, iters, instance)
     println(totalTime)
