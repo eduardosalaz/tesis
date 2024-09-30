@@ -121,7 +121,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
         #delta_iter = end_iter - start_iter
         #delta_iter_millis = round(delta_iter, Millisecond)
         #delta_iter_value = delta_iter_millis.value
-
+        #println("desde $(threadid()) en iter $iter la mejor solucion es $(oldSol.Weight)")
         lock(lockVar)
         try
             current_timestamp = Dates.datetime2unix(now(Dates.UTC))
@@ -288,7 +288,6 @@ function oppCostQueueGRASPnew(Y, instance::Types.Instance, α)
     full_centers = Set()
     assigned_bus = Set()
     unassigned_bus = Set(collect(1:B))
-    X = zeros(Int, S, B)
     while !isempty(pq) && length(assigned_bus) < B
         bu = dequeue!(pq)
         if bu ∉ assigned_bus
@@ -835,7 +834,7 @@ function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
     #file_name = "instances\\625_78_32\\inst_1_625_78_32.jld2"
     instance = read_instance(path)
     αₗ = 0.1
-    αₐ = 0.2    
+    αₐ = 0.1    
     iters = parse(Int, ARGS[2])
     bestSolution, totalTime = grasp(αₗ, αₐ, iters, instance)
     println(totalTime)
