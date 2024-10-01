@@ -144,7 +144,7 @@ function isFactible(solution::Types.Solution, verbose=true)
             if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
-                    println("μ: ", (Y[i] * μ[m][i] * (1 + T[m]))
+                    println("μ: ", (Y[i] * μ[m][i] * (1 + T[m])))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
@@ -273,7 +273,7 @@ function isFactible4(solution::Types.Solution, targets_lower, targets_upper, ver
                 println("Violando servicio a la BU: ", j)
                 number_constraints_violated += 1
             end
-            @error "X NO SERVIDA"
+            @error "X NO SERVIDA $j"
         end
     end
 
@@ -504,6 +504,7 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
             inicializar = []
             if length(candidates_bus) == 0
                 cant_fix = true
+               # println("ya me quede sin bus")
                 break
             end
             j = popfirst!(candidates_bus)[1]
@@ -537,6 +538,7 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
             if can_do_move
                 X[ĩ, j] = 0
                 X[i, j] = 1
+                #println("si pude $j")
             else
                 # si no puedo hacer el movimiento, restaura el valor de la ev parcial
                 for m in 1:M
@@ -545,6 +547,10 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
                 end
                 risk_vec[ĩ] += R[j]
                 risk_vec[i] -= R[j]
+                #println("no pude $j")
+            end
+            if factible_yet
+                #println("factible para $i")
             end
         end
     end

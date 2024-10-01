@@ -262,7 +262,7 @@ function main_test()
                 println("Reparando")
                 #println(isFactible(oldSol, true))
                 #writedlm("aver.txt", oldSol.X)
-                repaired_1 = repair_solution3(oldSol, constraints, targets_lower, targets_upper, remove, add)
+                repaired_1 = repair_solution(oldSol, constraints, targets_lower, targets_upper, remove, add)
                 fac_repaired_1, cons = isFactible(repaired_1, false)
                 if !fac_repaired_1
                     repaired_2 = repair_solution2(oldSol, constraints, targets_lower, targets_upper, remove, add)

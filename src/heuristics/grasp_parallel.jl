@@ -852,5 +852,5 @@ end
 if abspath(PROGRAM_FILE) == @__FILE__
     main_grasp(;path=ARGS[1], iters=parse(Int, ARGS[2]))
 else
-    main_grasp()
+    #main_grasp()
 end
