@@ -110,9 +110,7 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
     end
     println("X done")
     indices = findall(x -> x == 1, X)
-    for indice in indices
-        Weight += D[indice]
-    end
+    Weight = dot(X, D)
     if time > time1
         time = time1
     end
@@ -124,7 +122,7 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
 
     solution = Types.Solution(instancia, X, Y_bool, Weight, time)
     Types.plot_solution(solution, plot_str_path)
-    Types.write_solution(solution, solution_str_path)
+    #Types.write_solution(solution, solution_str_path)
     println(isFactible(solution, true))
     return solution
 end
@@ -535,8 +533,11 @@ function oppCostQueue(Y, instance::Types.Instance)
     full_centers = Set()
     assigned_bus = Set()
     unassigned_bus = Set(collect(1:B))
+    #println(pq)
+    #println(unassigned_bus)
     while !isempty(pq) && length(assigned_bus) < B
         bu = dequeue!(pq)
+        # println("dequeueing $bu")
         if bu ∉ assigned_bus
             for center in best_assignments[bu]
                 full = false
@@ -556,9 +557,10 @@ function oppCostQueue(Y, instance::Types.Instance)
                         push!(full_centers, center)
                     end
                     push!(assigned_bus, bu)
-                    pop!(unassigned_bus, bu)
                     X[center, bu] = 1
-                    # break
+                    #println("asigne $bu")
+                    pop!(unassigned_bus, bu)
+                    break
                 end
             end
         end
@@ -572,6 +574,7 @@ function oppCostQueue(Y, instance::Types.Instance)
         end
     end
     X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
+
     return X
 end
 
@@ -599,7 +602,7 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
     V = instance.V
     β = instance.β[1]
     R = instance.R
-
+    counter = 0
     # Only loop over unassigned clients
     for client in unassigned_clients
         assigned = false
@@ -643,11 +646,68 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
                 values_matrix[least_violating_facility, m] += V[m][client]
             end
             risk_vec[least_violating_facility] += R[client]
+            counter +=1
             println("Client $client was assigned to facility $least_violating_facility with a violation of $min_violation.")
         end
-    end
+    end 
+    println("Number of unassigned clients: $(length(unassigned_clients)), served $counter")
+    return X
+end
 
-    println("Number of unassigned clients: $(length(unassigned_clients))")
+function oppCostQueueold(Y, instance::Types.Instance)
+    D = copy(instance.D)
+    X = zeros(Int, size(D))
+    targets = calculate_targets_lower(instance)
+    β = instance.β[1]
+    S = instance.S
+    B = instance.B
+    M = instance.M
+    V = instance.V
+    P = instance.P
+    R = instance.R
+    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, zeros(S, M), zeros(S))
+    N = instance.P # podemos hacerlo en proporcion a P, no necesariamente tiene que ser P
+    best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
+    full_centers = Set()
+    assigned_bus = Set()
+    unassigned_bus = Set(collect(1:B))
+    while !isempty(pq) && length(assigned_bus) < B
+        bu = dequeue!(pq)
+        if bu ∉ assigned_bus
+            for center in best_assignments[bu]
+                full = false
+                fulls_m = zeros(Int, M)
+                if center ∉ full_centers
+                    for m in 1:M
+                        values_matrix[center, m] += V[m][bu]
+                        if values_matrix[center, m] > targets[m] 
+                            fulls_m[m] = 1
+                        end
+                    end
+                    if all(x -> x == 1, fulls_m)
+                        push!(full_centers, center)
+                    end
+                    risk_vec[center] += R[bu]
+                    if risk_vec[center] > β
+                        push!(full_centers, center)
+                    end
+                    push!(assigned_bus, bu)
+                    pop!(unassigned_bus, bu)
+                    X[center, bu] = 1
+                    break
+                end
+            end
+        end
+    end
+    todos = true
+    count = 0
+    for col in eachcol(X)
+        if all(x -> x == 0, col)
+            count += 1
+            todos = false
+        end
+    end
+    X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
     return X
 end
 
@@ -1050,7 +1110,7 @@ function main_constructive(init_method, assign_method; path="inst", read_file=tr
 
     solution = constructive(instance, number, init_method, assign_method)
     println(isFactible(solution))
-    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_rev.jld2"
+    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_new.jld2"
     write_solution(solution, sol_path)
     println("\a")
     return solution

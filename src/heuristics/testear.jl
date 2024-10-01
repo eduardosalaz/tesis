@@ -2,10 +2,151 @@ include("constructive.jl")
 include("ls.jl")
 using DataFrames
 using CSV
+using LinearAlgebra
+using DelimitedFiles
 function main_test()
     entradas = readdir(ARGS[1])
     arr_constructive = []
     arr_ls = []
+    best_sols_gurobi_625 = Dict(
+        "1" => 464246,
+        "2" => 475106,
+        "3" => 451879,
+        "4" => 460877,
+        "5" => 469136,
+        "6" => 491677,
+        "7" => 454550,
+        "8" => 462146,
+        "9" => 488765,
+        "10" => 472705,
+        "11" => 468053,
+        "12" => 462072,
+        "13" => 468505,
+        "14" => 459301,
+        "15" => 484674,
+        "16" => 462365,
+        "17" => 462745,
+        "18" => 455692,
+        "19" => 460741,
+        "20" => 465070
+    )
+    
+    best_bounds_gurobi_625 = Dict(
+        "1" => 462006.983,
+        "2" => 474508.581,
+        "3" => 451829.403,
+        "4" => 460361.988,
+        "5" => 468430.222,
+        "6" => 490028.106,
+        "7" => 453977.334,
+        "8" => 460849.226,
+        "9" => 487419.813,
+        "10" => 466940.063,
+        "11" => 466771.252,
+        "12" => 460985.561,
+        "13" => 468312.438,
+        "14" => 459248.658,
+        "15" => 479009.77,
+        "16" => 462309.765,
+        "17" => 462066.303,
+        "18" => 454192.089,
+        "19" => 458314.077,
+        "20" => 464814.975
+    )
+    
+    time_gurobi_625 = Dict(
+        "1" => 1800,
+        "2" => 1800,
+        "3" => 1483,
+        "4" => 1800,
+        "5" => 1800,
+        "6" => 1800,
+        "7" => 1800,
+        "8" => 1800,
+        "9" => 1800,
+        "10" => 1800,
+        "11" => 1800,
+        "12" => 1800,
+        "13" => 1800,
+        "14" => 976,
+        "15" => 1800,
+        "16" => 1384,
+        "17" => 1800,
+        "18" => 1800,
+        "19" => 1800,
+        "20" => 1800
+    )
+    
+    #=
+    best_sols_gurobi_1250 = Dict(
+        "1" => 949482,
+        "2" => 977115,
+        "3" => 989363,
+        "4" => 974198,
+        "5" => 958651,
+        "6" => 964047,
+        "7" => 968395,
+        "8" => 986415,
+        "9" => 950606,
+        "10" => 1000566,
+        "11" => 961532,
+        "12" => 942927,
+        "13" => 1013304,
+        "14" => 989257,
+        "15" => 961945,
+        "16" => 990320,
+        "17" => 993417,
+        "18" => 981137,
+        "19" => 973562,
+        "20" => 972540
+    )
+    
+    best_bounds_gurobi_1250 = Dict(
+        "1" => 944139.739,
+        "2" => 964942.154,
+        "3" => 980835.67,
+        "4" => 970702.713,
+        "5" => 957236.295,
+        "6" => 960100.522,
+        "7" => 960425.2,
+        "8" => 981274.539,
+        "9" => 946657.095,
+        "10" => 990223.35,
+        "11" => 952796.984,
+        "12" => 940185.685,
+        "13" => 1008565.72,
+        "14" => 983003.429,
+        "15" => 955365.056,
+        "16" => 983749.642,
+        "17" => 989806.477,
+        "18" => 972287.99,
+        "19" => 970683.465,
+        "20" => 967396.096
+    )
+    
+    time_gurobi_1250 = Dict(
+        "1" => 1800,
+        "2" => 1800,
+        "3" => 1800,
+        "4" => 1800,
+        "5" => 1800,
+        "6" => 1800,
+        "7" => 1800,
+        "8" => 1800,
+        "9" => 1800,
+        "10" => 1800,
+        "11" => 1800,
+        "12" => 1800,
+        "13" => 1800,
+        "14" => 1800,
+        "15" => 1800,
+        "16" => 1800,
+        "17" => 1800,
+        "18" => 1800,
+        "19" => 1800,
+        "20" => 1800
+    )
+    =#
     for entrada in entradas
         path = ARGS[1] * entrada
         instancia = read_instance(path)
@@ -16,10 +157,11 @@ function main_test()
         _, number = split(almost_number, "_")
         println(number)
         id = number
-        sol_exac_path = "out\\solutions\\625_78_32\\sol_" * id * "_625_78_32.jld2"
-        sol_exac = read_solution(sol_exac_path)
-        weight_exac = sol_exac.Weight
-        time_exac = sol_exac.Time
+        #sol_exac_path = "out\\solutions\\625_78_32\\sol_" * id * "_625_78_32.jld2"
+        #sol_exac = read_solution(sol_exac_path)
+        
+        weight_exac = best_sols_gurobi_625[number] 
+        time_exac = time_gurobi_625[number] 
 
         B = instancia.B
         S = instancia.S
@@ -67,12 +209,15 @@ function main_test()
             println("X asignada")
             #micros = round(delta, Millisecond)
             time_cons = delta
-            indices = findall(x -> x == 1, X)
-            for indice in indices
-                Weight += D[indice]
+            Weight = dot(X, D)
+            if !isdir("pruebas_new")
+                mkdir("pruebas_new")
             end
-            if !isdir("pruebas")
-                mkdir("pruebas")
+
+            for col in 1:B
+                if all(==(0), X[:,col])
+                    println("uuhhh all 0s in $col 1")
+                end
             end
 
             str_path = "out\\solutions\\625_78_32\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * location_method * "_" * alloc_method
@@ -80,7 +225,7 @@ function main_test()
             solution_str_path = str_path * ".jld2"
             solution = Types.Solution(instancia, X, Y_bool, Weight, time_cons)
 
-            Types.plot_solution(solution, plot_str_path)
+            #Types.plot_solution(solution, plot_str_path)
             Types.write_solution(solution, solution_str_path)
 
             oldSol = solution
@@ -94,13 +239,14 @@ function main_test()
             really_cons_old = constraints
             weight_really_before = oldSol.Weight
             weight_before = 1000000000
-            valor_previo = 0
             repair_delta = 0
 
             instance = solution.Instance
             factible_after_repair = false
             targets_lower, targets_upper = calculate_targets(instance)
             factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
+            println(remove)
+            println(add)
             repaired = oldSol
             original_weight = 10000000000000
             weight_before = 0
@@ -114,7 +260,9 @@ function main_test()
                 factible_after_repair = true
             else
                 println("Reparando")
-                repaired_1 = repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
+                #println(isFactible(oldSol, true))
+                #writedlm("aver.txt", oldSol.X)
+                repaired_1 = repair_solution3(oldSol, constraints, targets_lower, targets_upper, remove, add)
                 fac_repaired_1, cons = isFactible(repaired_1, false)
                 if !fac_repaired_1
                     repaired_2 = repair_solution2(oldSol, constraints, targets_lower, targets_upper, remove, add)
@@ -206,33 +354,41 @@ function main_test()
                 solution_str_path = str_path * ".jld2"
                 total_time = time_cons + repair_delta.value + delta_ls_value
                 solution = Types.Solution(instancia, oldSol.X, oldSol.Y, weight_after, total_time)
-                Types.plot_solution(solution, plot_str_path)
+                #Types.plot_solution(solution, plot_str_path)
                 Types.write_solution(solution, solution_str_path)
             end
-            gap_repaired = (1 - (weight_exac / weight_before)) * 100
-            gap_improved = (1 - (weight_exac / weight_after)) * 100
+            diff_repaired = abs(weight_before - best_sols_gurobi_625[number]) / abs(weight_before)
+            gap_repaired = abs(weight_before-best_bounds_gurobi_625[number]) / abs(weight_before)
+
+            diff_improved = abs(weight_after - best_sols_gurobi_625[number]) / abs(weight_after)
+            gap_improved = abs(weight_after - best_bounds_gurobi_625[number]) / abs(weight_after)
             abs_improved = weight_before - weight_after
             rel_improved = ((abs_improved) / weight_after) * 100
+            time_exac = time_gurobi_625[number]
+            beat_gurobi = false
+            if weight_after < best_sols_gurobi_625[number]
+                beat_gurobi = true
+            end
             
             row_cons = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P" => P, "Loc" => location_method, "Alloc" => alloc_method, "TimeLoc" => delta_loc_milli,
-                "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "Value" => weight_really_before, "TotalTimeCons" => time_cons, "Factible" => factible_old,
-                "Add" => to_add, "Remove" => to_remove, "ValueOptim" => weight_exac, "TimeOptim" => time_exac*1000)
+                "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "ValueCons" => weight_really_before, "TotalTimeCons" => time_cons, "Factible" => factible_old,
+                "Add" => to_add, "Remove" => to_remove, "ValueOptim" => weight_exac, "TimeOptim" => time_exac, "BestBound"=>best_sols_gurobi_625[number])
             push!(arr_constructive, row_cons)
 
             if factible_after_repair
                 row_ls_factible = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P" => P, "Loc" => location_method, "Alloc" => alloc_method, "TimeLoc" => delta_loc_milli,
                     "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "ValueCons" => weight_really_before, "TimeCons" => time_cons, "Factible" => factible_old,
                     "Add" => to_add, "Remove" => to_remove, "TimeRepair" => repair_delta.value, "ValueRepair" => weight_before, "ImproveAbsLS" => abs_improved,
-                    "ImproveRelLS" => rel_improved, "GapRepair" => gap_repaired, "GapLS" => gap_improved, "TimeLS" => delta_ls_value, "ValueOptim" => weight_exac, "TimeOptim" => time_exac*1000, "TimeTotal" => total_time,
+                    "ImproveRelLS" => rel_improved, "GapRepair" => gap_repaired, "GapLS" => gap_improved, "DiffRepair" => diff_repaired, "DiffLS"=> diff_improved, "TimeLS" => delta_ls_value, "ValueOptim" => weight_exac, "TimeOptim" => time_exac, "TimeTotal" => total_time,
                     "CyclesLS" => counter, "SimpleImprovedTimes" => counter_improve_simple, "InterchangeImprovedTimes" => counter_improve_interchange, "DeactivateImprovedTimes" => counter_improve_deactivate, "ValueLS" => weight_after,
-                    "RepairAlgorithm" => repair_algorithm)
+                    "RepairAlgorithm" => repair_algorithm, "BeatGurobi"=>beat_gurobi, "BestBound"=>best_bounds_gurobi_625[number], "Repaired"=>factible_after_repair)
                 push!(arr_ls, row_ls_factible)
             else
                 row_ls_infactible = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P" => P, "Loc" => location_method, "Alloc" => alloc_method, "TimeLoc" => delta_loc_milli,
                     "TimeAlloc" => delta_alloc_milli.value, "Constraints" => really_cons_old, "ValueCons" => weight_really_before, "TimeCons" => time_cons, "Factible" => factible_old,
                     "Add" => to_add, "Remove" => to_remove, "TimeRepair" => repair_delta.value, "ValueRepair" => 10000000, "ImproveAbsLS" => 0, "TimeTotal" => time_cons + repair_delta.value,
-                    "ImproveRelLS" => 0, "GapRepair" => 100, "GapLS" => 100, "TimeLS" => 0, "ValueOptim" => weight_exac, "TimeOptim" => time_exac*1000, "ValueLS" => weight_after,
-                    "CyclesLS" => 0, "SimpleImprovedTimes" => 0, "InterchangeImprovedTimes" => 0, "DeactivateImprovedTimes" => 0, "RepairAlgorithm" => 0)
+                    "ImproveRelLS" => 0, "GapRepair" => 100, "GapLS" => 100, "DiffRepair" => 100, "DiffLS"=> 100, "TimeLS" => 0, "ValueOptim" => weight_exac, "TimeOptim" => time_exac, "ValueLS" => weight_after,
+                    "CyclesLS" => 0, "SimpleImprovedTimes" => 0, "InterchangeImprovedTimes" => 0, "DeactivateImprovedTimes" => 0, "RepairAlgorithm" => 0, "BeatGurobi"=>beat_gurobi, "BestBound"=>best_bounds_gurobi_625[number],"Repaired"=>factible_after_repair)
                 push!(arr_ls, row_ls_infactible)
             end
         end
