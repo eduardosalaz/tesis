@@ -2,6 +2,7 @@ using Gurobi, JuMP, JLD2
 using Types
 using MathOptInterface
 const MOI = MathOptInterface
+using DelimitedFiles
 
 function optimize_model(model::Model, number; verbose=true, solver=Gurobi::Module)
     set_optimizer(model, solver.Optimizer)
@@ -10,7 +11,7 @@ function optimize_model(model::Model, number; verbose=true, solver=Gurobi::Modul
         set_silent(model)
     end
     # show(model)
-    set_optimizer_attribute(model, "LogFile", "log_2hrs_$number.txt")
+    set_optimizer_attribute(model, "LogFile", "log_2hs_2500_$number.txt")
     optimize!(model)
     tiempo = MOI.get(model, MOI.SolveTimeSec())
     time_int = trunc(Int, tiempo)
@@ -29,6 +30,9 @@ function optimize_model(model::Model, number; verbose=true, solver=Gurobi::Modul
     if termination_status(model) != MOI.OPTIMAL
         @warn "Óptimo no alcanzado"
     end
+    obj_val = objective_value(model)
+    bb_val = dual_objective_value(model)
+    writedlm("obj_bb_$number.txt", [obj_val, bb_val])
     println(time_int)
     return X, Y, obj_value, time_int
 end

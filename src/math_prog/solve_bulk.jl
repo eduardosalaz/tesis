@@ -5,7 +5,8 @@ function solve(dir)
     K = 5
     M = 3
     contador = 1
-    # B, S, P = parse.(Int, split(size, "_"))
+    size = "1250_155_62"
+    #B, S, P = parse.(Int, split(size, "_"))
     failed_dir_path = "instances/" * size * "/failed_instances/"
     inst_dir_path = "instances/" * size * "/"
     sol_dir_path = "out/solutions/" * size * "/"
@@ -44,7 +45,7 @@ function solve(dir)
 
         X, Y, obj_val, time = optimize_model(model, number)
         file_inst_path = "inst_$number" * "_" * size * ".jld2"
-        file_sol_path = "sol_$number" * "_" * size * ".jld2"
+        file_sol_path = "sol_$number" * "_" * size * "_new.jld2"
         if obj_val == 0
             @error "Instancia $number no resuelta"
             full_failed_inst_path = failed_dir_path * file_inst_path
