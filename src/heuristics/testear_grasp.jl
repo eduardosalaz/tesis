@@ -8,55 +8,55 @@ function main_test()
     println(entradas)
     arr_grasp = []
     best_sols_gurobi_625 = Dict(
-        "1" => 464246,
+        "1" => 464274,
         "2" => 475106,
-        "3" => 451879,
+        "3" => 451907,
         "4" => 460877,
-        "5" => 469136,
-        "6" => 491677,
+        "5" => 469190,
+        "6" => 491611,
         "7" => 454550,
-        "8" => 462146,
-        "9" => 488765,
-        "10" => 472705,
-        "11" => 468053,
-        "12" => 462072,
-        "13" => 468505,
+        "8" => 462113,
+        "9" => 488971,
+        "10" => 471810,
+        "11" => 468195,
+        "12" => 461823,
+        "13" => 468480,
         "14" => 459301,
-        "15" => 484674,
+        "15" => 483950,
         "16" => 462365,
         "17" => 462745,
         "18" => 455692,
-        "19" => 460741,
+        "19" => 461881,
         "20" => 465070
     )
     
     best_bounds_gurobi_625 = Dict(
-        "1" => 462006.983,
-        "2" => 474508.581,
-        "3" => 451829.403,
-        "4" => 460361.988,
-        "5" => 468430.222,
-        "6" => 490028.106,
-        "7" => 453977.334,
-        "8" => 460849.226,
-        "9" => 487419.813,
-        "10" => 466940.063,
-        "11" => 466771.252,
-        "12" => 460985.561,
-        "13" => 468312.438,
-        "14" => 459248.658,
-        "15" => 479009.77,
-        "16" => 462309.765,
-        "17" => 462066.303,
-        "18" => 454192.089,
-        "19" => 458314.077,
-        "20" => 464814.975
+        "1" => 462154.445,
+        "2" => 474267.150,
+        "3" => 451740.158,
+        "4" => 460520.424,
+        "5" => 468298.942,
+        "6" => 490305.188,
+        "7" => 453366.406,
+        "8" => 460970.188,
+        "9" => 487836.913,
+        "10" => 467610.276,
+        "11" => 466413.292,
+        "12" => 461040.141,
+        "13" => 468091.441,
+        "14" => 459097.840,
+        "15" => 479672.397,
+        "16" => 461967.277,
+        "17" => 462126.537,
+        "18" => 454556.375,
+        "19" => 458774.946,
+        "20" => 464547.884
     )
     
     time_gurobi_625 = Dict(
         "1" => 1800,
         "2" => 1800,
-        "3" => 1483,
+        "3" => 1800,
         "4" => 1800,
         "5" => 1800,
         "6" => 1800,
@@ -67,9 +67,78 @@ function main_test()
         "11" => 1800,
         "12" => 1800,
         "13" => 1800,
-        "14" => 976,
+        "14" => 1800,
         "15" => 1800,
-        "16" => 1384,
+        "16" => 1800,
+        "17" => 1800,
+        "18" => 1800,
+        "19" => 1800,
+        "20" => 1800
+    )
+
+    best_sols_gurobi_1250 = Dict(
+        "1" => 949005,
+        "2" => 975979,
+        "3" => 988670,
+        "4" => 974186,
+        "5" => 958455,
+        "6" => 964088,
+        "7" => 968567,
+        "8" => 986315,
+        "9" => 951731,
+        "10" => 999473,
+        "11" => 961532,
+        "12" => 942864,
+        "13" => 1012710,
+        "14" => 987762,
+        "15" => 961675,
+        "16" => 990828,
+        "17" => 992812,
+        "18" => 980761,
+        "19" => 973562,
+        "20" => 972605
+    )
+    
+    best_bounds_gurobi_1250 = Dict(
+        "1" => 944758.818,
+        "2" => 966579.707,
+        "3" => 982010.310,
+        "4" => 971268.401,
+        "5" => 957947.388,
+        "6" => 961925.879,
+        "7" => 962977.434,
+        "8" => 983038.375,
+        "9" => 947306.650,
+        "10" => 991050.288,
+        "11" => 954783.337,
+        "12" => 940956.264,
+        "13" => 1009464.27,
+        "14" => 985021.255,
+        "15" => 957101.370,
+        "16" => 983915.691,
+        "17" => 991539.114,
+        "18" => 974474.121,
+        "19" => 970867.408,
+        "20" => 968213.682
+    )
+    
+    time_gurobi_1250 = Dict(
+        "1" => 1800,
+        "2" => 1800,
+        "3" => 1800,
+        "4" => 1800,
+        "5" => 1800,
+        "6" => 1800,
+        "7" => 1800,
+        "8" => 1800,
+        "9" => 1800,
+        "10" => 1800,
+        "11" => 1800,
+        "12" => 1800,
+        "13" => 1800,
+        "14" => 1800,
+        "15" => 1800,
+        "16" => 1800,
         "17" => 1800,
         "18" => 1800,
         "19" => 1800,
@@ -87,8 +156,8 @@ function main_test()
         id = number
         #sol_exac_path = "out\\solutions\\625_78_32\\sol_" * id * "_625_78_32.jld2"
         #sol_exac = read_solution(sol_exac_path)
-        weight_exac = best_sols_gurobi_625[number]
-        time_exac = time_gurobi_625[number]
+        weight_exac = best_sols_gurobi_1250[number]
+        time_exac = time_gurobi_1250[number]
 
         B = instancia.B
         S = instancia.S
@@ -102,7 +171,7 @@ function main_test()
         #test_αₐ = [0.1, 0.3, 0.5, 0.7, 0.9]
         test_αₐ = [0.3]
         #test_iters = [10, 30, 50, 70, 90]
-        test_iters = [70]
+        test_iters = [300]
         before = now()
         for αₗ in test_αₗ
             for αₐ in test_αₐ
@@ -112,15 +181,15 @@ function main_test()
                     if sol !== nothing
                         bestWeight = sol.Weight
 
-                        diff_grasp = abs(bestWeight - best_sols_gurobi_625[number]) / abs(bestWeight)
-                        gap_grasp = abs(bestWeight - best_bounds_gurobi_625[number]) / abs(bestWeight)
-                        time_exac = time_gurobi_625[number]
+                        diff_grasp = abs(bestWeight - best_sols_gurobi_1250[number]) / abs(bestWeight)
+                        gap_grasp = abs(bestWeight - best_bounds_gurobi_1250[number]) / abs(bestWeight)
+                        time_exac = time_gurobi_1250[number]
                         beat_gurobi = false
-                        if bestWeight < best_sols_gurobi_625[number]
+                        if bestWeight < best_sols_gurobi_1250[number]
                             beat_gurobi = true
                         end
 
-                        str_path = "out\\solutions\\625_78_32\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * "$αₗ" * "_" * "$αₐ" * "_" * "$iters" * "_grasp_final"
+                        str_path = "out\\solutions\\1250_155_62\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * "$αₗ" * "_" * "$αₐ" * "_" * "$iters" * "_grasp_final2"
                         plot_str_path = str_path * ".png"
                         solution_str_path = str_path * ".jld2"
                         #Types.plot_solution(sol, plot_str_path)
@@ -128,12 +197,12 @@ function main_test()
                         
                         # gap_repaired = (1 - (weight_exac / bestWeight)) * 100
                         row_grasp = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P" => P, "Loc" => "pdisp", "Alloc" => "queue", "TotalTimeGRASP" => time_grasp, "TimeOptim" => time_exac,
-                        "ValueOptim" => weight_exac, "BestBound" => best_bounds_gurobi_625[number], "ValueGRASP" => bestWeight, "Gap%"=> gap_grasp, "Diff%"=> diff_grasp, "alpha_l"=>αₗ, "alpha_a"=>αₐ,
+                        "ValueOptim" => weight_exac, "BestBound" => best_bounds_gurobi_1250[number], "ValueGRASP" => bestWeight, "Gap%"=> gap_grasp, "Diff%"=> diff_grasp, "alpha_l"=>αₗ, "alpha_a"=>αₐ,
                         "BeatGurobi"=>beat_gurobi, "iters"=>iters)
                         push!(arr_grasp, row_grasp)
                     else
                         row_grasp = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P" => P, "Loc" => "pdisp", "Alloc" => "queue", "TotalTimeGRASP" => 0, "TimeOptim" => time_exac,
-                        "ValueOptim" => weight_exac, "BestBound"=> best_bounds_gurobi_625[number], "ValueGRASP" => 0, "Gap%"=> 100, "Diff%"=>100, "alpha_l"=>αₗ, "alpha_a"=>αₐ, "iters"=>iters, "BeatGurobi"=>false)
+                        "ValueOptim" => weight_exac, "BestBound"=> best_bounds_gurobi_1250[number], "ValueGRASP" => 0, "Gap%"=> 100, "Diff%"=>100, "alpha_l"=>αₗ, "alpha_a"=>αₐ, "iters"=>iters, "BeatGurobi"=>false)
                         push!(arr_grasp, row_grasp)
                     end
                     
@@ -142,7 +211,7 @@ function main_test()
         end
         df1 = vcat(DataFrame.(arr_grasp)...)
         df1 = df1[:, sortperm(names(df1))]
-        CSV.write("df_grasp_625_78_32_70iters.csv", df1)
+        CSV.write("df_grasp_1250_155_62_300iters_2.csv", df1)
     end
 end
 
