@@ -7,3 +7,20 @@ how to warmstart:
 6. set_start_value.(x, X)
 7. set_start_value(.y, Y)
 8. profit
+
+include("src/math_prog/first_model.jl")
+sol = read_solution("out/solutions/625_78_32/heurs/sol_20_625_78_32_0.1_0.3_100_grasp_final2.jld2")
+inst = sol.Instance
+X = sol.X
+Y = sol.Y
+model = build_model(inst)
+x = model[:x]
+y = model[:y]
+set_start_value.(x, X)
+set_start_value.(y, Y)
+set_optimizer(model, Gurobi.Optimizer)
+optimize!(model)
+
+User MIP START provided xxxx value
+
+User MIP Start did not produce an Incumbent solution

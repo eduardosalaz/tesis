@@ -846,7 +846,7 @@ function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
         println(var)
     end
     =#
-    write_solution(bestSolution, "solucion_grasp_1_1250_changes8.jld2")
+    write_solution(bestSolution, "solucion_grasp_1_2500_changes9.jld2")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

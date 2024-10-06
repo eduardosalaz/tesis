@@ -647,10 +647,10 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
             end
             risk_vec[least_violating_facility] += R[client]
             counter +=1
-            println("Client $client was assigned to facility $least_violating_facility with a violation of $min_violation.")
+            #println("Client $client was assigned to facility $least_violating_facility with a violation of $min_violation.")
         end
     end 
-    println("Number of unassigned clients: $(length(unassigned_clients)), served $counter")
+    #println("Number of unassigned clients: $(length(unassigned_clients)), served $counter")
     return X
 end
 
