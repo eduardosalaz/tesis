@@ -32,3 +32,9 @@ tex/
 *.jpg
 *.eps
 *.svg
+.aider.chat.history.md
+.aider.input.history
+warmstart_procedure.txt
+.aider.tags.cache.v3/cache.db
+.aider.tags.cache.v3/cache.db-shm
+.aider.tags.cache.v3/cache.db-wal
