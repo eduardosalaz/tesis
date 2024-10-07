@@ -9,11 +9,11 @@ function find_one_in_column_unrolled(X::Matrix{Int64}, col::Int)
     @inbounds begin
         for i in 1:4:rows-3
             X[i, col] == 1 && return i
-            X[i+1, col] == 1 && return i+1
-            X[i+2, col] == 1 && return i+2
-            X[i+3, col] == 1 && return i+3
+            X[i+1, col] == 1 && return i + 1
+            X[i+2, col] == 1 && return i + 2
+            X[i+3, col] == 1 && return i + 3
         end
-        for i in (rows & -4 + 1):rows
+        for i in (rows&-4+1):rows
             X[i, col] == 1 && return i
         end
     end
@@ -25,28 +25,28 @@ function find_ones_in_row_optimized(X::Matrix{Int64}, row::Int)
     cols = size(X, 2)
     indices = Vector{Int}(undef, cols)  # Pre-allocate for worst case
     count = 0
-    
+
     # Process 4 elements at a time
     @inbounds for j in 1:4:cols-3
         chunk = (X[row, j] == 1) | (X[row, j+1] == 1) << 1 | (X[row, j+2] == 1) << 2 | (X[row, j+3] == 1) << 3
         count += count_ones(chunk)
-        
+
         chunk == 0 && continue
-        
-        chunk & 1 != 0 && (indices[count - count_ones(chunk) + 1] = j)
-        chunk & 2 != 0 && (indices[count - count_ones(chunk & 0b1110) + 1] = j + 1)
-        chunk & 4 != 0 && (indices[count - count_ones(chunk & 0b1100) + 1] = j + 2)
+
+        chunk & 1 != 0 && (indices[count-count_ones(chunk)+1] = j)
+        chunk & 2 != 0 && (indices[count-count_ones(chunk & 0b1110)+1] = j + 1)
+        chunk & 4 != 0 && (indices[count-count_ones(chunk & 0b1100)+1] = j + 2)
         chunk & 8 != 0 && (indices[count] = j + 3)
     end
-    
+
     # Handle remaining elements
-    @inbounds for j in (cols & -4 + 1):cols
+    @inbounds for j in (cols&-4+1):cols
         if X[row, j] == 1
             count += 1
             indices[count] = j
         end
     end
-    
+
     return resize!(indices, count)
 end
 
@@ -742,7 +742,7 @@ function can_do_interchange_optimized(values_matrix::Matrix{Float32}, V::Vector{
     @inbounds for m in 1:3
         value_ĩ = values_matrix[ĩ, m] - V[m][j₁] + V[m][j₂]
         value_i✶ = values_matrix[i✶, m] + V[m][j₁] - V[m][j₂]
-        if value_ĩ > targets_upper[m] || value_ĩ < targets_lower[m] || 
+        if value_ĩ > targets_upper[m] || value_ĩ < targets_lower[m] ||
            value_i✶ > targets_upper[m] || value_i✶ < targets_lower[m]
             return false
         end
@@ -755,13 +755,13 @@ end
 function find_best_interchange_optimized(X::Matrix{Int}, D::Matrix{Int}, V::Vector{Vector{Int}}, R::Vector{Int}, B::Int, M::Int, values_matrix::Matrix{Float32}, risk_vec::Vector{Float32}, targets_lower::SVector{3,Float32}, targets_upper::SVector{3,Float32}, β::Int, strategy::Symbol)
     best_move = nothing
     best_weight_diff = 0.0
-    
+
     @inbounds for j₁ in 1:B-1
         ĩ = find_one_in_column_unrolled(X, j₁)
         for j₂ in j₁+1:B
             i✶ = find_one_in_column_unrolled(X, j₂)
             weight_diff = D[i✶, j₁] + D[ĩ, j₂] - D[ĩ, j₁] - D[i✶, j₂]
-            
+
             if weight_diff < 0 && can_do_interchange_optimized(values_matrix, V, ĩ, i✶, j₁, j₂, risk_vec, R, β, targets_upper, targets_lower)
                 if strategy == :ff
                     return (ĩ=ĩ, i✶=i✶, j₁=j₁, j₂=j₂, weight_diff=weight_diff)
@@ -795,18 +795,18 @@ function interchange_bu_improve_optimized(solution, targets_lower::SVector{3,Flo
     V, R, β = instance.V, instance.R, instance.β[1]
     D = instance.D
     Weight = solution.Weight
-    
+
     values_matrix = Matrix{Float32}(undef, S, M)
     risk_vec = Vector{Float32}(undef, S)
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
-    
+
     while true
         best_move = find_best_interchange_optimized(X, D, V, R, B, M, values_matrix, risk_vec, targets_lower, targets_upper, β, strategy)
         best_move === nothing && break
         apply_interchange_optimized!(X, values_matrix, risk_vec, best_move, V, R)
         Weight += best_move.weight_diff
     end
-    
+
     Weight = dot(X, D)  # Recalculate weight to ensure accuracy
     return Solution(instance, X, Y, Weight, solution.Time)
 end
@@ -849,7 +849,7 @@ end
 function get_best_clients_for_centers(D::Matrix{Int64}, N::Int64)
     num_centers, num_clients = size(D)
     best_clients = Dict{Int,Vector{Int64}}()
-    costs = Vector{Tuple{Int64, Int}}(undef, num_clients)
+    costs = Vector{Tuple{Int64,Int}}(undef, num_clients)
     @inbounds for i in 1:num_centers
         # Use a temporary array to store the client opportunity costs for this center
         # costs = Tuple{Int64,Int}[]
@@ -919,7 +919,7 @@ while improvement
 
     for each active_center ĩ in best_solution
         for each inactive_center i✶ in best_solution
-            
+
             # Deactivate current center ĩ
             orphaned_clients = deactivate_center(ĩ)
 
@@ -952,7 +952,7 @@ return best_solution
 """
 =#
 
-function deactivate_center_improve(solution, targets_lower, targets_upper, strategy=:ff)
+function deactivate_center_improve(solution, targets_lower, targets_upper, strategy=:bf)
     X, Y = solution.X, solution.Y
     instance = solution.Instance
     B, S, M, V, R, β, P = instance.B, instance.S, instance.M, instance.V, instance.R, instance.β[1], instance.P
@@ -1181,19 +1181,19 @@ end
 function calculate_targets_optimized(instance)
     μ = instance.μ
     T = instance.T
-    
+
     targets_lower = SVector{3,Float32}(
         1 * μ[1][1] * (1 - T[1]),
         1 * μ[2][1] * (1 - T[2]),
         1 * μ[3][1] * (1 - T[3])
     )
-    
+
     targets_upper = SVector{3,Float32}(
         1 * μ[1][1] * (1 + T[1]),
         1 * μ[2][1] * (1 + T[2]),
         1 * μ[3][1] * (1 + T[3])
     )
-    
+
     return targets_lower, targets_upper
 end
 
@@ -1272,7 +1272,7 @@ function mainLocal(; path="solucion_grasp_16_625_feas.jld2")
     newSolution = localSearch(solution)
     println(isFactible(newSolution))
     println(newSolution.Weight)
-    write_solution(newSolution, "sol_ls_625_onlysimpleok.jld2")
+    write_solution(newSolution, "sol_ls_1250_11.jld2")
     #plot_solution(newSolution, "plot_sol_2_1250_viejo_relax_ls.png")
     return newSolution
 end
@@ -1332,7 +1332,7 @@ function localSearch(solution)
     loop = 0
 
     while improvement
-        loop+=1
+        loop += 1
         improvement = false  # Reset the flag at the start of each loop iteration
         prev_weight = oldSol.Weight
 
@@ -1344,14 +1344,14 @@ function localSearch(solution)
         sol_moved_bu = simple_bu_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :bf)
         new_weight_moved = sol_moved_bu.Weight
         println(new_weight_moved)
-        
+
         push!(improvements, new_weight_moved < prev_weight)
         if improvements[end]
             prev_weight = new_weight_moved
             #println("En el loop loop el movimiento simple mejora con un new_weight_moved")
             oldSol = sol_moved_bu  # Update oldSol if there was an improvement
         end
-        
+
         # Second improvement function
 
         println("interchange optimized bf")
@@ -1366,11 +1366,11 @@ function localSearch(solution)
             oldSol = sol_interchanged_bu  # Update oldSol if there was an improvement
         end
         println("---------------------")
-        
+
         #println(isFactible(sol_interchanged_bu, true))
-        
+
         # Third improvement function
-        
+
         println("deactivate ")
         println(@benchmark deactivate_center_improve($oldSol, $targets_lower, $targets_upper))
         sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
@@ -1390,5 +1390,5 @@ function localSearch(solution)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-   mainLocal(; path=ARGS[1])
+    mainLocal(; path=ARGS[1])
 end
