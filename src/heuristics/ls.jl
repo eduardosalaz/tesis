@@ -2,6 +2,7 @@ using Types, BenchmarkTools, DelimitedFiles
 using TimerOutputs
 using LinearAlgebra
 using Dates
+using StaticArrays
 
 function find_one_in_column_unrolled(X::Matrix{Int64}, col::Int)
     rows = size(X, 1)
@@ -187,15 +188,6 @@ function calculate_targets(instance)
     return targets_lower, targets_upper
 end
 
-function start_constraints(S, B, M, V, R, X, values_matrix, risk_vec)
-    for i in 1:S
-        for m in 1:M
-            values_matrix[i, m] = sum(X[i, j] * V[m][j] for j in 1:B)
-        end
-        risk_vec[i] = sum(X[i, j] * R[j] for j in 1:B)
-    end
-    return values_matrix, risk_vec
-end
 
 function start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
     for m in eachindex(V)
@@ -273,7 +265,7 @@ function isFactible4(solution::Types.Solution, targets_lower, targets_upper, ver
                 println("Violando servicio a la BU: ", j)
                 number_constraints_violated += 1
             end
-            @error "X NO SERVIDA $j"
+            @error "X NO SERVIDA"
         end
     end
 
@@ -504,7 +496,6 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
             inicializar = []
             if length(candidates_bus) == 0
                 cant_fix = true
-               # println("ya me quede sin bus")
                 break
             end
             j = popfirst!(candidates_bus)[1]
@@ -538,7 +529,6 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
             if can_do_move
                 X[ĩ, j] = 0
                 X[i, j] = 1
-                #println("si pude $j")
             else
                 # si no puedo hacer el movimiento, restaura el valor de la ev parcial
                 for m in 1:M
@@ -547,10 +537,6 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
                 end
                 risk_vec[ĩ] += R[j]
                 risk_vec[i] -= R[j]
-                #println("no pude $j")
-            end
-            if factible_yet
-                #println("factible para $i")
             end
         end
     end
@@ -750,95 +736,78 @@ function repair_solution2(solution, cons, targets_lower, targets_upper, remove, 
     return newSol
 end
 
-function interchange_bu_improve(solution, targets_lower, targets_upper, strategy)
-    #X, Y = copy(solution.X), copy(solution.Y)
-    X, Y = solution.X, solution.Y
-    instance = solution.Instance
-    B, S, M, V, R, β, P = instance.B, instance.S, instance.M, instance.V, instance.R, instance.β[1], instance.P
-    # D = copy(instance.D)
-    D = instance.D
-    Weight = solution.Weight
-    values_matrix = Matrix{Float32}(undef, S, M)
-    risk_vec = Vector{Float32}(undef, S)
+# Optimized Interchange Move Implementation
 
-    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
-    improvement = true
-    while improvement
-        improvement = false
-        best_ĩ, best_i✶, best_j₁, best_j₂ = 0, 0, 0, 0
-        best_improvement = 0
-        @inbounds for j₁ in 1:B-1
-            ĩ = find_one_in_column_unrolled(X, j₁)
-            #ĩ = findfirst(==(1), @view X[:, j₁])
-            @inbounds for j₂ in j₁+1:B
-                #i✶ = findfirst(==(1), @view X[:, j₂])
-                i✶ = find_one_in_column_unrolled(X, j₂)
-                weight_diff =  D[i✶, j₁] + D[ĩ, j₂] - D[ĩ, j₁] - D[i✶, j₂]
-                if weight_diff < 0 # si el peso mejora, revisa el estado del movimiento
-                    can_do_move = true
-                    values_ĩ = Vector{Float32}(undef, 3)
-                    values_i✶ = Vector{Float32}(undef, 3)
-                    @simd for m in 1:3
-                        values_ĩ[m] = values_matrix[ĩ, m] - V[m][j₁] + V[m][j₂]
-                        values_i✶[m] = values_matrix[i✶, m] + V[m][j₁] - V[m][j₂]
-                        if values_ĩ[m] > targets_upper[m] || values_i✶[m] > targets_upper[m] || 
-                            values_ĩ[m] < targets_lower[m] || values_i✶[m] < targets_lower[m]
-                            can_do_move = false
-                        end
-                    end
-                    risk_ĩ = risk_vec[ĩ] - R[j₁] + R[j₂]
-                    risk_i✶ = risk_vec[i✶] + R[j₁] - R[j₂]
-                    if risk_ĩ > β || risk_i✶ > β
-                        can_do_move = false
-                    end
-                    if can_do_move
-                        newWeight = Weight + weight_diff
-                        abs_improvement = -weight_diff #inviertele el signo para hacerlo positivo
-                        if newWeight < Weight
-                            if strategy == :ff
-                                X[ĩ, j₁], X[i✶, j₂] = 0, 0
-                                X[ĩ, j₂], X[i✶, j₁] = 1, 1
-                                improvement = true
-                                Weight = newWeight
-                                @simd for m in 1:M
-                                    values_matrix[ĩ, m] += V[m][j₂] - V[m][j₁]
-                                    values_matrix[i✶, m] += V[m][j₁] - V[m][j₂]
-                                end
-                                risk_vec[ĩ] += R[j₂] - R[j₁]
-                                risk_vec[i✶] += R[j₁] - R[j₂]
-                                aux = ĩ
-                                ĩ = i✶
-                                i✶ = aux
-                            else
-                                if abs_improvement > best_improvement
-                                    best_ĩ, best_i✶ = ĩ, i✶
-                                    best_j₁, best_j₂ = j₁, j₂
-                                    best_improvement = abs_improvement
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        if strategy == :bf
-            if best_ĩ != 0
-                X[best_ĩ, best_j₁], X[best_i✶, best_j₂] = 0, 0
-                X[best_ĩ, best_j₂], X[best_i✶, best_j₁] = 1, 1
-                newWeight = dot(X, D)
-                Weight = newWeight
-                improvement = true
-                @simd for m in 1:M
-                    values_matrix[best_ĩ, m] += V[m][best_j₂] - V[m][best_j₁]
-                    values_matrix[best_i✶, m] += V[m][best_j₁] - V[m][best_j₂]
-                end
-                risk_vec[best_ĩ] += R[best_j₂] - R[best_j₁]
-                risk_vec[best_i✶] += R[best_j₁] - R[best_j₂]
-            end
+function can_do_interchange_optimized(values_matrix::Matrix{Float32}, V::Vector{Vector{Int}}, ĩ::Int, i✶::Int, j₁::Int, j₂::Int, risk_vec::Vector{Float32}, R::Vector{Int}, β::Int, targets_upper::SVector{3,Float32}, targets_lower::SVector{3,Float32})
+    @inbounds for m in 1:3
+        value_ĩ = values_matrix[ĩ, m] - V[m][j₁] + V[m][j₂]
+        value_i✶ = values_matrix[i✶, m] + V[m][j₁] - V[m][j₂]
+        if value_ĩ > targets_upper[m] || value_ĩ < targets_lower[m] || 
+           value_i✶ > targets_upper[m] || value_i✶ < targets_lower[m]
+            return false
         end
     end
-    Weight = dot(X, D)
+    risk_ĩ = risk_vec[ĩ] - R[j₁] + R[j₂]
+    risk_i✶ = risk_vec[i✶] + R[j₁] - R[j₂]
+    return risk_ĩ <= β && risk_i✶ <= β
+end
 
+function find_best_interchange_optimized(X::Matrix{Int}, D::Matrix{Int}, V::Vector{Vector{Int}}, R::Vector{Int}, B::Int, M::Int, values_matrix::Matrix{Float32}, risk_vec::Vector{Float32}, targets_lower::SVector{3,Float32}, targets_upper::SVector{3,Float32}, β::Int, strategy::Symbol)
+    best_move = nothing
+    best_weight_diff = 0.0
+    
+    @inbounds for j₁ in 1:B-1
+        ĩ = find_one_in_column_unrolled(X, j₁)
+        for j₂ in j₁+1:B
+            i✶ = find_one_in_column_unrolled(X, j₂)
+            weight_diff = D[i✶, j₁] + D[ĩ, j₂] - D[ĩ, j₁] - D[i✶, j₂]
+            
+            if weight_diff < 0 && can_do_interchange_optimized(values_matrix, V, ĩ, i✶, j₁, j₂, risk_vec, R, β, targets_upper, targets_lower)
+                if strategy == :ff
+                    return (ĩ=ĩ, i✶=i✶, j₁=j₁, j₂=j₂, weight_diff=weight_diff)
+                elseif strategy == :bf && (best_move === nothing || weight_diff < best_weight_diff)
+                    best_move = (ĩ=ĩ, i✶=i✶, j₁=j₁, j₂=j₂, weight_diff=weight_diff)
+                    best_weight_diff = weight_diff
+                end
+            end
+        end
+        strategy == :ff && best_move !== nothing && break
+    end
+    return best_move
+end
+
+function apply_interchange_optimized!(X::Matrix{Int}, values_matrix::Matrix{Float32}, risk_vec::Vector{Float32}, move, V::Vector{Vector{Int}}, R::Vector{Int})
+    ĩ, i✶, j₁, j₂ = move.ĩ, move.i✶, move.j₁, move.j₂
+    @inbounds X[ĩ, j₁], X[i✶, j₂] = 0, 0
+    @inbounds X[ĩ, j₂], X[i✶, j₁] = 1, 1
+    @inbounds for m in 1:size(values_matrix, 2)
+        values_matrix[ĩ, m] += V[m][j₂] - V[m][j₁]
+        values_matrix[i✶, m] += V[m][j₁] - V[m][j₂]
+    end
+    @inbounds risk_vec[ĩ] += R[j₂] - R[j₁]
+    @inbounds risk_vec[i✶] += R[j₁] - R[j₂]
+end
+
+function interchange_bu_improve_optimized(solution, targets_lower::SVector{3,Float32}, targets_upper::SVector{3,Float32}, strategy::Symbol)
+    X, Y = solution.X, solution.Y
+    instance = solution.Instance
+    B, S, M = instance.B, instance.S, instance.M
+    V, R, β = instance.V, instance.R, instance.β[1]
+    D = instance.D
+    Weight = solution.Weight
+    
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+    
+    while true
+        best_move = find_best_interchange_optimized(X, D, V, R, B, M, values_matrix, risk_vec, targets_lower, targets_upper, β, strategy)
+        best_move === nothing && break
+        apply_interchange_optimized!(X, values_matrix, risk_vec, best_move, V, R)
+        Weight += best_move.weight_diff
+    end
+    
+    Weight = dot(X, D)  # Recalculate weight to ensure accuracy
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
@@ -983,7 +952,7 @@ return best_solution
 """
 =#
 
-function deactivate_center_improve(solution, targets_lower, targets_upper, strategy=:bf)
+function deactivate_center_improve(solution, targets_lower, targets_upper, strategy=:ff)
     X, Y = solution.X, solution.Y
     instance = solution.Instance
     B, S, M, V, R, β, P = instance.B, instance.S, instance.M, instance.V, instance.R, instance.β[1], instance.P
@@ -1209,100 +1178,93 @@ function deactivate_center_improve(solution, targets_lower, targets_upper, strat
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
-function can_do_move(values_matrix, V, i, ĩ, j, risk_vec, R, β, targets_upper, targets_lower)
-    values_ĩ = Vector{Float32}(undef, 3)
-    values_i = Vector{Float32}(undef, 3)
-    for m in 1:3
-        values_ĩ[m] = values_matrix[ĩ, m] - V[m][j]
-        values_i[m] = values_matrix[i, m] + V[m][j]
-        if values_ĩ[m] > targets_upper[m] || values_ĩ[m] < targets_lower[m] || values_i[m] > targets_upper[m] || values_i[m] < targets_lower[m]
+function calculate_targets_optimized(instance)
+    μ = instance.μ
+    T = instance.T
+    
+    targets_lower = SVector{3,Float32}(
+        1 * μ[1][1] * (1 - T[1]),
+        1 * μ[2][1] * (1 - T[2]),
+        1 * μ[3][1] * (1 - T[3])
+    )
+    
+    targets_upper = SVector{3,Float32}(
+        1 * μ[1][1] * (1 + T[1]),
+        1 * μ[2][1] * (1 + T[2]),
+        1 * μ[3][1] * (1 + T[3])
+    )
+    
+    return targets_lower, targets_upper
+end
+
+function can_do_move_simple_optimized(values_matrix::Matrix{Float32}, V::Vector{Vector{Int64}}, i::Int, ĩ::Int, j::Int, risk_vec::Vector{Float32}, R::Vector{Int64}, β::Int64, targets_upper::SVector{3,Float32}, targets_lower::SVector{3,Float32})
+    @inbounds for m in 1:3
+        valueĩ = values_matrix[ĩ, m] - V[m][j]
+        value_i = values_matrix[i, m] + V[m][j]
+        if valueĩ > targets_upper[m] || valueĩ < targets_lower[m] || value_i > targets_upper[m] || value_i < targets_lower[m]
             return false
         end
     end
-    risk_ĩ = risk_vec[ĩ] - R[j]
+    riskĩ = risk_vec[ĩ] - R[j]
     risk_i = risk_vec[i] + R[j]
-    if risk_ĩ > β || risk_i > β
-        return false
-    end
-    return true
+    return riskĩ <= β && risk_i <= β
 end
-
-function simple_bu_improve(solution, targets_lower, targets_upper, strategy)
-    # Unpack solution and instance variables
-    #X, Y = copy(solution.X), copy(solution.Y)
+function simple_bu_improve_optimized(solution, targets_lower::SVector{3,Float32}, targets_upper::SVector{3,Float32}, strategy::Symbol)
     X, Y = solution.X, solution.Y
     instance = solution.Instance
-    B, S, M, V, R, β, P = instance.B, instance.S, instance.M, instance.V, instance.R, instance.β[1], instance.P
-    #D = copy(instance.D)
+    B, S, M = instance.B, instance.S, instance.M
+    V, R, β = instance.V, instance.R, instance.β[1]
     D = instance.D
     Weight = solution.Weight
-
-    # Initialize sets and matrices
-    usables_i = BitSet(findall(==(1), Y))
+    usables_i = findall(==(1), Y)
     values_matrix = Matrix{Float32}(undef, S, M)
     risk_vec = Vector{Float32}(undef, S)
-
-    # Initialize constraints
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
-
-    improvement = true
-    while improvement
-        improvement = false
-        best_move = nothing
-        for j in 1:B
-            #ĩ = findfirst(==(1), @view X[:, j])
-            ĩ = find_one_in_column_unrolled(X, j)
-            min_index = argmin(@view D[:, j])
-
-            ĩ == min_index && continue
-            for i in usables_i
-                i == ĩ && continue
-                weight_diff = D[i, j] - D[ĩ, j]
-                if weight_diff < 0
-                    can_move = can_do_move(values_matrix, V, i, ĩ, j, risk_vec, R, β, targets_upper, targets_lower)
-                    if !can_move
-                        continue
-                    end
-                    new_weight = Weight + weight_diff
-                    if strategy == :ff
-                        apply_move!(X, values_matrix, risk_vec, (new_i=i, old_i=ĩ, j=j), V, R)
-                        Weight = new_weight
-                        improvement = true
-                        ĩ = i # duh
-                        #log_move(out, (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff))
-                        #break
-                    elseif strategy == :bf && (best_move === nothing || weight_diff < best_move.weight_diff)
-                        best_move = (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff)
-                    end
-                end
-            end
-            # strategy == :ff && improvement && break
-        end
-
-        if strategy == :bf && best_move !== nothing
-            apply_move!(X, values_matrix, risk_vec, best_move, V, R)
-            Weight += best_move.weight_diff
-            improvement = true
-            #log_move(out, best_move)
-        end
+    while true
+        best_move = find_best_move_simple_optimized(X, D, V, R, B, M, usables_i, values_matrix, risk_vec, targets_lower, targets_upper, β, strategy)
+        best_move === nothing && break
+        apply_move_simple_optimized!(X, values_matrix, risk_vec, best_move, V, R)
+        Weight += best_move.weight_diff
     end
-
-
-    # Recalculate weight
     Weight = dot(X, D)
-
     return Solution(instance, X, Y, Weight, solution.Time)
 end
+function find_best_move_simple_optimized(X::Matrix{Int}, D::Matrix{Int}, V::Vector{Vector{Int}}, R::Vector{Int}, B::Int, M::Int, usables_i::Vector{Int}, values_matrix::Matrix{Float32}, risk_vec::Vector{Float32}, targets_lower::SVector{3,Float32}, targets_upper::SVector{3,Float32}, β::Int64, strategy::Symbol)
+    best_move = nothing
+    best_weight_diff = 0.0
 
-function apply_move!(X, values_matrix, risk_vec, move, V, R)
-    X[move.old_i, move.j] = 0
-    X[move.new_i, move.j] = 1
-    for m in axes(values_matrix, 2)
-        values_matrix[move.old_i, m] -= V[m][move.j]
-        values_matrix[move.new_i, m] += V[m][move.j]
+    @inbounds for j in 1:B
+        ĩ = find_one_in_column_unrolled(X, j)
+        min_index = argmin(@view D[:, j])
+        ĩ == min_index && continue
+
+        for i in usables_i
+            i == ĩ && continue
+            weight_diff = D[i, j] - D[ĩ, j]
+
+            if weight_diff < 0 && can_do_move_simple_optimized(values_matrix, V, i, ĩ, j, risk_vec, R, β, targets_upper, targets_lower)
+                if strategy == :ff
+                    return (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff)
+                elseif strategy == :bf && (best_move === nothing || weight_diff < best_weight_diff)
+                    best_move = (new_i=i, old_i=ĩ, j=j, weight_diff=weight_diff)
+                    best_weight_diff = weight_diff
+                end
+            end
+        end
+        strategy == :ff && best_move !== nothing && break
     end
-    risk_vec[move.old_i] -= R[move.j]
-    risk_vec[move.new_i] += R[move.j]
+    return best_move
+end
+function apply_move_simple_optimized!(X::Matrix{Int}, values_matrix::Matrix{Float32}, risk_vec::Vector{Float32}, move, V::Vector{Vector{Int}}, R::Vector{Int})
+    new_i, old_i, j = move.new_i, move.old_i, move.j
+    @inbounds X[old_i, j] = 0
+    @inbounds X[new_i, j] = 1
+    @inbounds for m in 1:size(values_matrix, 2)
+        values_matrix[old_i, m] -= V[m][j]
+        values_matrix[new_i, m] += V[m][j]
+    end
+    @inbounds risk_vec[old_i] -= R[j]
+    @inbounds risk_vec[new_i] += R[j]
 end
 
 function mainLocal(; path="solucion_grasp_16_625_feas.jld2")
@@ -1315,119 +1277,6 @@ function mainLocal(; path="solucion_grasp_16_625_feas.jld2")
     return newSolution
 end
 
-function simple_bu_improve2(solution, targets_lower, targets_upper, strategy)
-    X = copy(solution.X)
-    Y = copy(solution.Y)
-    instance = solution.Instance
-    B = instance.B
-    S = instance.S
-    D = copy(instance.D)
-    M = instance.M
-    V = instance.V
-    R = instance.R
-    β = instance.β[1]
-    P = instance.P
-    Weight = solution.Weight
-    n = round(Int, (P / 2))
-    not_usables_i = BitSet(findall(==(0), Y))
-    usables_i = BitSet(findall(==(1), Y))
-    values_matrix = Matrix{Int64}(undef, S, M)
-    risk_vec = Vector{Int64}(undef, S)
-
-    for j in not_usables_i
-        D[j, :] .= 10000000000000 # fix esto
-    end
-
-    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
-    improvement = true
-
-    while improvement
-        improvement = false
-        best_new_i = 0
-        best_old_i = 0
-        best_j = 0
-        best_improvement = 0
-        for j in 1:B
-            #ĩ = findfirst(==(1), @views X[:, j]) # asignacion previa ĩ, j = 1
-            ĩ = find_one_in_column_unrolled(X, j)
-            min_index = argmin(D[:, j]) # minimo de j
-            if ĩ == min_index
-                #println("saltandome mejor asignacion")
-                continue # no tiene caso intentar mover una BU que ya tiene asignacion optima
-            end
-            usables_i_without_ĩ = setdiff(usables_i, ĩ)
-            for i in usables_i_without_ĩ
-                weight_diff = -D[ĩ, j] + D[i, j]
-                if weight_diff < 0 # si el peso mejora, revisa el estado del movimiento
-                    can_do_move = true
-                    values_ĩ = Vector{Int}(undef, 3)
-                    values_i = Vector{Int}(undef, 3)
-                    for m in 1:3
-                        values_ĩ[m] = values_matrix[ĩ, m] - V[m][j]
-                        values_i[m] = values_matrix[i, m] + V[m][j]
-                        if values_ĩ[m] > targets_upper[m] || values_ĩ[m] < targets_lower[m] || values_i[m] > targets_upper[m] || values_i[m] < targets_lower[m]
-                            can_do_move = false
-                            break
-                        end
-                    end
-                    risk_ĩ = risk_vec[ĩ] - R[j]
-                    risk_i = risk_vec[i] + R[j]
-                    if !can_do_move || risk_ĩ > β || risk_i > β
-                        continue
-                    end
-                    if can_do_move
-                        newWeight = Weight + weight_diff
-                        abs_improvement = -weight_diff
-                        if newWeight < Weight
-                            if strategy == :ff # first found
-                                X[ĩ, j] = 0
-                                X[i, j] = 1
-                                improvement = true
-                                for m in 1:M
-                                    values_matrix[ĩ, m] -= V[m][j] # restale a ĩ, previo
-                                    values_matrix[i, m] += V[m][j] # restale a i✶, previo
-                                end
-                                risk_vec[ĩ] -= R[j] # restale a ĩ el viejo
-                                risk_vec[i] += R[j] # restale a i✶ el viejo
-                                Weight = newWeight
-                                ĩ = i # duh
-                            elseif strategy == :bf
-                                if abs_improvement > best_improvement
-                                    best_new_i = i
-                                    best_old_i = ĩ
-                                    best_j = j
-                                    best_improvement = abs_improvement
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        if strategy == :bf
-            if best_new_i != 0
-                X[best_new_i, best_j] = 1
-                X[best_old_i, best_j] = 0
-                for m in 1:M
-                    values_matrix[best_old_i, m] -= V[m][best_j] # restale a ĩ, previo
-                    values_matrix[best_new_i, m] += V[m][best_j] # restale a i✶, previo
-                end
-                risk_vec[best_new_i] += R[best_j]
-                risk_vec[best_old_i] -= R[best_j]
-                improvement = true
-            else
-                improvement = false
-            end
-        end
-    end
-    indices = findall(x -> x == 1, X)
-    Weight = 0
-    for indice in indices
-        Weight += instance.D[indice]
-    end
-    sol = Solution(instance, X, Y, Weight, solution.Time)
-    return Solution(instance, X, Y, Weight, solution.Time)
-end
 
 function localSearch(solution)
     oldSol = solution
@@ -1435,6 +1284,7 @@ function localSearch(solution)
     instance = solution.Instance
     factible_after_repair = false
     targets_lower, targets_upper = calculate_targets(instance)
+    targets_lower_op, targets_upper_op = calculate_targets_optimized(instance)
     println(isFactible(oldSol))
     factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
     println("is factible4 oldsol ", isFactible4(oldSol, targets_lower, targets_upper))
@@ -1489,21 +1339,24 @@ function localSearch(solution)
         # Array to keep track of individual improvements
         improvements = Bool[]
         # First improvement function
-        println(@benchmark simple_bu_improve($oldSol, $targets_lower, $targets_upper, :ff))
-        sol_moved_bu = simple_bu_improve(oldSol, targets_lower, targets_upper, :ff)
+        println("simple optimized bf")
+        #println(@benchmark simple_bu_improve_optimized($oldSol, $targets_lower_op, $targets_upper_op, :bf))
+        sol_moved_bu = simple_bu_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :bf)
         new_weight_moved = sol_moved_bu.Weight
+        println(new_weight_moved)
+        
         push!(improvements, new_weight_moved < prev_weight)
         if improvements[end]
             prev_weight = new_weight_moved
             #println("En el loop loop el movimiento simple mejora con un new_weight_moved")
             oldSol = sol_moved_bu  # Update oldSol if there was an improvement
         end
-        println(oldSol.Weight)
-        #println(isFactible(sol_moved_bu, true))
         
         # Second improvement function
-        println(@benchmark interchange_bu_improve($oldSol, $targets_lower, $targets_upper, :ff))
-        sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :ff)
+
+        println("interchange optimized bf")
+        #println(@benchmark interchange_bu_improve_optimized($oldSol, $targets_lower_op, $targets_upper_op, :bf))
+        sol_interchanged_bu = interchange_bu_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :bf)
         new_weight_moved = sol_interchanged_bu.Weight
         println(new_weight_moved)
         push!(improvements, new_weight_moved < prev_weight)
@@ -1512,31 +1365,26 @@ function localSearch(solution)
             #println("En el loop loop el movimiento intercambio mejora con un new_weight_moved")
             oldSol = sol_interchanged_bu  # Update oldSol if there was an improvement
         end
+        println("---------------------")
         
         #println(isFactible(sol_interchanged_bu, true))
         
         # Third improvement function
+        
+        println("deactivate ")
         println(@benchmark deactivate_center_improve($oldSol, $targets_lower, $targets_upper))
         sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
         new_weight_moved = sol_deactivated_center.Weight
+        println(new_weight_moved)
         push!(improvements, new_weight_moved < prev_weight)
         if improvements[end]
             prev_weight = new_weight_moved
             #println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
             oldSol = sol_deactivated_center  # Update oldSol if there was an improvement
         end
-        
-        
-        #println(isFactible(sol_deactivated_center, true))
-
-        # Check for any improvements
-
+        println("---------------------")
         improvement = any(improvements)
-        #println(isFactible(oldSol, true))
     end
-    #show(to2)
-
-    #println(isFactible(oldSol, true))
     println(oldSol.Weight)
     return oldSol
 end
