@@ -147,6 +147,45 @@ function main_test()
         "20" => 1800
     )
 
+    best_sols_gurobi_2500 = Dict(
+        "1" => 883693,
+        "2" => 893408,
+        "3" => 882602,
+        "4" => 913347,
+        "5" => 895581,
+        "6" => 896157,
+        "7" => 893684,
+        "8" => 895125,
+        "9" => 877510,
+        "10" => 892898
+    )
+
+    best_bounds_gurobi_2500 = Dict(
+        "1" => 881117.835,
+        "2" => 892105.537,
+        "3" => 882275.835,
+        "4" => 910961.688,
+        "5" => 893657.944,
+        "6" => 894518.511,
+        "7" => 892487.885,
+        "8" => 892662.594,
+        "9" => 876485.604,
+        "10" => 891652.122
+    )
+
+    time_gurobi_2500 = Dict(
+        "1" => 7200,
+        "2" => 7200,
+        "3" => 7200,
+        "4" => 7200,
+        "5" => 7200,
+        "6" => 7200,
+        "7" => 7200,
+        "8" => 7200,
+        "9" => 7200,
+        "10" => 7200
+    )
+
     for entrada in entradas
         path = ARGS[1] * entrada
         instancia = read_instance(path)
@@ -160,9 +199,9 @@ function main_test()
         #sol_exac_path = "out\\solutions\\625_78_32\\sol_" * id * "_625_78_32.jld2"
         #sol_exac = read_solution(sol_exac_path)
 
-        weight_exac = best_sols_gurobi_625[number]
-        bound_exac = best_bounds_gurobi_625[number]
-        time_exac = time_gurobi_625[number]
+        weight_exac = best_sols_gurobi_2500[number]
+        bound_exac = best_bounds_gurobi_2500[number]
+        time_exac = time_gurobi_2500[number]
 
         B = instancia.B
         S = instancia.S
@@ -224,7 +263,7 @@ function main_test()
                 end
             end
 
-            str_path = "out\\solutions\\625_78_32\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * location_method * "_" * alloc_method * "_new_final2"
+            str_path = "out\\solutions\\2500_325_125\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * location_method * "_" * alloc_method * "_new_final2"
             plot_str_path = str_path * ".png"
             solution_str_path = str_path * ".jld2"
             solution = Types.Solution(instancia, X, Y_bool, Weight, time_cons)
@@ -262,6 +301,7 @@ function main_test()
                 println("Factible")
                 original_weight = solution.Weight
                 weight_before = original_weight
+                println(weight_before)
                 factible_after_repair = true
             else
                 println("Reparando")
@@ -308,7 +348,7 @@ function main_test()
                 while improvement
                     improvement = false  # Reset the flag at the start of each loop iteration
                     prev_weight = oldSol.Weight
-
+                    loop +=1
                     # Array to keep track of individual improvements
                     improvements = Bool[]
                     # First improvement function
@@ -317,7 +357,7 @@ function main_test()
                     push!(improvements, new_weight_moved < prev_weight)
                     if improvements[end]
                         prev_weight = new_weight_moved
-                        #println("En el loop loop el movimiento simple mejora con un new_weight_moved")
+                        println("En el loop $loop el movimiento simple mejora con un $new_weight_moved")
                         oldSol = sol_moved_bu  # Update oldSol if there was an improvement
                     end
                     #println(isFactible(sol_moved_bu, true))
@@ -327,7 +367,7 @@ function main_test()
                     push!(improvements, new_weight_moved < prev_weight)
                     if improvements[end]
                         prev_weight = new_weight_moved
-                        #println("En el loop loop el movimiento intercambio mejora con un new_weight_moved")
+                        println("En el loop #loop el movimiento intercambio mejora con un $new_weight_moved")
                         oldSol = sol_interchanged_bu  # Update oldSol if there was an improvement
                     end
                     #println(isFactible(sol_interchanged_bu, true))
@@ -338,7 +378,7 @@ function main_test()
                     push!(improvements, new_weight_moved < prev_weight)
                     if improvements[end]
                         prev_weight = new_weight_moved
-                        #println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
+                        println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
                         oldSol = sol_deactivated_center  # Update oldSol if there was an improvement
                     end
                     counter += 1
@@ -354,11 +394,12 @@ function main_test()
                 delta_ls_millis = round(delta_ls, Millisecond)
                 delta_ls_value = delta_ls_millis.value
                 weight_after = oldSol.Weight
-                str_path = "out\\solutions\\625_78_32\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * location_method * "_" * alloc_method * "_ls_ff_new_final2"
+                str_path = "out\\solutions\\2500_325_125\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * location_method * "_" * alloc_method * "_ls_ff_new_final2"
                 plot_str_path = str_path * ".png"
                 solution_str_path = str_path * ".jld2"
                 total_time = time_cons + repair_delta.value + delta_ls_value
                 solution = Types.Solution(instancia, oldSol.X, oldSol.Y, weight_after, total_time)
+                println(isFactible(solution))
                 #Types.plot_solution(solution, plot_str_path)
                 Types.write_solution(solution, solution_str_path)
             end
@@ -401,8 +442,8 @@ function main_test()
         df2 = vcat(DataFrame.(arr_ls)...)
         df1 = df1[:, sortperm(names(df1))]
         df2 = df2[:, sortperm(names(df2))]
-        CSV.write("new2/df_cons_625_pdisp_queue_ff_new2.csv", df1)
-        CSV.write("new2/df_ls_625_pdisp_queue_ff_new2.csv", df2)
+        CSV.write("new2/df_cons_2500_pdisp_opp_ff_new2.csv", df1)
+        CSV.write("new2/df_ls_2500_pdisp_opp_ff_new2.csv", df2)
     end
 end
 

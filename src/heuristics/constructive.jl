@@ -551,9 +551,10 @@ function oppCostQueue(Y, instance::Types.Instance)
             todos = false
         end
     end
+    unassigned_count = length(unassigned_bus)
     X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
 
-    return X
+    return X, unassigned_count
 end
 
 # Function to calculate how much an assignment violates constraints

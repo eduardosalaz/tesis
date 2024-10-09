@@ -144,6 +144,48 @@ function main_test()
         "19" => 1800,
         "20" => 1800
     )
+
+    best_sols_gurobi_2500 = Dict(
+        "1" => 883693,
+        "2" => 893408,
+        "3" => 882602,
+        "4" => 913347,
+        "5" => 895581,
+        "6" => 896157,
+        "7" => 893684,
+        "8" => 895125,
+        "9" => 877510,
+        "10" => 892898
+    )
+
+    best_bounds_gurobi_2500 = Dict(
+        "1" => 881117.835,
+        "2" => 892105.537,
+        "3" => 882275.835,
+        "4" => 910961.688,
+        "5" => 893657.944,
+        "6" => 894518.511,
+        "7" => 892487.885,
+        "8" => 892662.594,
+        "9" => 876485.604,
+        "10" => 891652.122
+    )
+
+    time_gurobi_2500 = Dict(
+        "1" => 7200,
+        "2" => 7200,
+        "3" => 7200,
+        "4" => 7200,
+        "5" => 7200,
+        "6" => 7200,
+        "7" => 7200,
+        "8" => 7200,
+        "9" => 7200,
+        "10" => 7200
+    )
+
+    
+
     for entrada in entradas
         path = ARGS[1] * entrada
         instancia = read_instance(path)
@@ -158,6 +200,7 @@ function main_test()
         #sol_exac = read_solution(sol_exac_path)
         weight_exac = best_sols_gurobi_1250[number]
         time_exac = time_gurobi_1250[number]
+        bound = best_bounds_gurobi_1250[number]
 
         B = instancia.B
         S = instancia.S
@@ -166,12 +209,12 @@ function main_test()
         Y = Vector{Int64}(undef, S)
         D = instancia.D
         Weight = 0
-        #test_αₗ = [0.1, 0.3, 0.5, 0.7, 0.9]
-        test_αₗ = [0.1]
-        #test_αₐ = [0.1, 0.3, 0.5, 0.7, 0.9]
-        test_αₐ = [0.3]
-        #test_iters = [10, 30, 50, 70, 90]
-        test_iters = [300]
+        test_αₗ = [0.1, 0.3, 0.5, 0.7]
+        #test_αₗ = [0.1]
+        test_αₐ = [0.1, 0.3, 0.5, 0.7]
+        #test_αₐ = [0.1]
+        test_iters = [25, 50, 75, 100]
+        #test_iters = [100]
         before = now()
         for αₗ in test_αₗ
             for αₐ in test_αₐ
@@ -181,15 +224,15 @@ function main_test()
                     if sol !== nothing
                         bestWeight = sol.Weight
 
-                        diff_grasp = abs(bestWeight - best_sols_gurobi_1250[number]) / abs(bestWeight)
-                        gap_grasp = abs(bestWeight - best_bounds_gurobi_1250[number]) / abs(bestWeight)
-                        time_exac = time_gurobi_1250[number]
+                        diff_grasp = abs(bestWeight - weight_exac) / abs(bestWeight)
+                        gap_grasp = abs(bestWeight - bound) / abs(bestWeight)
+                        #time_exac = time_gurobi_1250[number]
                         beat_gurobi = false
-                        if bestWeight < best_sols_gurobi_1250[number]
+                        if bestWeight < weight_exac
                             beat_gurobi = true
                         end
 
-                        str_path = "out\\solutions\\1250_155_62\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * "$αₗ" * "_" * "$αₐ" * "_" * "$iters" * "_grasp_final2"
+                        str_path = "out\\solutions\\1250_155_62\\heurs\\sol" * "_" * string(id) * "_" * "$B" * "_" * "$S" * "_" * "$P" * "_" * "$αₗ" * "_" * "$αₐ" * "_" * "$iters" * "_grasp_tuning"
                         plot_str_path = str_path * ".png"
                         solution_str_path = str_path * ".jld2"
                         #Types.plot_solution(sol, plot_str_path)
@@ -197,12 +240,12 @@ function main_test()
                         
                         # gap_repaired = (1 - (weight_exac / bestWeight)) * 100
                         row_grasp = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P" => P, "Loc" => "pdisp", "Alloc" => "queue", "TotalTimeGRASP" => time_grasp, "TimeOptim" => time_exac,
-                        "ValueOptim" => weight_exac, "BestBound" => best_bounds_gurobi_1250[number], "ValueGRASP" => bestWeight, "Gap%"=> gap_grasp, "Diff%"=> diff_grasp, "alpha_l"=>αₗ, "alpha_a"=>αₐ,
+                        "ValueOptim" => weight_exac, "BestBound" => bound, "ValueGRASP" => bestWeight, "Gap%"=> gap_grasp, "Diff%"=> diff_grasp, "alpha_l"=>αₗ, "alpha_a"=>αₐ,
                         "BeatGurobi"=>beat_gurobi, "iters"=>iters)
                         push!(arr_grasp, row_grasp)
                     else
                         row_grasp = Dict("ID" => parse(Int, id), "B" => B, "S" => S, "P" => P, "Loc" => "pdisp", "Alloc" => "queue", "TotalTimeGRASP" => 0, "TimeOptim" => time_exac,
-                        "ValueOptim" => weight_exac, "BestBound"=> best_bounds_gurobi_1250[number], "ValueGRASP" => 0, "Gap%"=> 100, "Diff%"=>100, "alpha_l"=>αₗ, "alpha_a"=>αₐ, "iters"=>iters, "BeatGurobi"=>false)
+                        "ValueOptim" => weight_exac, "BestBound"=> bound, "ValueGRASP" => 0, "Gap%"=> 100, "Diff%"=>100, "alpha_l"=>αₗ, "alpha_a"=>αₐ, "iters"=>iters, "BeatGurobi"=>false)
                         push!(arr_grasp, row_grasp)
                     end
                     
@@ -211,7 +254,7 @@ function main_test()
         end
         df1 = vcat(DataFrame.(arr_grasp)...)
         df1 = df1[:, sortperm(names(df1))]
-        CSV.write("df_grasp_1250_155_62_300iters_2.csv", df1)
+        CSV.write("df_grasp_1250_allcombinations_final.csv", df1)
     end
 end
 

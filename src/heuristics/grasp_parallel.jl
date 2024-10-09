@@ -16,6 +16,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
     P = instancia.P
     D = instancia.D
     targets_lower, targets_upper = calculate_targets(instance)
+    targets_lower_op, targets_upper_op = calculate_targets_optimized(instance)
     count_repair_1 = 0
     count_repair_2 = 0
     lockVar = ReentrantLock()
@@ -32,7 +33,6 @@ function grasp(αₗ, αₐ, max_iters, instance)
         for indice in indices
             Weight += D[indice]
         end
-        #@show Weight
         oldSol = Types.Solution(instance, X, Y, Weight, time_loc + time_alloc)
         repair_delta = 0
         factible_after_repair = false
@@ -57,109 +57,78 @@ function grasp(αₗ, αₐ, max_iters, instance)
             if factible_after_repair
                 original_weight = repaired.Weight
                 weight_before = repaired.Weight
-                #println("Reparada")
             end
+        else
+            repaired = oldSol
+            factible_after_repair = true
         end
-        #println(original_weight)
-        #println(iter, " ", factible_after_repair)
         if factible_after_repair
             oldSol = repaired
-            #println(isFactible(oldSol, true))
         end
         improvement = true
+        last_weights = Dict(:simple_bu => Inf, :interchange_bu => Inf, :deactivate_center => Inf)
+
         while improvement && factible_after_repair
-            improvement = false  # Reset the flag at the start of each loop iteration
+            improvement = false
             prev_weight = oldSol.Weight
-
-            # Array to keep track of individual improvements
-            improvements = Bool[]
-
-            # First improvement function
-            sol_moved_bu = simple_bu_improve(oldSol, targets_lower, targets_upper, :ff)
-            new_weight_moved = sol_moved_bu.Weight
-            push!(improvements, new_weight_moved < prev_weight)
-            if improvements[end]
-                prev_weight = new_weight_moved
-                #println("En el loop $loop el movimiento simple mejora con un $new_weight_moved")
-                oldSol = sol_moved_bu  # Update oldSol if there was an improvement
-            end
-            #println(isFactible(sol_moved_bu, true))
-            # Second improvement function
-            sol_interchanged_bu = interchange_bu_improve(oldSol, targets_lower, targets_upper, :ff)
-            new_weight_moved = sol_interchanged_bu.Weight
-            push!(improvements, new_weight_moved < prev_weight)
-            if improvements[end]
-                prev_weight = new_weight_moved
-                #println("En el loop loop el movimiento intercambio mejora con un new_weight_moved")
-                oldSol = sol_interchanged_bu  # Update oldSol if there was an improvement
-            end
-            #println(isFactible(sol_interchanged_bu, true))
-            # Third improvement function
             
-            sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
-            new_weight_moved = sol_deactivated_center.Weight
-            push!(improvements, new_weight_moved < prev_weight)
-            if improvements[end]
-                prev_weight = new_weight_moved
-                #println("En el loop loop el movimiento desactivar mejora con un new_weight_moved")
-                oldSol = sol_deactivated_center  # Update oldSol if there was an improvement
+            # Simple BU move
+            if oldSol.Weight != last_weights[:simple_bu]
+                sol_moved_bu = simple_bu_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :ff)
+                if sol_moved_bu.Weight < prev_weight
+                    oldSol = sol_moved_bu
+                    prev_weight = sol_moved_bu.Weight
+                    improvement = true
+                end
+                last_weights[:simple_bu] = oldSol.Weight
             end
             
-            #println(isFactible(sol_deactivated_center, true))
-            # Check for any improvements
-
-            improvement = any(improvements)
-            #println(isFactible(oldSol, true))
+            # Interchange BU move
+            if oldSol.Weight != last_weights[:interchange_bu]
+                sol_interchanged_bu = interchange_bu_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :ff)
+                if sol_interchanged_bu.Weight < prev_weight
+                    oldSol = sol_interchanged_bu
+                    prev_weight = sol_interchanged_bu.Weight
+                    improvement = true
+                end
+                last_weights[:interchange_bu] = oldSol.Weight
+            end
+            
+            # Deactivate center move
+            if oldSol.Weight != last_weights[:deactivate_center]
+                sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
+                if sol_deactivated_center.Weight < prev_weight
+                    oldSol = sol_deactivated_center
+                    prev_weight = sol_deactivated_center.Weight
+                    improvement = true
+                end
+                last_weights[:deactivate_center] = oldSol.Weight
+            end
         end
+
         end_iter = now()
-        #@show end_iter
         delta_total = end_iter - start
         delta_total_millis = round(delta_total, Millisecond)
         if delta_total_millis.value >= 1800000 # 30 minutos en milisegundos
             break
         end
-        #delta_iter = end_iter - start_iter
-        #delta_iter_millis = round(delta_iter, Millisecond)
-        #delta_iter_value = delta_iter_millis.value
-        #println("desde $(threadid()) en iter $iter la mejor solucion es $(oldSol.Weight)")
         lock(lockVar)
         try
-            current_timestamp = Dates.datetime2unix(now(Dates.UTC))
             if oldSol !== nothing
-                #=
-                if !factible_after_repair
-                    results[iter] = (iter=iter, weight=0, time=delta_iter_value, factible=false, improving=false, curr_epoch=current_timestamp)
-                else
-                    =#
                     improving = false
                     if oldSol.Weight < bestWeight
                         bestSol = oldSol
                         bestWeight = oldSol.Weight
                         improving = true
                     end
-                    #results[iter] = (iter=iter, weight=oldSol.Weight, time=delta_iter_value, factible=true, improving=improving, curr_epoch=current_timestamp)
-                #end
-            #else
-                #if !factible_after_repair
-                    #results[iter] = (iter=iter, weight=0, time=delta_iter_value, factible=false, improving=false, curr_epoch=current_timestamp)
-                #end
             end
         finally
             unlock(lockVar)
         end
-        #@show oldSol.Weight
-
-        #gap_repaired = (1 - (weight_exac / weight_before)) * 100
-        #gap_improved = (1 - (weight_exac / weight_after)) * 100
-        #abs_improved = weight_before - weight_after
-        #rel_improved = ((abs_improved) / weight_after) * 100
     end
     finish = now()
-    # @show count_repair_1
-    #@show count_repair_2
     delta = finish - start
     delta_millis = round(delta, Millisecond)
-    # println(delta_millis.value)
     return bestSol, delta_millis.value # , results
 end
 
@@ -259,13 +228,6 @@ function compute_assignments_and_opportunity_costs(D::Matrix{Int64}, Y::Vector{I
     return best_assignments, pq
 end
 
-function pick_center_from_rcl(rcl, full_centers)
-    feasible_rcl = setdiff(rcl, full_centers)
-    if isempty(feasible_rcl)
-        return nothing  # Or some sentinel value indicating no feasible center found
-    end
-    return rand(feasible_rcl)
-end
 
 function oppCostQueueGRASPnew(Y, instance::Types.Instance, α)
     before_alloc = Dates.now()
@@ -354,79 +316,6 @@ function oppCostQueueGRASPnew(Y, instance::Types.Instance, α)
     return X, delta_alloc_milli.value
 end
 
-function oppCostQueueGRASP(Y, instance::Types.Instance, α)
-    before_alloc = Dates.now()
-    D = copy(instance.D)
-    X = zeros(Int, size(D))
-    targets = calculate_targets_lower(instance)
-    β = instance.β[1]
-    S = instance.S
-    B = instance.B
-    M = instance.M
-    V = instance.V
-    P = instance.P
-    R = instance.R
-    values_matrix, risk_vec = start_constraints(S, B, M, V, R, X, zeros(S, M), zeros(S))
-    
-    N = instance.P # podemos hacerlo en proporcion a P, no necesariamente tiene que ser P
-    best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
-    full_centers = Set()
-    assigned_bus = Set()
-    unassigned_bus = Set(collect(1:B))
-    #println(unassigned_bus)
-    while !isempty(pq) && length(assigned_bus) < B
-        bu = dequeue!(pq)
-        #println(bu)
-        if bu ∉ assigned_bus
-            best_value = first(best_assignments[bu])[1]
-            threshold = best_value * (1 + α)
-            RCL = [facility for facility in best_assignments[bu] if facility[1] <= threshold]
-            #println(RCL)
-            center = pick_center_from_rcl(RCL, full_centers)
-            if center !== nothing
-                full = false
-                fulls_m = zeros(Int, M)
-                if center ∉ full_centers
-                   # println("centroo $center")
-                    for m in 1:M
-                        values_matrix[center, m] += V[m][bu]
-                        if values_matrix[center, m] > targets[m]
-                            fulls_m[m] = 1
-                        end
-                    end
-                    if all(x -> x == 1, fulls_m)
-                        #println("lleno $center")
-                        push!(full_centers, center)
-                    end
-                    risk_vec[center] += R[bu]
-                    if risk_vec[center] > β
-                        push!(full_centers, center)
-                    end
-                    push!(assigned_bus, bu)
-                    pop!(unassigned_bus, bu)
-                    #println(unassigned_bus)
-                    #println("asignando")
-                    X[center, bu] = 1
-                end
-            end
-        end
-    end
-    
-    todos = true
-    count = 0
-    for col in eachcol(X)
-        if all(x -> x == 0, col)
-            count += 1
-            todos = false
-        end
-    end
-    #@show values_matrix
-    X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
-    after_alloc = Dates.now()
-    delta_alloc = after_alloc - before_alloc
-    delta_alloc_milli = round(delta_alloc, Millisecond)
-    return X, delta_alloc_milli.value
-end
 
 function handle_unassigned_clients2(X, instance, best_assignments, unassigned_clients, values_matrix, risk_vec)
     targets_upper = calculate_targets_upper(instance)
@@ -833,20 +722,20 @@ end
 function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
     #file_name = "instances\\625_78_32\\inst_1_625_78_32.jld2"
     instance = read_instance(path)
+    pattern = Regex("[t][_]\\d{1,3}")
+    index = findfirst(pattern, path)
+    almost_number = path[index]
+    _, number = split(almost_number, "_")
     αₗ = 0.1
     αₐ = 0.1    
     iters = parse(Int, ARGS[2])
     bestSolution, totalTime = grasp(αₗ, αₐ, iters, instance)
     println(totalTime)
     println(bestSolution.Weight)
-    println(isFactible(bestSolution))
-    #=
-    sorted_results_desc = sort(results, by=p -> p.curr_epoch) # al ordenar por epoch podeoms comparar contra el inmediato anterior?
-    for var in sorted_results_desc
-        println(var)
-    end
-    =#
-    write_solution(bestSolution, "solucion_grasp_1_2500_changes9.jld2")
+    #println(isFactible(bestSolution))
+    name = "solucion_grasp_$number" * "_$αₗ" * "_$αₐ" *"_$iters" * "_$(nthreads())" * ".jld2"
+    full_out_path = "out\\solutions\\1250_155_62\\grasp\\" * name
+    write_solution(bestSolution, full_out_path)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
