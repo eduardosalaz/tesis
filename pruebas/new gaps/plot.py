@@ -10,7 +10,7 @@ plt.rcParams['text.usetex'] = True
 plt.rcParams['text.latex.preamble'] = r'\usepackage{amsmath}'
 
 # Read the CSV file
-df = pd.read_csv('output_grasp_625_threads.csv')
+df = pd.read_csv('output_grasp_1250_threads.csv')
 
 # Create the figure and axis objects
 fig, ax = plt.subplots(figsize=(12, 8))
@@ -19,7 +19,7 @@ fig, ax = plt.subplots(figsize=(12, 8))
 plt.style.use('seaborn-v0_8-whitegrid')
 
 # Create the boxplot
-boxplot = ax.boxplot([df[df['threads'] == i]['milliseconds'] for i in range(1, 9)],
+boxplot = ax.boxplot([df[df['threads'] == i]['milliseconds'] for i in range(1, 17)],
                      patch_artist=True,
                      boxprops=dict(facecolor='#50C878', color='black'),
                      medianprops=dict(color='black'),
@@ -28,13 +28,13 @@ boxplot = ax.boxplot([df[df['threads'] == i]['milliseconds'] for i in range(1, 9
                      flierprops=dict(color='black', markeredgecolor='black'))
 
 # Customize the plot
-ax.set_title(r'\textbf{Runtimes of the GRASP Metaheuristic with threads for Size 1 instances}', fontsize=16, pad=20)
+ax.set_title(r'\textbf{Runtimes of the GRASP Metaheuristic with threads for Size 2 instances}', fontsize=16, pad=20)
 ax.set_xlabel(r'\textbf{Number of threads}', fontsize=14)
 ax.set_ylabel(r'\textbf{Runtime (milliseconds)}', fontsize=14)
 
 # Increase font size for x-axis tick labels
-ax.set_xticks(range(1, 9))
-ax.set_xticklabels(range(1, 9), fontsize=12)
+ax.set_xticks(range(1, 17))
+ax.set_xticklabels(range(1, 17), fontsize=12)
 
 # Increase font size for y-axis tick labels
 ax.tick_params(axis='y', labelsize=12)
@@ -53,8 +53,8 @@ plt.tight_layout()
 
 # Save the plot in different formats with higher DPI
 #plt.savefig('runtime_vs_threads_boxplot_larger_ticks_size2.svg', format='svg', dpi=500, bbox_inches='tight')
-#plt.savefig('runtime_vs_threads_boxplot_larger_ticks_size2.pdf', format='pdf', dpi=500, bbox_inches='tight')
-plt.savefig('runtime_vs_threads_boxplot_625.eps', format='eps', dpi=500, bbox_inches='tight')
+plt.savefig('runtime_vs_threads_boxplot_larger_ticks_size2_16threads_!250.pdf', format='pdf', dpi=500, bbox_inches='tight')
+#plt.savefig('runtime_vs_threads_boxplot_625.eps', format='eps', dpi=500, bbox_inches='tight')
 
 # Display the plot (optional, comment out if not needed)
-plt.show()
+#plt.show()
