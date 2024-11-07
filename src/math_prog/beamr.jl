@@ -139,6 +139,7 @@ function process_b_optimized(distances::Matrix{Float64}, p::Int,
     assignments = Vector{Int}(undef, n)
     beyond_h = BitVector(undef, n)
     needs_increase = BitVector(undef, n)
+    #print(h_values)
 
     while true
         println("\nProcess B iteration with h_i values range: ", extrema(h_values))
@@ -229,7 +230,7 @@ function process_b_optimized(distances::Matrix{Float64}, p::Int,
     end
 
     # Final increase before Process A as documented in paper
-    h_values .= min.(h_values .+ delta, n - 1)
+    h_values .= min.(h_values .+ 5, n - 1)
 
     return h_values
 end
@@ -351,7 +352,7 @@ Main BEAMR solver implementing both Process A and B
 """
 function solve_pmedian_beamr(distances::Matrix{Float64}, p::Int,
     demands::Vector{Float64}=ones(size(distances, 1));
-    initial_h::Int=5, delta::Int=5, max_gap::Float64=0.001)
+    initial_h::Int=20, delta::Int=20, max_gap::Float64=0.001)
     n = size(distances, 1)
     gap_tolerance = 1e-3
     println("\nStarting BEAMR algorithm for $n nodes, p=$p")
@@ -490,7 +491,7 @@ Compare classic p-median formulation with BEAMR
 """
 function compare_pmedian_formulations(distances::Matrix{Float64}, p::Int,
     demands::Vector{Float64}=ones(size(distances, 1));
-    initial_h::Int=5, delta::Int=5)
+    initial_h::Int=20, delta::Int=20)
     n = size(distances, 1)
     println("\nComparing p-median formulations for $n nodes, p=$p")
 
