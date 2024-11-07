@@ -49,7 +49,7 @@ Dictionary containing:
 function solve_beamr_model(distances::Matrix{Float64}, p::Int,
     h_values::Vector{Int}, demands::Vector{Float64};
     time_limit::Float64=Inf,
-    gap_tolerance::Float64=1e-3)
+    gap_tolerance::Float64=1e-5)
     n = size(distances, 1)
 
     # Get h_i+1 closest facility distances
@@ -108,8 +108,8 @@ function solve_beamr_model(distances::Matrix{Float64}, p::Int,
 
     # Get solution status
     status = termination_status(model)
-    println(status)
-    println(JuMP.has_values(model))
+    #println(status)
+    #println(JuMP.has_values(model))
     final = JuMP.has_values(model) && (status == OPTIMAL || status == TIME_LIMIT || status == SOLUTION_LIMIT)
 
 
@@ -142,10 +142,10 @@ function process_b_optimized(distances::Matrix{Float64}, p::Int,
     #print(h_values)
 
     while true
-        println("\nProcess B iteration with h_i values range: ", extrema(h_values))
+        #println("\nProcess B iteration with h_i values range: ", extrema(h_values))
         # Add check to prevent h_values from exceeding n-1
         if any(h_values .>= n - 1)
-            println("Warning: h_values reaching maximum allowed value (n-1)")
+            #println("Warning: h_values reaching maximum allowed value (n-1)")
             h_values = min.(h_values, n - 1)
             break
         end
@@ -218,7 +218,7 @@ function process_b_optimized(distances::Matrix{Float64}, p::Int,
         end
 
         if !any(needs_increase)
-            println("Process B converged!")
+            #println("Process B converged!")
             break
         end
 
@@ -230,7 +230,7 @@ function process_b_optimized(distances::Matrix{Float64}, p::Int,
     end
 
     # Final increase before Process A as documented in paper
-    h_values .= min.(h_values .+ 5, n - 1)
+    h_values .= min.(h_values .+ 40, n - 1)
 
     return h_values
 end
@@ -239,8 +239,8 @@ function process_a(distances::Matrix{Float64}, p::Int, h_values::Vector{Int},
     demands::Vector{Float64}, delta;
     time_limit_per_model::Float64=180.0,
     total_time_limit::Float64=3600.0,
-    max_gap::Float64=1e-3,
-    gap_tolerance::Float64=1e-3)
+    max_gap::Float64=1e-5,
+    gap_tolerance::Float64=1e-5)
 
     n = size(distances, 1)
     iteration = 1
@@ -250,11 +250,11 @@ function process_a(distances::Matrix{Float64}, p::Int, h_values::Vector{Int},
 
     while true
         if time() - start_time >= total_time_limit
-            println("Reached total time limit!")
+            #println("Reached total time limit!")
             break
         end
-        println("\nProcess A iteration $iteration")
-        println("Current h_i range: ", extrema(h_values))
+        #println("\nProcess A iteration $iteration")
+        #println("Current h_i range: ", extrema(h_values))
 
         remaining_time = min(time_limit_per_model,
             total_time_limit - (time() - start_time))
@@ -292,20 +292,21 @@ function process_a(distances::Matrix{Float64}, p::Int, h_values::Vector{Int},
                 "iterations" => iteration
             )
         end
-
+        #=
         println("Current solution:")
         println("- Lower bound from BEAMR: ", round(result["objective"], digits=4))
         println("- Actual weighted distance: ", round(actual_wd, digits=4))
         println("- Gap: ", round(gap * 100, digits=4), "%")
         println("- Nodes with f_i > 0: ", sum(result["f_values"]))
+        =#
 
         if !any(result["f_values"])
-            println("Found exact solution - all f_i = 0!")
+            #println("Found exact solution - all f_i = 0!")
             return best_solution
         end
 
         if gap <= max_gap
-            println("Reached acceptable gap!")
+            #println("Reached acceptable gap!")
             return best_solution
         end
 
@@ -316,7 +317,7 @@ function process_a(distances::Matrix{Float64}, p::Int, h_values::Vector{Int},
                 num_increased += 1
             end
         end
-        println("Increased h_i for $num_increased nodes")
+        #println("Increased h_i for $num_increased nodes")
 
         iteration += 1
     end
@@ -352,9 +353,9 @@ Main BEAMR solver implementing both Process A and B
 """
 function solve_pmedian_beamr(distances::Matrix{Float64}, p::Int,
     demands::Vector{Float64}=ones(size(distances, 1));
-    initial_h::Int=20, delta::Int=20, max_gap::Float64=0.001)
+    initial_h::Int=15, delta::Int=15, max_gap::Float64=0.00001)
     n = size(distances, 1)
-    gap_tolerance = 1e-3
+    gap_tolerance = 1e-5
     println("\nStarting BEAMR algorithm for $n nodes, p=$p")
 
     # Process B: Get initial h_i values
@@ -478,10 +479,9 @@ function process_pmedian_example(filename::String)
     println("Problem parameters:")
     println("Number of vertices: $n")
     println("Number of facilities to locate: $p")
-    println("\nFinal distance matrix (first 5x5 corner shown):")
 
     # Display a small portion of the result
-    display(cost_matrix[1:min(5, n), 1:min(5, n)])
+    #display(cost_matrix[1:min(5, n), 1:min(5, n)])
 
     return n, p, cost_matrix
 end
@@ -491,7 +491,7 @@ Compare classic p-median formulation with BEAMR
 """
 function compare_pmedian_formulations(distances::Matrix{Float64}, p::Int,
     demands::Vector{Float64}=ones(size(distances, 1));
-    initial_h::Int=20, delta::Int=20)
+    initial_h::Int=15, delta::Int=15)
     n = size(distances, 1)
     println("\nComparing p-median formulations for $n nodes, p=$p")
 
@@ -553,9 +553,9 @@ end
 function test_beamr()
     # Read pmed file
     n, p, distances = read_pmedian_file(ARGS[1])
-    println("Matrix dimensions: ", size(distances))  # Will print (100, 100)
-    println("First 5x5 submatrix:")
-    println(distances[1:5, 1:5])
+    #println("Matrix dimensions: ", size(distances))  # Will print (100, 100)
+    #println("First 5x5 submatrix:")
+    #println(distances[1:5, 1:5])
     #println(distances)
     #writedlm("distanciaaaas.txt", [distances])
     demands = ones(n)
