@@ -1,5 +1,6 @@
 using JuMP, Gurobi
 using LinearAlgebra, Random
+using DelimitedFiles
 
 function get_closest_sites(distances::Matrix{Float64}, h_values::Vector{Int})
     n = size(distances, 1)
@@ -39,14 +40,18 @@ Dictionary containing:
 function solve_beamr_model(distances::Matrix{Float64}, p::Int,
     h_values::Vector{Int}, demands::Vector{Float64};
     time_limit::Float64=Inf,
-    gap_tolerance::Float64=1e-4)
+    gap_tolerance::Float64=1e-3)
     n = size(distances, 1)
 
+    # Get h_i+1 closest facility distances
+    # Ensure h_values don't exceed n-1
+    h_values_capped = min.(h_values, n-1)
+    
     # Get h_i+1 closest facility distances
     h_plus_one_dists = zeros(n)
     for i in 1:n
         sorted_dists = sort(distances[i, :])
-        h_plus_one_dists[i] = sorted_dists[h_values[i]+1]
+        h_plus_one_dists[i] = sorted_dists[h_values_capped[i]+1]
     end
 
     # Get H_i sets
@@ -137,6 +142,13 @@ function process_b_optimized(distances::Matrix{Float64}, p::Int, demands::Vector
     while true
         println("\nProcess B iteration with h_i values range: ", extrema(h_values))
 
+         # Add check to prevent h_values from exceeding n-1
+         if any(h_values .>= n-1)
+            println("Warning: h_values reaching maximum allowed value (n-1)")
+            h_values = min.(h_values, n-1)
+            break
+        end
+
         H = get_closest_sites_optimized(distances, h_values)
         facilities = randperm(n)[1:p]
         improved = true
@@ -213,12 +225,12 @@ function process_b_optimized(distances::Matrix{Float64}, p::Int, demands::Vector
 
         @inbounds for i in 1:n
             if needs_increase[i]
-                h_values[i] += delta
+                h_values[i] = min(h_values[i] + delta, n-1)  # Cap the increase
             end
         end
     end
 
-    h_values .+= delta
+    h_values .= min.(h_values .+ delta, n-1)  # Cap the final increase
     return h_values
 end
 
@@ -227,8 +239,8 @@ function process_a(distances::Matrix{Float64}, p::Int, h_values::Vector{Int},
     delta;
     time_limit_per_model::Float64=30.0,
     total_time_limit::Float64=3600.0,
-    max_gap::Float64=0.0,
-    gap_tolerance::Float64=1e-2)
+    max_gap::Float64=1e-3,
+    gap_tolerance::Float64=1e-3)
     n = size(distances, 1)
     iteration = 1
     start_time = time()
@@ -270,7 +282,7 @@ function process_a(distances::Matrix{Float64}, p::Int, h_values::Vector{Int},
         # Second check: For nodes with f_i > 0, check if h_i + 1 closest facility is selected
         is_exact = true
         for i in 1:n
-            if f_values[i]
+            if f_values[i]                
                 # Get h_i + 1 closest facility for node i
                 sorted_dists_idx = sortperm(distances[i, :])
                 h_plus_one_site = sorted_dists_idx[h_values[i] + 1]
@@ -369,7 +381,7 @@ Main BEAMR solver implementing both Process A and B
 """
 function solve_pmedian_beamr(distances::Matrix{Float64}, p::Int,
     demands::Vector{Float64}=ones(size(distances, 1));
-    initial_h::Int=5, delta::Int=5, max_gap::Float64=0.0)
+    initial_h::Int=5, delta::Int=5, max_gap::Float64=0.01)
     n = size(distances, 1)
     gap_tolerance = 1e-3
     println("\nStarting BEAMR algorithm for $n nodes, p=$p")
@@ -380,7 +392,7 @@ function solve_pmedian_beamr(distances::Matrix{Float64}, p::Int,
     # Process A: Iteratively refine solution
     # Process A with time limits
     solution = process_a(distances, p, h_values, demands, delta,
-        time_limit_per_model=180.0,
+        time_limit_per_model=30.0,
         total_time_limit=3600.0,
         max_gap=max_gap,
         gap_tolerance=gap_tolerance)
@@ -440,6 +452,69 @@ function solve_pmedian_classic(distances::Matrix{Float64}, p::Int,
     )
 end
 
+function read_pmedian_file(filename::String)
+    # Read all lines from the file
+    lines = readlines(filename)
+    
+    # Parse first line for problem parameters
+    n, m, p = parse.(Int, split(lines[1]))
+    
+    # Initialize cost matrix with Inf
+    c = fill(Inf, n, n)
+    
+    # Set diagonal elements to 0
+    for i in 1:n
+        c[i,i] = 0
+    end
+    
+    # Process edge data
+    for line in lines[2:end]
+        # Parse each edge line
+        i, j, cost = parse.(Int, split(line))
+        # Set costs both ways (symmetric)
+        c[i,j] = cost
+        c[j,i] = cost
+    end
+    
+    # Apply Floyd's algorithm
+    floyd_warshall!(c)
+    
+    return n, p, c
+end
+
+function floyd_warshall!(dist::Matrix{Float64})
+    n = size(dist, 1)
+    
+    for k in 1:n
+        for i in 1:n
+            for j in 1:n
+                if dist[i,k] != Inf && dist[k,j] != Inf
+                    new_dist = dist[i,k] + dist[k,j]
+                    if new_dist < dist[i,j]
+                        dist[i,j] = new_dist
+                    end
+                end
+            end
+        end
+    end
+end
+
+# Example usage
+function process_pmedian_example(filename::String)
+    # Read and process the file
+    n, p, cost_matrix = read_pmedian_file(filename)
+    
+    println("Problem parameters:")
+    println("Number of vertices: $n")
+    println("Number of facilities to locate: $p")
+    println("\nFinal distance matrix (first 5x5 corner shown):")
+    
+    # Display a small portion of the result
+    display(cost_matrix[1:min(5,n), 1:min(5,n)])
+    
+    return n, p, cost_matrix
+end
+
 """
 Compare classic p-median formulation with BEAMR
 """
@@ -459,7 +534,7 @@ function compare_pmedian_formulations(distances::Matrix{Float64}, p::Int,
     println("\nSolving BEAMR formulation...")
     t2 = time()
     beamr_sol = solve_pmedian_beamr(distances, p, demands,
-        initial_h=initial_h, delta=delta, max_gap=0.01)
+        initial_h=initial_h, delta=delta, max_gap=0.001)
     beamr_time = time() - t2
 
     # Calculate model size reduction
@@ -506,6 +581,7 @@ end
 # Example usage
 function test_beamr()
     # Create test problem
+    #=
     n = 200
     println("Generating random test problem with $n nodes...")
     distances = rand(n, n)
@@ -517,6 +593,14 @@ function test_beamr()
     end
 
     p = 20
+    =#
+    # Read pmed file
+    n, p, distances = read_pmedian_file(ARGS[1])
+    println("Matrix dimensions: ", size(distances))  # Will print (100, 100)
+    println("First 5x5 submatrix:")
+    println(distances[1:5, 1:5]) 
+    #println(distances)
+    #writedlm("distanciaaaas.txt", [distances])
     demands = ones(n)
 
     # Solve with BEAMR
