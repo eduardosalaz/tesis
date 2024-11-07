@@ -2,6 +2,15 @@ using JuMP, Gurobi
 using LinearAlgebra, Random
 using DelimitedFiles
 
+
+# Helper functions for solution validation and gap calculation
+function calculate_gap(obj_lb::Float64, actual_wd::Float64)
+    if abs(obj_lb) < 1e-10
+        return Inf
+    end
+    return (actual_wd - obj_lb) / abs(obj_lb)
+end
+
 function get_closest_sites(distances::Matrix{Float64}, h_values::Vector{Int})
     n = size(distances, 1)
     H = Vector{Vector{Int}}(undef, n)
@@ -45,8 +54,8 @@ function solve_beamr_model(distances::Matrix{Float64}, p::Int,
 
     # Get h_i+1 closest facility distances
     # Ensure h_values don't exceed n-1
-    h_values_capped = min.(h_values, n-1)
-    
+    h_values_capped = min.(h_values, n - 1)
+
     # Get h_i+1 closest facility distances
     h_plus_one_dists = zeros(n)
     for i in 1:n
@@ -100,15 +109,6 @@ function solve_beamr_model(distances::Matrix{Float64}, p::Int,
     # Get solution status
     status = termination_status(model)
     println(status)
-    #=
-    has_values = false
-    try
-        has_values = has_values(model)
-    catch
-        has_values = false
-    end
-    =#
-    #has_values = false
     println(JuMP.has_values(model))
     final = JuMP.has_values(model) && (status == OPTIMAL || status == TIME_LIMIT || status == SOLUTION_LIMIT)
 
@@ -129,7 +129,8 @@ end
 """
 Process B: Use Teitz-Bart heuristic to find initial h_i values
 """
-function process_b_optimized(distances::Matrix{Float64}, p::Int, demands::Vector{Float64}, initial_h::Int, delta::Int)
+function process_b_optimized(distances::Matrix{Float64}, p::Int,
+    demands::Vector{Float64}, initial_h::Int, delta::Int)
     n = size(distances, 1)
     h_values = fill(initial_h, n)
 
@@ -141,11 +142,10 @@ function process_b_optimized(distances::Matrix{Float64}, p::Int, demands::Vector
 
     while true
         println("\nProcess B iteration with h_i values range: ", extrema(h_values))
-
-         # Add check to prevent h_values from exceeding n-1
-         if any(h_values .>= n-1)
+        # Add check to prevent h_values from exceeding n-1
+        if any(h_values .>= n - 1)
             println("Warning: h_values reaching maximum allowed value (n-1)")
-            h_values = min.(h_values, n-1)
+            h_values = min.(h_values, n - 1)
             break
         end
 
@@ -199,11 +199,9 @@ function process_b_optimized(distances::Matrix{Float64}, p::Int, demands::Vector
                     if new_beyond < current_beyond_count
                         copyto!(facilities, new_facilities)
                         improved = true
-                        @goto swap_found
                     end
                 end
             end
-            @label swap_found
         end
 
         fill!(needs_increase, false)
@@ -225,25 +223,29 @@ function process_b_optimized(distances::Matrix{Float64}, p::Int, demands::Vector
 
         @inbounds for i in 1:n
             if needs_increase[i]
-                h_values[i] = min(h_values[i] + delta, n-1)  # Cap the increase
+                h_values[i] = min(h_values[i] + delta, n - 1)
             end
         end
     end
 
-    h_values .= min.(h_values .+ delta, n-1)  # Cap the final increase
+    # Final increase before Process A as documented in paper
+    h_values .= min.(h_values .+ delta, n - 1)
+
     return h_values
 end
 
 function process_a(distances::Matrix{Float64}, p::Int, h_values::Vector{Int},
-    demands::Vector{Float64},
-    delta;
-    time_limit_per_model::Float64=30.0,
+    demands::Vector{Float64}, delta;
+    time_limit_per_model::Float64=180.0,
     total_time_limit::Float64=3600.0,
     max_gap::Float64=1e-3,
     gap_tolerance::Float64=1e-3)
+
     n = size(distances, 1)
     iteration = 1
     start_time = time()
+    best_solution = nothing
+    best_gap = Inf
 
     while true
         if time() - start_time >= total_time_limit
@@ -253,81 +255,63 @@ function process_a(distances::Matrix{Float64}, p::Int, h_values::Vector{Int},
         println("\nProcess A iteration $iteration")
         println("Current h_i range: ", extrema(h_values))
 
-        # Solve current BEAMR model
         remaining_time = min(time_limit_per_model,
             total_time_limit - (time() - start_time))
-        # Solve BEAMR model
+
         result = solve_beamr_model(distances, p, h_values, demands,
             time_limit=remaining_time,
             gap_tolerance=gap_tolerance)
 
-        # Get solution components
-        obj_lb = result["objective"]  # This is a valid lower bound
-        facilities = result["facilities"]
-        f_values = result["f_values"]
-
-        # If no f_i > 0, we have exact solution
-        if !any(f_values)
-            println("Found exact solution - all f_i = 0!")
-            return Dict(
-                "objective" => obj_lb,
-                "facilities" => facilities,
-                "h_values" => h_values,
-                "is_exact" => true,
-                "gap" => 0.0,
-                "iterations" => iteration
-            )
-        end
-        
-        # Second check: For nodes with f_i > 0, check if h_i + 1 closest facility is selected
-        is_exact = true
-        for i in 1:n
-            if f_values[i]                
-                # Get h_i + 1 closest facility for node i
-                sorted_dists_idx = sortperm(distances[i, :])
-                h_plus_one_site = sorted_dists_idx[h_values[i] + 1]
-                
-                # Check if this facility is in our solution
-                if !(h_plus_one_site in facilities)
-                    is_exact = false
-                    break
-                end
-            end
+        if !result["has_solution"]
+            println("No feasible solution found!")
+            break
         end
 
-        # Calculate actual weighted distance for current solution
+        # Calculate actual objective value
         actual_wd = 0.0
         for i in 1:n
-            min_dist = minimum(distances[i, j] for j in facilities)
+            min_dist = minimum(distances[i, j] for j in result["facilities"])
             actual_wd += demands[i] * min_dist
         end
 
-        # Calculate gap between actual weighted distance and lower bound
-        gap = (actual_wd - obj_lb) / obj_lb
-        println("Current solution:")
-        println("- Lower bound from BEAMR: ", round(obj_lb, digits=4))
-        println("- Actual weighted distance: ", round(actual_wd, digits=4))
-        println("- Gap: ", round(gap * 100, digits=4), "%")
-        println("- Nodes with f_i > 0: ", sum(f_values))
+        # Calculate gap using robust function
+        gap = calculate_gap(result["objective"], actual_wd)
 
-        # Check if gap is acceptable
-        if gap <= max_gap
-            println("Reached acceptable gap!")
-            return Dict(
+
+
+        # Track best solution
+        if gap < best_gap
+            best_gap = gap
+            best_solution = Dict(
                 "objective" => actual_wd,
-                "facilities" => facilities,
-                "h_values" => h_values,
-                "is_exact" => false,
+                "facilities" => result["facilities"],
+                "h_values" => copy(h_values),
+                "is_exact" => !any(result["f_values"]),
                 "gap" => gap,
                 "iterations" => iteration
             )
         end
 
-        # Increase h_i values for demands with f_i > 0
+        println("Current solution:")
+        println("- Lower bound from BEAMR: ", round(result["objective"], digits=4))
+        println("- Actual weighted distance: ", round(actual_wd, digits=4))
+        println("- Gap: ", round(gap * 100, digits=4), "%")
+        println("- Nodes with f_i > 0: ", sum(result["f_values"]))
+
+        if !any(result["f_values"])
+            println("Found exact solution - all f_i = 0!")
+            return best_solution
+        end
+
+        if gap <= max_gap
+            println("Reached acceptable gap!")
+            return best_solution
+        end
+
         num_increased = 0
         for i in 1:n
-            if f_values[i]
-                h_values[i] += delta
+            if result["f_values"][i]
+                h_values[i] = min(h_values[i] + delta, n - 1)
                 num_increased += 1
             end
         end
@@ -336,28 +320,9 @@ function process_a(distances::Matrix{Float64}, p::Int, h_values::Vector{Int},
         iteration += 1
     end
 
-    if is_exact
-        println("Found exact solution - all nodes with f_i > 0 have h_i + 1 closest facility selected!")
-        return Dict(
-            "objective" => actual_wd,  # Note: using actual_wd here since it's exact
-            "facilities" => facilities,
-            "h_values" => h_values,
-            "is_exact" => true,
-            "gap" => 0.0,
-            "iterations" => iteration
-        )
-    end
-    println("hit time limit")
-    # Return best solution found if we hit time limit
-    return Dict(
-        "objective" => actual_wd,
-        "facilities" => result["facilities"],
-        "h_values" => h_values,
-        "is_exact" => false,
-        "gap" => gap,
-        "iterations" => iteration,
-        "total_time" => time() - start_time,
-        "status" => "time_limit"
+    return best_solution !== nothing ? best_solution : Dict(
+        "status" => "no_solution_found",
+        "total_time" => time() - start_time
     )
 end
 
@@ -368,20 +333,25 @@ Returns a vector of vectors where H[i] contains indices of h_i closest sites to 
 """
 function get_closest_sites_optimized(distances::Matrix{Float64}, h_values::Vector{Int64})
     n = size(distances, 1)
-    H = BitMatrix(undef, n, n)
-    @inbounds for i in 1:n, j in 1:n
-        H[i, j] = distances[i, j] ≤ h_values[i]
+    H = BitMatrix(zeros(Bool, n, n))
+
+    @inbounds for i in 1:n
+        # Get indices sorted by distance
+        sorted_indices = sortperm(distances[i, :])
+        # Take h_i closest sites
+        for k in 1:h_values[i]
+            H[i, sorted_indices[k]] = true
+        end
     end
     return H
 end
-
 
 """
 Main BEAMR solver implementing both Process A and B
 """
 function solve_pmedian_beamr(distances::Matrix{Float64}, p::Int,
     demands::Vector{Float64}=ones(size(distances, 1));
-    initial_h::Int=5, delta::Int=5, max_gap::Float64=0.01)
+    initial_h::Int=5, delta::Int=5, max_gap::Float64=0.001)
     n = size(distances, 1)
     gap_tolerance = 1e-3
     println("\nStarting BEAMR algorithm for $n nodes, p=$p")
@@ -392,7 +362,7 @@ function solve_pmedian_beamr(distances::Matrix{Float64}, p::Int,
     # Process A: Iteratively refine solution
     # Process A with time limits
     solution = process_a(distances, p, h_values, demands, delta,
-        time_limit_per_model=30.0,
+        time_limit_per_model=180.0,
         total_time_limit=3600.0,
         max_gap=max_gap,
         gap_tolerance=gap_tolerance)
@@ -455,43 +425,43 @@ end
 function read_pmedian_file(filename::String)
     # Read all lines from the file
     lines = readlines(filename)
-    
+
     # Parse first line for problem parameters
     n, m, p = parse.(Int, split(lines[1]))
-    
+
     # Initialize cost matrix with Inf
     c = fill(Inf, n, n)
-    
+
     # Set diagonal elements to 0
     for i in 1:n
-        c[i,i] = 0
+        c[i, i] = 0
     end
-    
+
     # Process edge data
     for line in lines[2:end]
         # Parse each edge line
         i, j, cost = parse.(Int, split(line))
         # Set costs both ways (symmetric)
-        c[i,j] = cost
-        c[j,i] = cost
+        c[i, j] = cost
+        c[j, i] = cost
     end
-    
+
     # Apply Floyd's algorithm
     floyd_warshall!(c)
-    
+
     return n, p, c
 end
 
 function floyd_warshall!(dist::Matrix{Float64})
     n = size(dist, 1)
-    
+
     for k in 1:n
         for i in 1:n
             for j in 1:n
-                if dist[i,k] != Inf && dist[k,j] != Inf
-                    new_dist = dist[i,k] + dist[k,j]
-                    if new_dist < dist[i,j]
-                        dist[i,j] = new_dist
+                if dist[i, k] != Inf && dist[k, j] != Inf
+                    new_dist = dist[i, k] + dist[k, j]
+                    if new_dist < dist[i, j]
+                        dist[i, j] = new_dist
                     end
                 end
             end
@@ -503,15 +473,15 @@ end
 function process_pmedian_example(filename::String)
     # Read and process the file
     n, p, cost_matrix = read_pmedian_file(filename)
-    
+
     println("Problem parameters:")
     println("Number of vertices: $n")
     println("Number of facilities to locate: $p")
     println("\nFinal distance matrix (first 5x5 corner shown):")
-    
+
     # Display a small portion of the result
-    display(cost_matrix[1:min(5,n), 1:min(5,n)])
-    
+    display(cost_matrix[1:min(5, n), 1:min(5, n)])
+
     return n, p, cost_matrix
 end
 
@@ -580,25 +550,11 @@ end
 
 # Example usage
 function test_beamr()
-    # Create test problem
-    #=
-    n = 200
-    println("Generating random test problem with $n nodes...")
-    distances = rand(n, n)
-    for i in 1:n
-        distances[i, i] = 0
-        for j in (i+1):n
-            distances[j, i] = distances[i, j]
-        end
-    end
-
-    p = 20
-    =#
     # Read pmed file
     n, p, distances = read_pmedian_file(ARGS[1])
     println("Matrix dimensions: ", size(distances))  # Will print (100, 100)
     println("First 5x5 submatrix:")
-    println(distances[1:5, 1:5]) 
+    println(distances[1:5, 1:5])
     #println(distances)
     #writedlm("distanciaaaas.txt", [distances])
     demands = ones(n)
