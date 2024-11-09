@@ -82,7 +82,7 @@ function generate_k(B::Int64, S::Int64)
     end
     Sk = convert(Vector{Vector{Int64}}, Sk)
     counts_k = [length(s) for s in Sk]
-    Lk_flt = [k - 0.70k for k in counts_k]
+    Lk_flt = [k - 0.85k for k in counts_k]
     Uk_flt = [k - 0.05k for k in counts_k]
     Lk = trunc.(Int, Lk_flt)
     Uk = trunc.(Int, Uk_flt)
@@ -98,19 +98,21 @@ function generate_activities(B::Int64, S::Int64, P)
     μ = [zeros(Int64, S) for _ in 1:M]
     for i in eachindex(V)
         sum_vals = sum(V[i])
-        τ = 2.8
-        upper = trunc(Int, (trunc(Int, (sum_vals / S) * (1 + τ))))
+        τ = 0.6
+        upper = trunc(Int, (trunc(Int, (sum_vals / P)) * (1 + τ)))
+        println("upper $i $upper")
         μ[i] = fill(upper, S)
     end
-    T = fill(0.4, M)
+    T = fill(0.2, M)
     return V, μ, T
 end
 
 function generate_risk(B::Int64, S::Int64, P)
     R = rand(40:60, B)
     sum_R = sum(R)
-    τ = 3.8
-    upper = trunc(Int, trunc(Int, (sum_R / S) * (1 + τ)))
+    τ = 1.5
+    upper = trunc(Int, trunc(Int, (sum_R / P) * (1 + τ)))
+    println("beta: $upper")
     β = fill(upper, S)
     return R, β
 end
