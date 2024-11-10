@@ -478,6 +478,7 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
     end
     newSol3 = Solution(instance, X, Y, solution.Weight, solution.Time)
     cant_fix = false
+    
     for i in add
         if cant_fix
             break
@@ -529,6 +530,7 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
             if can_do_move
                 X[ĩ, j] = 0
                 X[i, j] = 1
+                #println("reasigne de $ĩ a $i")
             else
                 # si no puedo hacer el movimiento, restaura el valor de la ev parcial
                 for m in 1:M
@@ -540,7 +542,7 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
             end
         end
     end
-
+    
     Weight = 0
     indices = findall(x -> x == 1, X)
     for indice in indices
@@ -1272,7 +1274,7 @@ function mainLocal(; path="solucion_grasp_16_625_feas.jld2")
     newSolution = localSearch(solution)
     println(isFactible(newSolution))
     println(newSolution.Weight)
-    write_solution(newSolution, "sol_ls_1250_11.jld2")
+    write_solution(newSolution, "sol_ls_1250_new4.jld2")
     #plot_solution(newSolution, "plot_sol_2_1250_viejo_relax_ls.png")
     return newSolution
 end
@@ -1289,7 +1291,7 @@ function localSearch(solution)
     factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper)
     println("is factible4 oldsol ", isFactible4(oldSol, targets_lower, targets_upper))
     repaired = oldSol
-
+    before_time = Dates.now()
     original_weight = 10000000000000
     if factible
         println("Factible")
@@ -1372,7 +1374,7 @@ function localSearch(solution)
         # Third improvement function
 
         println("deactivate ")
-        println(@benchmark deactivate_center_improve($oldSol, $targets_lower, $targets_upper))
+        #println(@benchmark deactivate_center_improve($oldSol, $targets_lower, $targets_upper))
         sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
         new_weight_moved = sol_deactivated_center.Weight
         println(new_weight_moved)
@@ -1385,6 +1387,8 @@ function localSearch(solution)
         println("---------------------")
         improvement = any(improvements)
     end
+    after_time = Dates.now()
+    println(after_time - before_time)
     println(oldSol.Weight)
     return oldSol
 end

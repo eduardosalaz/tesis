@@ -11,6 +11,7 @@ using Dates
 using Random
 using DataStructures
 using LinearAlgebra
+using Statistics
 
 function remove!(V, item)
     deleteat!(V, findall(x -> x == item, V))
@@ -58,7 +59,7 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
         X = oppCostAssignment(Y_bool, instancia)
     elseif assign_method == "queue"
         println("QUEUE")
-        X = oppCostQueue(Y_bool, instancia)
+        X, count = oppCostQueue2(Y_bool, instancia)
     end
     after1 = Dates.now()
     delta_assign = after1 - after_init
@@ -98,6 +99,9 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
     elseif assign_method == "opp"
         println("OPP COST")
         X = oppCostAssignment(Y_bool, instancia)
+    elseif assign_method == "queue"
+        println("QUEUE")
+        X, count = oppCostQueue2(Y_bool, instancia)
     end
     after = Dates.now()
     delta_assign2 = after - after_init2
@@ -453,7 +457,7 @@ end
                         update_best_assignments_for_all_clients(facility, best_assignments)
                     BREAK out of loop, move to next client
 
-    1. Assignment Loop
+    Assignment Loop Pseudocode
     assigned_clients = Set() # An empty set to keep track of clients who have been assigned
     assignment_dict = Dict() # A dictionary to store which facility each client is assigned to
 
@@ -467,7 +471,7 @@ end
                     ADD client to assigned_clients
                     DECREASE capacity of facility
                     
-                    IF facility is full
+                    IF facility is full, full is defined as when a facility reaches the minimal values required in the constraints, so it promotes the use of other centers
                         update_best_assignments_for_all_clients(facility, best_assignments)
                     END IF
 
@@ -523,7 +527,7 @@ function oppCostQueue(Y, instance::Types.Instance)
                 if center ∉ full_centers
                     for m in 1:M
                         values_matrix[center, m] += V[m][bu]
-                        if values_matrix[center, m] > targets[m]
+                        if values_matrix[center, m] > (targets[m] * 1.2)
                             fulls_m[m] = 1
                         end
                     end
@@ -552,10 +556,115 @@ function oppCostQueue(Y, instance::Types.Instance)
         end
     end
     unassigned_count = length(unassigned_bus)
+    println(unassigned_count)
     X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
 
     return X, unassigned_count
 end
+
+# Version 1 - Using real values (probably better as you noted)
+function oppCostQueue2(Y, instance::Types.Instance)
+    D = copy(instance.D)
+    X = zeros(Int, size(D))
+    targets = calculate_targets_lower(instance)
+    targets_upper = calculate_targets_upper(instance)
+    β = instance.β[1]
+    S = instance.S
+    B = instance.B
+    M = instance.M
+    V = instance.V
+    P = instance.P
+    R = instance.R
+    
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+    
+    N = instance.P
+    best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
+    
+    # Track progress towards targets for each facility
+    target_progress = zeros(Float32, S, M)
+    for i in 1:S
+        for m in 1:M
+            target_progress[i,m] = values_matrix[i,m] / targets[m]
+        end
+    end
+    
+    full_centers = Set()
+    assigned_bus = Set()
+    unassigned_bus = Set(collect(1:B))
+    
+    while !isempty(pq) && length(assigned_bus) < B
+        bu = dequeue!(pq)
+        if bu ∉ assigned_bus
+            # Calculate which center needs this BU most
+            best_center = nothing
+            best_improvement = -Inf
+            
+            for center in best_assignments[bu]
+                if center ∉ full_centers
+                    # Calculate improvement in target progress
+                    current_min_progress = minimum(target_progress[center,:])
+                    
+                    # Simulate adding this BU
+                    temp_progress = copy(target_progress[center,:])
+                    for m in 1:M
+                        temp_progress[m] = (values_matrix[center,m] + V[m][bu]) / targets[m]
+                    end
+                    
+                    new_min_progress = minimum(temp_progress)
+                    improvement = new_min_progress - current_min_progress
+                    
+                    # Check if this assignment would exceed upper bounds
+                    exceeds_upper = false
+                    for m in 1:M
+                        if values_matrix[center,m] + V[m][bu] > targets_upper[m]
+                            exceeds_upper = true
+                            break
+                        end
+                    end
+                    
+                    # Check risk constraint
+                    if !exceeds_upper && risk_vec[center] + R[bu] <= β && improvement > best_improvement
+                        best_improvement = improvement
+                        best_center = center
+                    end
+                end
+            end
+            
+            if best_center !== nothing
+                # Make the assignment
+                center = best_center
+                for m in 1:M
+                    values_matrix[center,m] += V[m][bu]
+                    target_progress[center,m] = values_matrix[center,m] / targets[m]
+                end
+                risk_vec[center] += R[bu]
+                
+                # Check if center should be marked as full
+                min_progress = minimum(target_progress[center,:])
+                if min_progress >= 0.95  # Within 5% of targets
+                    push!(full_centers, center)
+                end
+                
+                push!(assigned_bus, bu)
+                X[center, bu] = 1
+                pop!(unassigned_bus, bu)
+            end
+        end
+    end
+    
+    unassigned_count = length(unassigned_bus)
+    println(unassigned_count)
+    if unassigned_count > 0
+        X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
+    end
+    
+    return X, unassigned_count
+end
+
+
 
 # Function to calculate how much an assignment violates constraints
 function calculate_violation(facility, client, targets_upper, V, M, R, β, values_matrix, risk_vec)
@@ -1032,7 +1141,7 @@ function main_constructive(init_method, assign_method; path="inst", read_file=tr
 
     solution = constructive(instance, number, init_method, assign_method)
     println(isFactible(solution))
-    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_new.jld2"
+    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_new5.jld2"
     write_solution(solution, sol_path)
     println("\a")
     return solution

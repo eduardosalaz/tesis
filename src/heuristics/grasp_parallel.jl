@@ -26,7 +26,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
         Weight = 0
         start_iter = now()
         #println(iter)
-        Y, time_loc = pdisp_grasp(instance, αₗ)
+        Y, time_loc = pdisp_grasp_new(instance, αₗ)
         X, time_alloc = oppCostQueueGRASPnew(Y, instance, αₐ)
         Weight = 0
         indices = findall(x -> x == 1, X)
@@ -36,39 +36,54 @@ function grasp(αₗ, αₐ, max_iters, instance)
         oldSol = Types.Solution(instance, X, Y, Weight, time_loc + time_alloc)
         repair_delta = 0
         factible_after_repair = false
+        println("fac 39 $factible_after_repair")
         factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper, false)
         if !factible
+            println("nao nao")
             repaired_1 = repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
             fac_repaired_1, cons = isFactible(repaired_1, false)
+            println("cons1 $cons")
+            println("fac 46 $factible_after_repair")
             if !fac_repaired_1
                 repaired_2 = repair_solution2(oldSol, constraints, targets_lower, targets_upper, remove, add)
                 fac_repaired_2, cons = isFactible(repaired_2, false)
+                println("cons2 $cons")
+                println("fac 51 $factible_after_repair")
                 if fac_repaired_2
                     repair_algorithm = 2
                     count_repair_2 += 1
                     factible_after_repair = true
                     repaired = repaired_2
+                    println("fac 57 $factible_after_repair")
                 end
             else
                 count_repair_1 += 1
                 repaired = repaired_1
                 factible_after_repair = true
+                println("fac 62 $factible_after_repair")
             end
             if factible_after_repair
+                println("yey")
                 original_weight = repaired.Weight
                 weight_before = repaired.Weight
             end
         else
             repaired = oldSol
             factible_after_repair = true
+            println("fac 73 $factible_after_repair")
         end
+        println("fac 75 $factible_after_repair")
         if factible_after_repair
             oldSol = repaired
         end
         improvement = true
         last_weights = Dict(:simple_bu => Inf, :interchange_bu => Inf, :deactivate_center => Inf)
-
-        while improvement && factible_after_repair
+        println(improvement && factible_after_repair)
+        println(bestSol)
+        while (improvement && factible_after_repair)
+            
+            println("fac 83 $factible_after_repair")
+            println("entre al loop")
             improvement = false
             prev_weight = oldSol.Weight
             
@@ -112,20 +127,25 @@ function grasp(αₗ, αₐ, max_iters, instance)
         if delta_total_millis.value >= 1800000 # 30 minutos en milisegundos
             break
         end
-        lock(lockVar)
-        try
-            if oldSol !== nothing
-                    improving = false
-                    if oldSol.Weight < bestWeight
-                        bestSol = oldSol
-                        bestWeight = oldSol.Weight
-                        improving = true
-                    end
+        if factible_after_repair
+            lock(lockVar)
+            try
+                if oldSol !== nothing
+                        improving = false
+                        if oldSol.Weight < bestWeight
+                            println("updateando")
+                            bestSol = oldSol
+                            bestWeight = oldSol.Weight
+                            improving = true
+                        end
+                end
+            finally
+                unlock(lockVar)
             end
-        finally
-            unlock(lockVar)
         end
+        
     end
+    println(bestSol)
     finish = now()
     delta = finish - start
     delta_millis = round(delta, Millisecond)
@@ -207,8 +227,10 @@ function compute_assignments_and_opportunity_costs(D::Matrix{Int64}, Y::Vector{I
     best_assignments = Dict{Int,Vector{Int64}}()
     pq = PriorityQueue{Int,Int64}(Base.Order.Reverse)
 
+    # O(B)
     for j in 1:num_clients
         # Use a temporary array to store the facility opportunity costs for this client
+        # O(Y)
         costs = Tuple{Int64,Int}[]
         for (i, yi) in enumerate(Y)
             if yi == 1
@@ -373,7 +395,7 @@ function update_center_capacity(center, bu, values_matrix, risk_vec, targets, β
         if values_matrix[center, m] > targets[m]
             return true
         end
-    end
+    end 
     risk_vec[center] += R[center]
     if risk_vec[center] > β
         return true
@@ -428,7 +450,7 @@ function pdisp_simple_grasp(d, p, N, α)
                     mindist = d[v, vprime]
                 end
             end
-            if mindist >= (maxdist - maxdist * α)
+            if mindist >= maxdist - α * (maxdist - mindist) # kms
                 push!(rcl, v)
             end
         end
@@ -726,14 +748,14 @@ function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
     index = findfirst(pattern, path)
     almost_number = path[index]
     _, number = split(almost_number, "_")
-    αₗ = 0.1
-    αₐ = 0.1    
+    αₗ = 0.0
+    αₐ = 0.0    
     iters = parse(Int, ARGS[2])
     bestSolution, totalTime = grasp(αₗ, αₐ, iters, instance)
     println(totalTime)
     println(bestSolution.Weight)
-    #println(isFactible(bestSolution))
-    name = "solucion_grasp_$number" * "_$αₗ" * "_$αₐ" *"_$iters" * "_$(nthreads())" * ".jld2"
+    println(isFactible(bestSolution))
+    name = "solucion_grasp_newinstance_$number" * "_$αₗ" * "_$αₐ" *"_$iters" * "_$(nthreads())" * ".jld2"
     full_out_path = "out\\solutions\\1250_155_62\\grasp\\" * name
     write_solution(bestSolution, full_out_path)
 end
