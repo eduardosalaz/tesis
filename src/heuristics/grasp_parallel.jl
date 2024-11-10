@@ -36,54 +36,38 @@ function grasp(αₗ, αₐ, max_iters, instance)
         oldSol = Types.Solution(instance, X, Y, Weight, time_loc + time_alloc)
         repair_delta = 0
         factible_after_repair = false
-        println("fac 39 $factible_after_repair")
         factible, constraints, remove, add = isFactible4(oldSol, targets_lower, targets_upper, false)
         if !factible
-            println("nao nao")
             repaired_1 = repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
             fac_repaired_1, cons = isFactible(repaired_1, false)
-            println("cons1 $cons")
-            println("fac 46 $factible_after_repair")
             if !fac_repaired_1
                 repaired_2 = repair_solution2(oldSol, constraints, targets_lower, targets_upper, remove, add)
                 fac_repaired_2, cons = isFactible(repaired_2, false)
-                println("cons2 $cons")
-                println("fac 51 $factible_after_repair")
                 if fac_repaired_2
                     repair_algorithm = 2
                     count_repair_2 += 1
                     factible_after_repair = true
                     repaired = repaired_2
-                    println("fac 57 $factible_after_repair")
                 end
             else
                 count_repair_1 += 1
                 repaired = repaired_1
                 factible_after_repair = true
-                println("fac 62 $factible_after_repair")
             end
             if factible_after_repair
-                println("yey")
                 original_weight = repaired.Weight
                 weight_before = repaired.Weight
             end
         else
             repaired = oldSol
             factible_after_repair = true
-            println("fac 73 $factible_after_repair")
         end
-        println("fac 75 $factible_after_repair")
         if factible_after_repair
             oldSol = repaired
         end
         improvement = true
         last_weights = Dict(:simple_bu => Inf, :interchange_bu => Inf, :deactivate_center => Inf)
-        println(improvement && factible_after_repair)
-        println(bestSol)
         while (improvement && factible_after_repair)
-            
-            println("fac 83 $factible_after_repair")
-            println("entre al loop")
             improvement = false
             prev_weight = oldSol.Weight
             
@@ -133,7 +117,6 @@ function grasp(αₗ, αₐ, max_iters, instance)
                 if oldSol !== nothing
                         improving = false
                         if oldSol.Weight < bestWeight
-                            println("updateando")
                             bestSol = oldSol
                             bestWeight = oldSol.Weight
                             improving = true
@@ -143,9 +126,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
                 unlock(lockVar)
             end
         end
-        
     end
-    println(bestSol)
     finish = now()
     delta = finish - start
     delta_millis = round(delta, Millisecond)
@@ -748,8 +729,8 @@ function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
     index = findfirst(pattern, path)
     almost_number = path[index]
     _, number = split(almost_number, "_")
-    αₗ = 0.0
-    αₐ = 0.0    
+    αₗ = 0.1
+    αₐ = 0.3    
     iters = parse(Int, ARGS[2])
     bestSolution, totalTime = grasp(αₗ, αₐ, iters, instance)
     println(totalTime)
