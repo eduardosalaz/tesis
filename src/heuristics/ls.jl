@@ -478,7 +478,7 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
     end
     newSol3 = Solution(instance, X, Y, solution.Weight, solution.Time)
     cant_fix = false
-    
+
     for i in add
         if cant_fix
             break
@@ -542,7 +542,7 @@ function repair_solution1(solution, cons, targets_lower, targets_upper, remove, 
             end
         end
     end
-    
+
     Weight = 0
     indices = findall(x -> x == 1, X)
     for indice in indices
@@ -1269,12 +1269,917 @@ function apply_move_simple_optimized!(X::Matrix{Int}, values_matrix::Matrix{Floa
     @inbounds risk_vec[new_i] += R[j]
 end
 
+# Chain Move Implementation: Moves k clients in a chain between open facilities
+function can_do_chain_move_optimized(values_matrix::Matrix{Float32}, V::Vector{Vector{Int}},
+    moves::Vector{NamedTuple{(:from_facility, :to_facility, :client),
+        Tuple{Int,Int,Int}}}, risk_vec::Vector{Float32},
+    R::Vector{Int}, β::Int, targets_upper::SVector{3,Float32},
+    targets_lower::SVector{3,Float32})
+    # Create temporary copies to check feasibility
+    temp_values = copy(values_matrix)
+    temp_risks = copy(risk_vec)
+
+    # Apply all moves to temporary matrices
+    @inbounds for move in moves
+        from_facility = move.from_facility
+        to_facility = move.to_facility
+        client = move.client
+
+        # Update facility values
+        for m in 1:3
+            temp_values[from_facility, m] -= V[m][client]
+            temp_values[to_facility, m] += V[m][client]
+
+            # Check constraints after each update
+            if temp_values[from_facility, m] > targets_upper[m] ||
+               temp_values[from_facility, m] < targets_lower[m] ||
+               temp_values[to_facility, m] > targets_upper[m] ||
+               temp_values[to_facility, m] < targets_lower[m]
+                return false
+            end
+        end
+
+        # Update risks
+        temp_risks[from_facility] -= R[client]
+        temp_risks[to_facility] += R[client]
+
+        # Check risk constraints
+        if temp_risks[from_facility] > β || temp_risks[to_facility] > β
+            return false
+        end
+    end
+    return true
+end
+
+function find_best_chain_move_optimized(X::Matrix{Int}, D::Matrix{Int}, V::Vector{Vector{Int}},
+    R::Vector{Int}, B::Int, M::Int, usables_i::Vector{Int},
+    values_matrix::Matrix{Float32}, risk_vec::Vector{Float32},
+    targets_lower::SVector{3,Float32}, targets_upper::SVector{3,Float32},
+    β::Int, chain_length::Int, strategy::Symbol)
+    best_move = nothing
+    best_weight_diff = 0.0
+
+    # Pre-allocate vector for building chains
+    current_chain = Vector{NamedTuple{(:from_facility, :to_facility, :client),
+        Tuple{Int,Int,Int}}}(undef, chain_length)
+
+    # Set to track used facilities and clients in current chain
+    used_clients = BitSet(B)
+
+    function try_extend_chain(chain_pos::Int, weight_so_far::Float64)
+        # If chain is complete, check if it's the best so far
+        if chain_pos > chain_length
+            if can_do_chain_move_optimized(values_matrix, V, current_chain, risk_vec,
+                R, β, targets_upper, targets_lower)
+                if strategy == :ff
+                    best_move = copy(current_chain)
+                    return true
+                elseif strategy == :bf && (best_move === nothing ||
+                                           weight_so_far < best_weight_diff)
+                    best_move = copy(current_chain)
+                    best_weight_diff = weight_so_far
+                end
+            end
+            return false
+        end
+
+        # Get previous facility in chain (or all facilities if starting)
+        prev_facility = chain_pos == 1 ? nothing : current_chain[chain_pos-1].to_facility
+
+        # Try each client
+        @inbounds for client in 1:B
+            client in used_clients && continue
+
+            # Get current facility of client
+            from_facility = find_one_in_column_unrolled(X, client)
+
+            # Try each possible destination facility
+            for to_facility in usables_i
+                # Skip if same facility or invalid connection
+                (to_facility == from_facility ||
+                 (prev_facility !== nothing && from_facility != prev_facility)) && continue
+
+                # Calculate weight difference for this move
+                move_weight = D[to_facility, client] - D[from_facility, client]
+                new_weight = weight_so_far + move_weight
+
+                # Only continue if potentially improving
+                if new_weight < 0
+                    # Add move to chain
+                    current_chain[chain_pos] = (from_facility=from_facility,
+                        to_facility=to_facility, client=client)
+                    push!(used_clients, client)
+
+                    # Recursively try to complete chain
+                    if try_extend_chain(chain_pos + 1, new_weight)
+                        return true
+                    end
+
+                    # Backtrack
+                    delete!(used_clients, client)
+                end
+            end
+        end
+        return false
+    end
+
+    # Try to build chain
+    try_extend_chain(1, 0.0)
+    return best_move
+end
+
+function apply_chain_move_optimized!(X::Matrix{Int}, values_matrix::Matrix{Float32},
+    risk_vec::Vector{Float32}, moves::Vector{NamedTuple{
+        (:from_facility, :to_facility, :client),Tuple{Int,Int,Int}}},
+    V::Vector{Vector{Int}}, R::Vector{Int})
+    # First remove all clients from their original facilities
+    @inbounds for move in moves
+        X[move.from_facility, move.client] = 0
+    end
+
+    # Then assign all clients to their new facilities
+    @inbounds for move in moves
+        X[move.to_facility, move.client] = 1
+
+        # Update facility values
+        for m in 1:size(values_matrix, 2)
+            values_matrix[move.from_facility, m] -= V[m][move.client]
+            values_matrix[move.to_facility, m] += V[m][move.client]
+        end
+
+        # Update risks
+        risk_vec[move.from_facility] -= R[move.client]
+        risk_vec[move.to_facility] += R[move.client]
+    end
+end
+
+function chain_move_improve_optimized(solution, targets_lower::SVector{3,Float32},
+    targets_upper::SVector{3,Float32}, strategy::Symbol,
+    chain_length::Int)
+    X, Y = solution.X, solution.Y
+    instance = solution.Instance
+    B, S, M = instance.B, instance.S, instance.M
+    V, R, β = instance.V, instance.R, instance.β[1]
+    D = instance.D
+    Weight = solution.Weight
+
+    # Get list of open facilities
+    usables_i = findall(==(1), Y)
+
+    # Initialize matrices for constraint checking
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+
+    while true
+        best_move = find_best_chain_move_optimized(X, D, V, R, B, M, usables_i, values_matrix,
+            risk_vec, targets_lower, targets_upper, β,
+            chain_length, strategy)
+        best_move === nothing && break
+
+        # Calculate total weight difference
+        weight_diff = 0.0
+        @inbounds for move in best_move
+            weight_diff += D[move.to_facility, move.client] - D[move.from_facility, move.client]
+        end
+
+        apply_chain_move_optimized!(X, values_matrix, risk_vec, best_move, V, R)
+        Weight += weight_diff
+    end
+
+    Weight = dot(X, D)  # Recalculate weight to ensure accuracy
+    return Solution(instance, X, Y, Weight, solution.Time)
+end
+
+# Ejection Chain Move: Temporarily remove clients and find optimal reassignments
+struct EjectionMove
+    client::Int
+    from_facility::Int
+    to_facility::Int
+    weight_diff::Float64
+end
+
+function can_assign_to_facility(client::Int, facility::Int, values_matrix::Matrix{Float32},
+    V::Vector{Vector{Int}}, risk_vec::Vector{Float32}, R::Vector{Int},
+    β::Int, targets_upper::SVector{3,Float32},
+    targets_lower::SVector{3,Float32})
+    @inbounds begin
+        # Check all resource constraints
+        for m in 1:3
+            new_value = values_matrix[facility, m] + V[m][client]
+            if new_value > targets_upper[m] || new_value < targets_lower[m]
+                return false
+            end
+        end
+
+        # Check risk constraint
+        new_risk = risk_vec[facility] + R[client]
+        return new_risk <= β
+    end
+end
+
+# Check if removing a set of clients from their facilities maintains lower target constraints
+function can_remove_clients(values_matrix::Matrix{Float32}, V::Vector{Vector{Int}},
+    clients_to_eject::Vector{Int}, facility_clients::Dict{Int,Vector{Int}},
+    targets_lower::SVector{3,Float32})
+    # Create temporary values matrix
+    temp_values = copy(values_matrix)
+
+    # Group clients by their current facility
+    facility_removals = Dict{Int,Vector{Int}}()
+    for client in clients_to_eject
+        for (facility, clients) in facility_clients
+            if client in clients
+                if haskey(facility_removals, facility)
+                    push!(facility_removals[facility], client)
+                else
+                    facility_removals[facility] = [client]
+                end
+                break
+            end
+        end
+    end
+
+    # Check each facility's lower bounds after removals
+    @inbounds for (facility, clients) in facility_removals
+        for m in 1:3
+            # Remove all clients' contributions
+            for client in clients
+                temp_values[facility, m] -= V[m][client]
+            end
+            # Check if still above lower bound
+            if temp_values[facility, m] < targets_lower[m]
+                return false
+            end
+        end
+    end
+    return true
+end
+
+function can_assign_to_facility(client::Int, facility::Int, values_matrix::Matrix{Float32},
+    V::Vector{Vector{Int}}, risk_vec::Vector{Float32}, R::Vector{Int},
+    β::Int, targets_upper::SVector{3,Float32})
+    @inbounds begin
+        # Check all resource constraints
+        for m in 1:3
+            new_value = values_matrix[facility, m] + V[m][client]
+            if new_value > targets_upper[m]
+                return false
+            end
+        end
+
+        # Check risk constraint
+        new_risk = risk_vec[facility] + R[client]
+        return new_risk <= β
+    end
+end
+
+function find_best_ejection_chain_optimized(X::Matrix{Int}, D::Matrix{Int},
+    V::Vector{Vector{Int}}, R::Vector{Int},
+    B::Int, M::Int, usables_i::Vector{Int},
+    values_matrix::Matrix{Float32},
+    risk_vec::Vector{Float32},
+    targets_lower::SVector{3,Float32},
+    targets_upper::SVector{3,Float32},
+    β::Int, chain_length::Int, strategy::Symbol)
+    best_chain = nothing
+    best_total_diff = 0.0
+
+    # Create mapping of facilities to their currently assigned clients
+    facility_clients = Dict{Int,Vector{Int}}()
+    for i in usables_i
+        facility_clients[i] = findall(j -> X[i, j] == 1, 1:B)
+    end
+
+    # Temporary matrices for evaluating moves
+    temp_values = copy(values_matrix)
+    temp_risks = copy(risk_vec)
+
+    # Track ejected clients and their original facilities
+    ejected = Dict{Int,Int}()  # client => original_facility
+    moves = Vector{EjectionMove}()
+
+    function try_reassign_clients(current_weight::Float64)
+        if length(moves) == length(ejected)
+            if strategy == :ff && current_weight < 0
+                best_chain = copy(moves)
+                return true
+            elseif strategy == :bf && current_weight < best_total_diff
+                best_chain = copy(moves)
+                best_total_diff = current_weight
+            end
+            return false
+        end
+
+        # Try each remaining ejected client
+        for (client, orig_facility) in ejected
+            client in [m.client for m in moves] && continue
+
+            # Try each possible facility
+            for new_facility in usables_i
+                new_facility == orig_facility && continue
+
+                # Calculate weight difference
+                weight_diff = D[new_facility, client] - D[orig_facility, client]
+                new_total_weight = current_weight + weight_diff
+
+                # Early pruning if not improving
+                if strategy == :ff && new_total_weight >= 0
+                    continue
+                end
+
+                # Check if assignment is feasible
+                if can_assign_to_facility(client, new_facility, temp_values, V, temp_risks,
+                    R, β, targets_upper)
+                    # Temporarily apply the assignment
+                    for m in 1:3
+                        temp_values[new_facility, m] += V[m][client]
+                    end
+                    temp_risks[new_facility] += R[client]
+
+                    # Record the move
+                    push!(moves, EjectionMove(client, orig_facility, new_facility, weight_diff))
+
+                    # Recursively try to assign remaining clients
+                    if try_reassign_clients(new_total_weight)
+                        return true
+                    end
+
+                    # Backtrack
+                    pop!(moves)
+                    for m in 1:3
+                        temp_values[new_facility, m] -= V[m][client]
+                    end
+                    temp_risks[new_facility] -= R[client]
+                end
+            end
+        end
+        return false
+    end
+
+    # Try different sets of clients to eject
+    for eject_count in 1:chain_length
+        for i in 1:B
+            clients_subset = collect(max(1, i - eject_count + 1):i)
+
+            # First check if we can remove these clients without violating lower bounds
+            if !can_remove_clients(values_matrix, V, clients_subset, facility_clients, targets_lower)
+                continue
+            end
+
+            # Reset temporary state
+            copyto!(temp_values, values_matrix)
+            copyto!(temp_risks, risk_vec)
+            empty!(ejected)
+            empty!(moves)
+
+            # Record original facilities and remove clients
+            for client in clients_subset
+                orig_facility = find_one_in_column_unrolled(X, client)
+                ejected[client] = orig_facility
+
+                # Remove from temporary matrices
+                for m in 1:3
+                    temp_values[orig_facility, m] -= V[m][client]
+                end
+                temp_risks[orig_facility] -= R[client]
+            end
+
+            # Try to find good reassignment of ejected clients
+            try_reassign_clients(0.0)
+
+            # If using first-fit and found improving solution, stop
+            if strategy == :ff && best_chain !== nothing
+                break
+            end
+        end
+    end
+
+    return best_chain
+end
+function ejection_chain_improve_optimized(solution, targets_lower::SVector{3,Float32},
+    targets_upper::SVector{3,Float32}, strategy::Symbol,
+    chain_length::Int)
+    X, Y = solution.X, solution.Y
+    instance = solution.Instance
+    B, S, M = instance.B, instance.S, instance.M
+    V, R, β = instance.V, instance.R, instance.β[1]
+    D = instance.D
+    Weight = solution.Weight
+
+    usables_i = findall(==(1), Y)
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+
+    while true
+        best_moves = find_best_ejection_chain_optimized(X, D, V, R, B, M, usables_i,
+            values_matrix, risk_vec,
+            targets_lower, targets_upper,
+            β, chain_length, strategy)
+        best_moves === nothing && break
+
+        # Apply the moves
+        total_weight_diff = sum(move.weight_diff for move in best_moves)
+        apply_ejection_chain!(X, values_matrix, risk_vec, best_moves, V, R)
+        Weight += total_weight_diff
+    end
+
+    Weight = dot(X, D)  # Recalculate weight to ensure accuracy
+    return Solution(instance, X, Y, Weight, solution.Time)
+end
+
+function apply_ejection_chain!(X::Matrix{Int}, values_matrix::Matrix{Float32},
+    risk_vec::Vector{Float32}, moves::Vector{EjectionMove},
+    V::Vector{Vector{Int}}, R::Vector{Int})
+    # First verify the entire chain maintains feasibility
+    temp_values = copy(values_matrix)
+    temp_risks = copy(risk_vec)
+
+    # Remove all clients from their original facilities
+    @inbounds for move in moves
+        X[move.from_facility, move.client] = 0
+
+        for m in 1:3
+            values_matrix[move.from_facility, m] -= V[m][move.client]
+        end
+        risk_vec[move.from_facility] -= R[move.client]
+    end
+
+    # Then assign them to their new facilities
+    @inbounds for move in moves
+        X[move.to_facility, move.client] = 1
+
+        for m in 1:3
+            values_matrix[move.to_facility, m] += V[m][move.client]
+        end
+        risk_vec[move.to_facility] += R[move.client]
+    end
+end
+
+# Generate combinations of k elements from collection 1:n
+function combinations_optimized(n::Int, k::Int)
+    result = Vector{Vector{Int}}()
+    temp = Vector{Int}(undef, k)
+
+    function generate_combinations(start::Int, pos::Int)
+        if pos > k
+            push!(result, copy(temp))
+            return
+        end
+
+        # Try each possible element for this position
+        @inbounds for i in start:n-k+pos
+            temp[pos] = i
+            generate_combinations(i + 1, pos + 1)
+        end
+    end
+
+    generate_combinations(1, 1)
+    return result
+end
+
+# Alternative iterative version if memory is a concern
+struct CombinationIterator
+    n::Int
+    k::Int
+end
+
+function Base.iterate(iter::CombinationIterator, state=nothing)
+    n, k = iter.n, iter.k
+
+    # Initialize first combination
+    if state === nothing
+        k == 0 && return (Int[], nothing)
+        k > n && return nothing
+        return (collect(1:k), collect(1:k))
+    end
+
+    current = state
+
+    # Find the rightmost element that can be incremented
+    i = k
+    while i > 0 && current[i] == n - k + i
+        i -= 1
+    end
+
+    # If no element can be incremented, we're done
+    i == 0 && return nothing
+
+    # Increment element i and set subsequent elements accordingly
+    current[i] += 1
+    for j in (i+1):k
+        current[j] = current[j-1] + 1
+    end
+
+    return (copy(current), current)
+end
+
+Base.length(iter::CombinationIterator) = binomial(iter.n, iter.k)
+Base.eltype(::Type{CombinationIterator}) = Vector{Int}
+
+# New types to support proper ejection chain structure
+struct DisplacementMove
+    client::Int
+    from_facility::Int
+    to_facility::Int
+    displaced_client::Union{Nothing,Int}
+    weight_diff::Float64
+end
+
+struct ChainStep
+    move::DisplacementMove
+    values_delta::Vector{Float32}  # Changes in resource values
+    risk_delta::Float32           # Change in risk value
+end
+
+mutable struct EjectionChain
+    steps::Vector{ChainStep}
+    total_weight_diff::Float64
+end
+
+function find_best_classical_chain(X::Matrix{Int}, D::Matrix{Int},
+    V::Vector{Vector{Int}}, R::Vector{Int},
+    values_matrix::Matrix{Float32}, risk_vec::Vector{Float32},
+    targets_lower::SVector{3,Float32}, targets_upper::SVector{3,Float32},
+    β::Int, max_chain_length::Int, Y::Vector{Int})
+
+    best_chain = nothing
+    best_improvement = 0.0
+
+    # Try each client as the initial move
+    for initial_client in 1:size(X, 2)
+        current_facility = find_one_in_column_unrolled(X, initial_client)
+
+        # Try moving to each possible facility
+        for new_facility in findall(==(1), Y)
+            new_facility == current_facility && continue
+
+            chain = try_build_chain(
+                initial_client, current_facility, new_facility,
+                X, D, V, R, values_matrix, risk_vec,
+                targets_lower, targets_upper, β, max_chain_length, Y
+            )
+
+            if chain !== nothing && chain.total_weight_diff < best_improvement
+                best_chain = chain
+                best_improvement = chain.total_weight_diff
+            end
+        end
+    end
+
+    return best_chain
+end
+
+function try_build_chain(initial_client::Int, from_facility::Int, to_facility::Int,
+    X::Matrix{Int}, D::Matrix{Int}, V::Vector{Vector{Int}}, R::Vector{Int},
+    values_matrix::Matrix{Float32}, risk_vec::Vector{Float32},
+    targets_lower::SVector{3,Float32}, targets_upper::SVector{3,Float32},
+    β::Int, max_chain_length::Int, Y)
+
+    # Initialize chain
+    chain = EjectionChain(ChainStep[], 0.0)
+
+    # Temporary matrices for evaluating moves
+    temp_values = copy(values_matrix)
+    temp_risks = copy(risk_vec)
+    temp_X = copy(X)
+
+    # Try to build chain starting with initial move
+    current_client = initial_client
+    current_from = from_facility
+    current_to = to_facility
+
+    while length(chain.steps) < max_chain_length
+        # Create potential move
+        weight_diff = D[current_to, current_client] - D[current_from, current_client]
+
+        # Find who we would displace (if anyone)
+        displaced_client = find_displaced_client_enhanced(
+            temp_X, current_to, current_client,
+            D, V, R, temp_values, temp_risks,
+            targets_upper, targets_lower, β, Y
+        )
+        move = DisplacementMove(
+            current_client,
+            current_from,
+            current_to,
+            displaced_client,
+            weight_diff
+        )
+
+        # Calculate resource changes
+        values_delta = zeros(Float32, 3)
+        for m in 1:3
+            values_delta[m] = V[m][current_client]
+        end
+        risk_delta = R[current_client]
+
+        # Check if move is feasible
+        if !is_move_feasible(move, temp_values, temp_risks, values_delta, risk_delta,
+            targets_lower, targets_upper, β)
+            return nothing
+        end
+
+        # Apply move temporarily
+        apply_move!(temp_X, temp_values, temp_risks, move, values_delta, risk_delta)
+
+        # Record step
+        push!(chain.steps, ChainStep(move, values_delta, risk_delta))
+        chain.total_weight_diff += weight_diff
+
+        # If no displacement, chain ends naturally
+        if displaced_client === nothing
+            return chain
+        end
+
+        # Set up next iteration with displaced client
+        current_client = displaced_client
+        current_from = current_to
+
+        # Find best facility for displaced client
+        best_facility = nothing
+        best_facility_cost = Inf
+
+        for candidate_facility in findall(==(1), Y)
+            candidate_facility == current_from && continue
+
+            if can_assign_to_facility(current_client, candidate_facility, temp_values, V, temp_risks,
+                R, β, targets_upper, targets_lower)
+                facility_cost = D[candidate_facility, current_client]
+                if facility_cost < best_facility_cost
+                    best_facility = candidate_facility
+                    best_facility_cost = facility_cost
+                end
+            end
+        end
+
+        # If we can't place displaced client, chain fails
+        if best_facility === nothing
+            return nothing
+        end
+
+        current_to = best_facility
+    end
+
+    return chain
+end
+
+function is_move_feasible(move::DisplacementMove,
+    values_matrix::Matrix{Float32}, risk_vec::Vector{Float32},
+    values_delta::Vector{Float32}, risk_delta::Int64,
+    targets_lower::SVector{3,Float32}, targets_upper::SVector{3,Float32}, β::Int)
+
+    # Check resource constraints at both facilities
+    for m in 1:3
+        # Check removal from original facility
+        new_value_from = values_matrix[move.from_facility, m] - values_delta[m]
+        if new_value_from < targets_lower[m]
+            return false
+        end
+
+        # Check addition to new facility
+        new_value_to = values_matrix[move.to_facility, m] + values_delta[m]
+        if new_value_to > targets_upper[m]
+            return false
+        end
+    end
+
+    # Check risk constraints
+    new_risk_from = risk_vec[move.from_facility] - risk_delta
+    new_risk_to = risk_vec[move.to_facility] + risk_delta
+
+    return new_risk_to <= β
+end
+
+function apply_move!(X::Matrix{Int},
+    values_matrix::Matrix{Float32}, risk_vec::Vector{Float32},
+    move::DisplacementMove, values_delta::Vector{Float32}, risk_delta::Int64)
+
+    # Update assignment matrix
+    X[move.from_facility, move.client] = 0
+    X[move.to_facility, move.client] = 1
+
+    # Update resource values
+    for m in 1:3
+        values_matrix[move.from_facility, m] -= values_delta[m]
+        values_matrix[move.to_facility, m] += values_delta[m]
+    end
+
+    # Update risk values
+    risk_vec[move.from_facility] -= risk_delta
+    risk_vec[move.to_facility] += risk_delta
+end
+
+# Replace your current ejection chain improve with this
+function classical_ejection_chain_improve(solution, targets_lower::SVector{3,Float32},
+    targets_upper::SVector{3,Float32}, max_chain_length::Int)
+
+    X, Y = solution.X, solution.Y
+    instance = solution.Instance
+    B, S, M = instance.B, instance.S, instance.M
+    V, R, β = instance.V, instance.R, instance.β[1]
+    D = instance.D
+
+    # Initialize resource tracking matrices
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+
+    improved = true
+    while improved
+        improved = false
+
+        best_chain = find_best_classical_chain(
+            X, D, V, R, values_matrix, risk_vec,
+            targets_lower, targets_upper, β, max_chain_length, Y
+        )
+
+        if best_chain !== nothing
+            # Apply the chain
+            for step in best_chain.steps
+                apply_move!(X, values_matrix, risk_vec, step.move, step.values_delta, step.risk_delta)
+            end
+            improved = true
+        end
+    end
+
+    Weight = dot(X, D)  # Recalculate final weight
+    return Solution(instance, X, Y, Weight, solution.Time)
+end
+
+# Utility functions for finding current assignments and displaced clients
+
+function find_displaced_client(X::Matrix{Int}, facility::Int, incoming_client::Int)
+    """
+    Find if any client will be displaced from the facility by the incoming client.
+    Returns the displaced client or nothing if no displacement occurs.
+    
+    Parameters:
+    - X: Current assignment matrix
+    - facility: Target facility
+    - incoming_client: Client being moved to the facility
+    """
+    # Get current assignments at the facility
+    current_clients = findall(j -> X[facility, j] == 1, 1:size(X, 2))
+
+    if isempty(current_clients)
+        return nothing
+    end
+
+    # In your case, since there might be capacity/resource constraints,
+    # we might need to displace a client even if there's theoretical room
+
+    # Strategy 1: Displace the client with highest cost if needed
+    if !isempty(current_clients)
+        # You might want to choose based on various criteria:
+        # - Highest cost client
+        # - Client that violates constraints least when moved
+        # - Client with most alternative placement options
+        return current_clients[1]  # For now, just take the first one
+    end
+
+    return nothing
+end
+
+function find_current_facility(X::Matrix{Int}, client::Int)
+    """
+    Find the facility currently serving a client.
+    
+    Parameters:
+    - X: Assignment matrix
+    - client: Client to find
+    """
+    for i in 1:size(X, 1)
+        if X[i, client] == 1
+            return i
+        end
+    end
+    error("Client $client not assigned to any facility")
+end
+
+function find_best_facility_for_displaced(client::Int, current_facility::Int,
+    X::Matrix{Int}, D::Matrix{Int},
+    values_matrix::Matrix{Float32}, risk_vec::Vector{Float32},
+    V::Vector{Vector{Int}}, R::Vector{Int},
+    targets_upper::SVector{3,Float32}, targets_lower::SVector{3,Float32},
+    β::Int, Y::Vector{Int})
+    """
+    Find the best facility to place a displaced client.
+    
+    Returns (facility_index, cost) or (nothing, Inf) if no feasible placement found.
+    """
+    best_facility = nothing
+    best_cost = Inf
+
+    for facility in findall(==(1), Y)
+        facility == current_facility && continue
+
+        # Check if assignment is feasible
+        if can_assign_to_facility(client, facility, values_matrix, V, risk_vec,
+            R, β, targets_upper, targets_lower)
+            cost = D[facility, client]
+            if cost < best_cost
+                best_facility = facility
+                best_cost = cost
+            end
+        end
+    end
+
+    return best_facility, best_cost
+end
+
+# Enhanced version of find_displaced_client with more sophisticated selection
+function find_displaced_client_enhanced(X::Matrix{Int}, facility::Int, incoming_client::Int,
+    D::Matrix{Int}, V::Vector{Vector{Int}}, R::Vector{Int},
+    values_matrix::Matrix{Float32}, risk_vec::Vector{Float32},
+    targets_upper::SVector{3,Float32}, targets_lower::SVector{3,Float32},
+    β::Int, Y::Vector{Int})
+    """
+    Enhanced version that considers multiple factors when choosing which client to displace.
+    """
+    current_clients = findall(j -> X[facility, j] == 1, 1:size(X, 2))
+    isempty(current_clients) && return nothing
+
+    # Calculate scores for each potential client to displace
+    scores = Dict{Int,Float64}()
+    for client in current_clients
+        # 1. Cost of current assignment
+        current_cost = D[facility, client]
+
+        # 2. Number of alternative facilities available
+        alternatives = count(i ->
+                i != facility && Y[i] == 1 &&
+                    can_assign_to_facility(client, i, values_matrix, V, risk_vec,
+                        R, β, targets_upper, targets_lower),
+            1:size(X, 1)
+        )
+
+        # 3. Resource usage
+        resource_usage = sum(V[m][client] for m in 1:length(V))
+
+        # 4. Risk contribution
+        risk_contribution = R[client]
+
+        # Combine factors into a score (lower is better for displacement)
+        scores[client] = -alternatives * 100 +  # Weight heavily towards clients with more options
+                         current_cost * 0.5 +    # Consider current cost
+                         resource_usage * 0.3 +  # Consider resource usage
+                         risk_contribution * 0.2 # Consider risk contribution
+    end
+
+    # Return client with lowest score (best to displace)
+    return argmin(scores)
+end
+
+# Function to check if a move maintains feasibility
+function move_maintains_feasibility(client::Int, from_facility::Int, to_facility::Int,
+    X::Matrix{Int}, V::Vector{Vector{Int}}, R::Vector{Int},
+    values_matrix::Matrix{Float32}, risk_vec::Vector{Float32},
+    targets_upper::SVector{3,Float32}, targets_lower::SVector{3,Float32},
+    β::Int)
+    """
+    Check if moving a client from one facility to another maintains feasibility
+    """
+    # Create temporary matrices to check the move
+    temp_values = copy(values_matrix)
+    temp_risks = copy(risk_vec)
+
+    # Remove from original facility
+    for m in 1:length(V)
+        temp_values[from_facility, m] -= V[m][client]
+    end
+    temp_risks[from_facility] -= R[client]
+
+    # Check if removal maintains lower bounds
+    for m in 1:length(V)
+        if temp_values[from_facility, m] < targets_lower[m]
+            return false
+        end
+    end
+
+    # Add to new facility
+    for m in 1:length(V)
+        temp_values[to_facility, m] += V[m][client]
+    end
+    temp_risks[to_facility] += R[client]
+
+    # Check if addition maintains upper bounds and risk constraint
+    for m in 1:length(V)
+        if temp_values[to_facility, m] > targets_upper[m]
+            return false
+        end
+    end
+
+    return temp_risks[to_facility] <= β
+end
+
 function mainLocal(; path="solucion_grasp_16_625_feas.jld2")
     solution = read_solution(path)
     newSolution = localSearch(solution)
     println(isFactible(newSolution))
     println(newSolution.Weight)
-    write_solution(newSolution, "sol_ls_1250_new4.jld2")
+    write_solution(newSolution, "sol_ls_1_625_new_chain.jld2")
     #plot_solution(newSolution, "plot_sol_2_1250_viejo_relax_ls.png")
     return newSolution
 end
@@ -1383,6 +2288,32 @@ function localSearch(solution)
             prev_weight = new_weight_moved
             #println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
             oldSol = sol_deactivated_center  # Update oldSol if there was an improvement
+        end
+        println("---------------------")
+        #=
+                println(" chain ")
+                #println(@benchmark deactivate_center_improve($oldSol, $targets_lower, $targets_upper))
+                sol_chain = chain_move_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :bf, 2)
+                new_weight_moved = sol_chain.Weight
+                println(new_weight_moved)
+                push!(improvements, new_weight_moved < prev_weight)
+                if improvements[end]
+                    prev_weight = new_weight_moved
+                    #println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
+                    oldSol = sol_chain  # Update oldSol if there was an improvement
+                end
+                =#
+        println("---------------------")
+        println("ejection chain ")
+        #println(@benchmark deactivate_center_improve($oldSol, $targets_lower, $targets_upper))
+        sol_chain = classical_ejection_chain_improve(oldSol, targets_lower_op, targets_upper_op, 4)
+        new_weight_moved = sol_chain.Weight
+        println(new_weight_moved)
+        push!(improvements, new_weight_moved < prev_weight)
+        if improvements[end]
+            prev_weight = new_weight_moved
+            #println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
+            oldSol = sol_chain  # Update oldSol if there was an improvement
         end
         println("---------------------")
         improvement = any(improvements)

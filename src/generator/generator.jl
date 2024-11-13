@@ -100,19 +100,19 @@ function generate_activities(B::Int64, S::Int64, P)
         sum_vals = sum(V[i])
         τ = 0.6
         upper = trunc(Int, (trunc(Int, (sum_vals / P)) * (1 + τ)))
-        println("upper $i $upper")
+        #println("upper $i $upper")
         μ[i] = fill(upper, S)
     end
-    T = fill(0.2, M)
+    T = fill(0.4, M)
     return V, μ, T
 end
 
 function generate_risk(B::Int64, S::Int64, P)
     R = rand(40:60, B)
     sum_R = sum(R)
-    τ = 1.5
+    τ = 0.8
     upper = trunc(Int, trunc(Int, (sum_R / P) * (1 + τ)))
-    println("beta: $upper")
+    #println("beta: $upper")
     β = fill(upper, S)
     return R, β
 end

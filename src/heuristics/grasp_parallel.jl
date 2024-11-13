@@ -19,7 +19,6 @@ function grasp(αₗ, αₐ, max_iters, instance)
     targets_lower_op, targets_upper_op = calculate_targets_optimized(instance)
     count_repair_1 = 0
     count_repair_2 = 0
-    lockVar = ReentrantLock()
     Threads.@threads for _ in 1:max_iters
         X = Matrix{Int64}(undef, S, B)
         Y = Vector{Int64}(undef, S)
@@ -27,7 +26,7 @@ function grasp(αₗ, αₐ, max_iters, instance)
         start_iter = now()
         #println(iter)
         Y, time_loc = pdisp_grasp_new(instance, αₗ)
-        X, time_alloc = oppCostQueueGRASPnew(Y, instance, αₐ)
+        X, time_alloc = graspOppCostQueueCombined(Y, instance, αₐ)
         Weight = 0
         indices = findall(x -> x == 1, X)
         for indice in indices
@@ -65,45 +64,10 @@ function grasp(αₗ, αₐ, max_iters, instance)
         if factible_after_repair
             oldSol = repaired
         end
-        improvement = true
-        last_weights = Dict(:simple_bu => Inf, :interchange_bu => Inf, :deactivate_center => Inf)
-        while (improvement && factible_after_repair)
-            improvement = false
-            prev_weight = oldSol.Weight
-            
-            # Simple BU move
-            if oldSol.Weight != last_weights[:simple_bu]
-                sol_moved_bu = simple_bu_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :ff)
-                if sol_moved_bu.Weight < prev_weight
-                    oldSol = sol_moved_bu
-                    prev_weight = sol_moved_bu.Weight
-                    improvement = true
-                end
-                last_weights[:simple_bu] = oldSol.Weight
-            end
-            
-            # Interchange BU move
-            if oldSol.Weight != last_weights[:interchange_bu]
-                sol_interchanged_bu = interchange_bu_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :ff)
-                if sol_interchanged_bu.Weight < prev_weight
-                    oldSol = sol_interchanged_bu
-                    prev_weight = sol_interchanged_bu.Weight
-                    improvement = true
-                end
-                last_weights[:interchange_bu] = oldSol.Weight
-            end
-            
-            # Deactivate center move
-            if oldSol.Weight != last_weights[:deactivate_center]
-                sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
-                if sol_deactivated_center.Weight < prev_weight
-                    oldSol = sol_deactivated_center
-                    prev_weight = sol_deactivated_center.Weight
-                    improvement = true
-                end
-                last_weights[:deactivate_center] = oldSol.Weight
-            end
+        if factible_after_repair
+            oldSol = vnd_local_search(oldSol, targets_lower_op, targets_upper_op, targets_lower, targets_upper)
         end
+        
 
         end_iter = now()
         delta_total = end_iter - start
@@ -320,6 +284,371 @@ function oppCostQueueGRASPnew(Y, instance::Types.Instance, α)
 end
 
 
+function graspOppCostQueue(Y, instance::Types.Instance, alpha::Float64)
+    D = copy(instance.D)
+    X = zeros(Int, size(D))
+    targets = calculate_targets_lower(instance)
+    targets_upper = calculate_targets_upper(instance)
+    β = instance.β[1]
+    S = instance.S
+    B = instance.B
+    M = instance.M
+    V = instance.V
+    P = instance.P
+    R = instance.R
+    
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+    
+    N = instance.P
+    best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
+    
+    # Track progress towards targets for each facility
+    target_progress = zeros(Float32, S, M)
+    for i in 1:S
+        for m in 1:M
+            target_progress[i,m] = values_matrix[i,m] / targets[m]
+        end
+    end
+    
+    full_centers = Set()
+    assigned_bus = Set()
+    unassigned_bus = Set(collect(1:B))
+    
+    while !isempty(pq) && length(assigned_bus) < B
+        bu = dequeue!(pq)
+        if bu ∉ assigned_bus
+            # Get all possible centers for this BU
+            possible_centers = best_assignments[bu]
+            
+            # Create RCL based on distance
+            center_distances = [(center, D[center, bu]) for center in possible_centers if center ∉ full_centers]
+            if isempty(center_distances)
+                continue
+            end
+            
+            # Sort by distance
+            sort!(center_distances, by = x -> x[2])
+            
+            # Calculate RCL bounds
+            min_dist = center_distances[1][2]
+            max_dist = center_distances[end][2]
+            threshold = min_dist + alpha * (max_dist - min_dist)
+            
+            # Create RCL
+            rcl = [center for (center, dist) in center_distances if dist ≤ threshold]
+            
+            if isempty(rcl)
+                continue
+            end
+            
+            # Evaluate centers in RCL based on improvement in target progress
+            center_improvements = Float64[]
+            valid_centers = Int[]
+            
+            for center in rcl
+                # Calculate improvement in target progress
+                current_min_progress = minimum(target_progress[center,:])
+                
+                # Simulate adding this BU
+                temp_progress = copy(target_progress[center,:])
+                for m in 1:M
+                    temp_progress[m] = (values_matrix[center,m] + V[m][bu]) / targets[m]
+                end
+                
+                new_min_progress = minimum(temp_progress)
+                improvement = new_min_progress - current_min_progress
+                
+                # Check if this assignment would exceed upper bounds
+                exceeds_upper = false
+                for m in 1:M
+                    if values_matrix[center,m] + V[m][bu] > targets_upper[m]
+                        exceeds_upper = true
+                        break
+                    end
+                end
+                
+                # Check risk constraint
+                if !exceeds_upper && risk_vec[center] + R[bu] <= β
+                    push!(center_improvements, improvement)
+                    push!(valid_centers, center)
+                end
+            end
+            
+            if !isempty(valid_centers)
+                # Select randomly from the best improvements
+                max_improvement = maximum(center_improvements)
+                min_improvement = minimum(center_improvements)
+                improvement_threshold = max_improvement - alpha * (max_improvement - min_improvement)
+                
+                candidates = [(c, imp) for (c, imp) in zip(valid_centers, center_improvements) 
+                            if imp ≥ improvement_threshold]
+                
+                # Randomly select from candidates
+                selected_idx = rand(1:length(candidates))
+                best_center = candidates[selected_idx][1]
+                
+                # Make the assignment
+                for m in 1:M
+                    values_matrix[best_center,m] += V[m][bu]
+                    target_progress[best_center,m] = values_matrix[best_center,m] / targets[m]
+                end
+                risk_vec[best_center] += R[bu]
+                
+                # Check if center should be marked as full
+                min_progress = minimum(target_progress[best_center,:])
+                if min_progress >= 0.95  # Within 5% of targets
+                    push!(full_centers, best_center)
+                end
+                
+                push!(assigned_bus, bu)
+                X[best_center, bu] = 1
+                pop!(unassigned_bus, bu)
+            end
+        end
+    end
+    
+    unassigned_count = length(unassigned_bus)
+    if unassigned_count > 0
+        X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
+    end
+    
+    return X, unassigned_count
+end
+
+function graspOppCostQueue2(Y, instance::Types.Instance, alpha::Float64)
+    D = copy(instance.D)
+    X = zeros(Int, size(D))
+    targets = calculate_targets_lower(instance)
+    targets_upper = calculate_targets_upper(instance)
+    β = instance.β[1]
+    S = instance.S
+    B = instance.B
+    M = instance.M
+    V = instance.V
+    P = instance.P
+    R = instance.R
+    
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+    
+    N = instance.P
+    best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
+    
+    # Track progress towards targets for each facility
+    target_progress = zeros(Float32, S, M)
+    for i in 1:S
+        for m in 1:M
+            target_progress[i,m] = values_matrix[i,m] / targets[m]
+        end
+    end
+    
+    full_centers = Set()
+    assigned_bus = Set()
+    unassigned_bus = Set(collect(1:B))
+    
+    while !isempty(pq) && length(assigned_bus) < B
+        bu = dequeue!(pq)
+        if bu ∉ assigned_bus
+            # Get distances to all possible centers
+            center_distances = [(center, D[center, bu]) for center in best_assignments[bu] 
+                              if center ∉ full_centers]
+            
+            if !isempty(center_distances)
+                # Create RCL based purely on distance
+                sort!(center_distances, by = x -> x[2])  # Sort by distance
+                min_dist = center_distances[1][2]
+                max_dist = center_distances[end][2]
+                threshold = min_dist + alpha * (max_dist - min_dist)
+                
+                # RCL contains centers within distance threshold
+                rcl = [center for (center, dist) in center_distances if dist ≤ threshold]
+                
+                # Find best improvement among RCL centers
+                best_center = nothing
+                best_improvement = -Inf
+                
+                for center in rcl
+                    # Calculate improvement in target progress
+                    current_min_progress = minimum(target_progress[center,:])
+                    temp_progress = copy(target_progress[center,:])
+                    
+                    for m in 1:M
+                        temp_progress[m] = (values_matrix[center,m] + V[m][bu]) / targets[m]
+                    end
+                    
+                    new_min_progress = minimum(temp_progress)
+                    improvement = new_min_progress - current_min_progress
+                    
+                    # Check constraints
+                    exceeds_upper = false
+                    for m in 1:M
+                        if values_matrix[center,m] + V[m][bu] > targets_upper[m]
+                            exceeds_upper = true
+                            break
+                        end
+                    end
+                    
+                    # Update best if feasible and better
+                    if !exceeds_upper && risk_vec[center] + R[bu] <= β && improvement > best_improvement
+                        best_improvement = improvement
+                        best_center = center
+                    end
+                end
+                
+                # Make assignment if we found a valid center
+                if best_center !== nothing
+                    for m in 1:M
+                        values_matrix[best_center,m] += V[m][bu]
+                        target_progress[best_center,m] = values_matrix[best_center,m] / targets[m]
+                    end
+                    risk_vec[best_center] += R[bu]
+                    
+                    # Check if center should be marked as full
+                    min_progress = minimum(target_progress[best_center,:])
+                    if min_progress >= 0.95  # Within 5% of targets
+                        push!(full_centers, best_center)
+                    end
+                    
+                    push!(assigned_bus, bu)
+                    X[best_center, bu] = 1
+                    pop!(unassigned_bus, bu)
+                end
+            end
+        end
+    end
+    
+    unassigned_count = length(unassigned_bus)
+    if unassigned_count > 0
+        X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
+    end
+    
+    return X, unassigned_count
+end
+
+function graspOppCostQueueCombined(Y, instance::Types.Instance, alpha::Float64)
+    D = copy(instance.D)
+    X = zeros(Int, size(D))
+    targets = calculate_targets_lower(instance)
+    targets_upper = calculate_targets_upper(instance)
+    β = instance.β[1]
+    S = instance.S
+    B = instance.B
+    M = instance.M
+    V = instance.V
+    P = instance.P
+    R = instance.R
+    
+    values_matrix = Matrix{Float32}(undef, S, M)
+    risk_vec = Vector{Float32}(undef, S)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+    
+    N = instance.P
+    best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
+    
+    # Track progress towards targets for each facility
+    target_progress = zeros(Float32, S, M)
+    for i in 1:S
+        for m in 1:M
+            target_progress[i,m] = values_matrix[i,m] / targets[m]
+        end
+    end
+    
+    full_centers = Set()
+    assigned_bus = Set()
+    unassigned_bus = Set(collect(1:B))
+    
+    while !isempty(pq) && length(assigned_bus) < B
+        bu = dequeue!(pq)
+        if bu ∉ assigned_bus
+            # Get all valid centers with their distances and improvements
+            candidates = Tuple{Int, Float64, Float64}[]  # (center, distance, improvement)
+            
+            for center in best_assignments[bu]
+                if center ∉ full_centers
+                    # Get distance
+                    dist = D[center, bu]
+                    
+                    # Calculate improvement in target progress
+                    current_min_progress = minimum(target_progress[center,:])
+                    temp_progress = copy(target_progress[center,:])
+                    
+                    for m in 1:M
+                        temp_progress[m] = (values_matrix[center,m] + V[m][bu]) / targets[m]
+                    end
+                    
+                    new_min_progress = minimum(temp_progress)
+                    improvement = new_min_progress - current_min_progress
+                    
+                    # Check constraints
+                    exceeds_upper = false
+                    for m in 1:M
+                        if values_matrix[center,m] + V[m][bu] > targets_upper[m]
+                            exceeds_upper = true
+                            break
+                        end
+                    end
+                    
+                    # Add to candidates if feasible
+                    if !exceeds_upper && risk_vec[center] + R[bu] <= β
+                        push!(candidates, (center, dist, improvement))
+                    end
+                end
+            end
+            
+            if !isempty(candidates)
+                # Find bounds for both metrics
+                min_dist = minimum(x[2] for x in candidates)
+                max_dist = maximum(x[2] for x in candidates)
+                min_imp = minimum(x[3] for x in candidates)
+                max_imp = maximum(x[3] for x in candidates)
+                
+                # Create RCL with candidates that are good in either metric
+                rcl = Int[]
+                for (center, dist, imp) in candidates
+                    dist_threshold = min_dist + alpha * (max_dist - min_dist)
+                    imp_threshold = max_imp - alpha * (max_imp - min_imp)
+                    
+                    if dist <= dist_threshold || imp >= imp_threshold
+                        push!(rcl, center)
+                    end
+                end
+                
+                if !isempty(rcl)
+                    # Random selection from RCL
+                    selected_center = rcl[rand(1:length(rcl))]
+                    
+                    # Make the assignment
+                    for m in 1:M
+                        values_matrix[selected_center,m] += V[m][bu]
+                        target_progress[selected_center,m] = values_matrix[selected_center,m] / targets[m]
+                    end
+                    risk_vec[selected_center] += R[bu]
+                    
+                    # Check if center should be marked as full
+                    min_progress = minimum(target_progress[selected_center,:])
+                    if min_progress >= 0.95  # Within 5% of targets
+                        push!(full_centers, selected_center)
+                    end
+                    
+                    push!(assigned_bus, bu)
+                    X[selected_center, bu] = 1
+                    pop!(unassigned_bus, bu)
+                end
+            end
+        end
+    end
+    
+    unassigned_count = length(unassigned_bus)
+    if unassigned_count > 0
+        X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
+    end
+    
+    return X, unassigned_count
+end
+
 function handle_unassigned_clients2(X, instance, best_assignments, unassigned_clients, values_matrix, risk_vec)
     targets_upper = calculate_targets_upper(instance)
     S = instance.S
@@ -384,70 +713,6 @@ function update_center_capacity(center, bu, values_matrix, risk_vec, targets, β
     return falses
 end
 
-function pdisp_simple_grasp(d, p, N, α)
-    maxdist = 0
-    bestpair = (0, 1)
-    for i in 1:N
-        for j in i+1:N
-            if d[i, j] > maxdist
-                maxdist = d[i, j]
-                bestpair = (i, j)
-            end
-        end
-    end
-    P = Set([])
-    push!(P, bestpair[1])
-    push!(P, bestpair[2])
-
-    while length(P) < p
-        maxdist = 0
-        vbest = 0
-        minimal = Inf
-        for v in 1:N
-            if v in P
-                continue
-            end
-            mindist = Inf
-            for vprime in P
-                if d[v, vprime] < mindist
-                    mindist = d[v, vprime]
-                end
-            end
-            if mindist > maxdist
-                maxdist = mindist
-                minimal = mindist
-            end
-        end
-        maxdist = minimal
-        vbest = 0
-        rcl = []
-        for v in 1:N
-            if v in P
-                continue
-            end
-            mindist = Inf
-            for vprime in P
-                if d[v, vprime] < mindist
-                    mindist = d[v, vprime]
-                end
-            end
-            if mindist >= maxdist - α * (maxdist - mindist) # kms
-                push!(rcl, v)
-            end
-        end
-        selected = false
-        while !selected
-            v_candidate = rand(rcl)
-            if v_candidate != 0 && !(v_candidate in P)
-                push!(P, v_candidate)
-                selected = true
-            end
-        end
-    end
-    collection = collect(P)
-    return collection
-end
-
 function pdisp_simple_grasp_new(d, p, N, α)
     maxdist = 0
     bestpair = (0, 1)
@@ -491,126 +756,6 @@ function pdisp_simple_grasp_new(d, p, N, α)
     end
     
     return collect(P)
-end
-
-
-function pdisp_grasp(instance, αₗ)
-    before_init = Dates.now()
-    B = instance.B
-    S = instance.S
-    D = instance.D
-    Sk = instance.Sk
-    Lk = instance.Lk
-    Uk = instance.Uk
-    P = instance.P
-    V = instance.V
-    μ = instance.μ
-    T = instance.T
-    R = instance.R
-    β = instance.β
-    k = 5
-    s_coords = instance.S_coords
-    metric = Distances.Euclidean()
-    d = trunc.(Int, Distances.pairwise(metric, s_coords, dims=1))
-    coords_S1 = s_coords[Sk[1], :]
-    coords_S2 = s_coords[Sk[2], :]
-    coords_S3 = s_coords[Sk[3], :]
-    coords_S4 = s_coords[Sk[4], :]
-    coords_S5 = s_coords[Sk[5], :]
-
-    d1 = trunc.(Int, Distances.pairwise(metric, coords_S1, dims=1))
-    d2 = trunc.(Int, Distances.pairwise(metric, coords_S2, dims=1))
-    d3 = trunc.(Int, Distances.pairwise(metric, coords_S3, dims=1))
-    d4 = trunc.(Int, Distances.pairwise(metric, coords_S4, dims=1))
-    d5 = trunc.(Int, Distances.pairwise(metric, coords_S5, dims=1))
-    N1 = length(Sk[1])
-    N2 = length(Sk[2])
-    N3 = length(Sk[3])
-    N4 = length(Sk[4])
-    N5 = length(Sk[5])
-    p1 = Lk[1]
-    p2 = Lk[2]
-    p3 = Lk[3]
-    p4 = Lk[4]
-    p5 = Lk[5]
-
-    pdisp1 = pdisp_simple_grasp(d1, p1, N1, αₗ)
-    pdisp2 = pdisp_simple_grasp(d2, p2, N2, αₗ)
-    pdisp3 = pdisp_simple_grasp(d3, p3, N3, αₗ)
-    pdisp4 = pdisp_simple_grasp(d4, p4, N4, αₗ)
-    pdisp5 = pdisp_simple_grasp(d5, p5, N5, αₗ)
-
-    pdisp1_fixed = Sk[1][pdisp1]
-    pdisp2_fixed = Sk[2][pdisp2]
-    pdisp3_fixed = Sk[3][pdisp3]
-    pdisp4_fixed = Sk[4][pdisp4]
-    pdisp5_fixed = Sk[5][pdisp5]
-
-    N = S
-    pdisp_ok = Set(vcat([pdisp1_fixed, pdisp2_fixed, pdisp3_fixed, pdisp4_fixed, pdisp5_fixed]...))
-    if length(pdisp_ok) != P
-        count = count_k(pdisp_ok, Sk)
-        while length(pdisp_ok) < P
-            # Find the node v that maximizes the distance to its closest neighbor in P
-            maxdist = 0
-            vbest = 0
-            best_dist = 0
-            for v in 1:N
-                if v in pdisp_ok
-                    continue
-                end
-                k = node_type(v, Sk)
-                if count[k] >= Uk[k]
-                    continue
-                end
-                dist = minimum([d[v, vprime] for vprime in pdisp_ok])
-                if dist > maxdist
-                    maxdist = dist
-                    best_dist = dist
-                    #vbest = v
-                end
-            end
-            maxdist = 0
-            vbest = 0
-            rcl = []
-            #println(best_dist)
-            #println(round(Int, best_dist - best_dist * αₗ))
-            for v in 1:N
-                if v in pdisp_ok
-                    continue
-                end
-                k = node_type(v, Sk)
-                if count[k] >= Uk[k]
-                    continue
-                end
-                dist = minimum([d[v, vprime] for vprime in pdisp_ok])
-                if dist >= round(Int, best_dist - best_dist * αₗ)
-                    push!(rcl, v)
-                    #vbest = v
-                end
-            end
-            vbest = rand(rcl)
-            #println("Escogiendo $vbest")
-            # If no such node exists, stop the algorithm
-            if vbest == 0
-                @error "P DISP ERROR"
-                break
-            end
-            # Add the node vbest to the set P and update the counts
-            k = node_type(vbest, Sk)
-            count[k] += 1
-            push!(pdisp_ok, vbest)
-        end
-    end
-    collection = collect(pdisp_ok)
-    after_init = Dates.now()
-    delta_init = after_init - before_init
-    delta_init_milli = round(delta_init, Millisecond)
-    Y_bool = zeros(Int, instance.S)
-    for idx in collection
-        Y_bool[idx] = 1
-    end
-    return Y_bool, delta_init_milli.value
 end
 
 function pdisp_grasp_new(instance, αₗ)
@@ -721,6 +866,38 @@ function pdisp_grasp_new(instance, αₗ)
     return Y_bool, delta_init_milli.value
 end
 
+function vnd_local_search(initial_sol, targets_lower_op, targets_upper_op, targets_lower, targets_upper)
+    # Current best solution
+    current_sol = deepcopy(initial_sol)
+    
+    # Define neighborhood structures and their corresponding functions
+    neighborhoods = [
+        (:simple_bu, (sol) -> simple_bu_improve_optimized(sol, targets_lower_op, targets_upper_op, :ff)),
+        (:interchange_bu, (sol) -> interchange_bu_improve_optimized(sol, targets_lower_op, targets_upper_op, :ff)),
+        (:deactivate_center, (sol) -> deactivate_center_improve(sol, targets_lower, targets_upper))
+    ]
+    
+    k = 1  # Start with first neighborhood
+    
+    while k <= length(neighborhoods)
+        # Get current neighborhood and its move function
+        neighborhood_name, move_function = neighborhoods[k]
+        
+        # Apply the move
+        new_sol = move_function(current_sol)
+        
+        # If improvement found
+        if new_sol.Weight < current_sol.Weight
+            current_sol = new_sol
+            k = 1  # Reset to first neighborhood
+        else
+            k += 1  # Move to next neighborhood
+        end
+    end
+    
+    return current_sol
+end
+
 
 function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
     #file_name = "instances\\625_78_32\\inst_1_625_78_32.jld2"
@@ -730,13 +907,13 @@ function main_grasp(;path="solucion_grasp_16_625_feas.jld2", iters=10)
     almost_number = path[index]
     _, number = split(almost_number, "_")
     αₗ = 0.1
-    αₐ = 0.3    
+    αₐ = 0.05 
     iters = parse(Int, ARGS[2])
     bestSolution, totalTime = grasp(αₗ, αₐ, iters, instance)
     println(totalTime)
     println(bestSolution.Weight)
     println(isFactible(bestSolution))
-    name = "solucion_grasp_newinstance_$number" * "_$αₗ" * "_$αₐ" *"_$iters" * "_$(nthreads())" * ".jld2"
+    name = "solucion_grasp_newinstance_newalloc_$number" * "_$αₗ" * "_$αₐ" *"_$iters" * "_$(nthreads())" * ".jld2"
     full_out_path = "out\\solutions\\1250_155_62\\grasp\\" * name
     write_solution(bestSolution, full_out_path)
 end
