@@ -39,3 +39,5 @@ warmstart_procedure.txt
 .aider.tags.cache.v3/cache.db-shm
 .aider.tags.cache.v3/cache.db-wal
 Manifest.toml
+src/utils/venv
+src/venv

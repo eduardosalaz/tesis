@@ -2,37 +2,40 @@ using Distances, JLD2, Random
 using Types
 
 function generate_instance(size::String, i::Int; write=true)
-    K = 5
+    K = 4
     M = 3
     B = 0
     S = 0
     P = 0
     if size == "S"
-        B = 15
-        S = 8
-        P = 4
+        B = 625
+        S = 200
+        P = 30
+        size = "625_300_30"
     elseif size == "M"
-        B = 200
-        S = 40
-        P = 20
+        B = 1250
+        S = 200
+        P = 40
+        size = "1250_155_62"
     elseif size == "L"
-        B = 1500
-        S = 120
-        P = 100
-    elseif size == "XL"
-        B = 500
-        S = 80
-        P = 50
+        B = 2500
+        S = 400
+        P = 40
+        size = "2500_325_125"
+    elseif size == "XS"
+        B = 312
+        S = 40
+        P = 16
     end
     BU_coords, S_coords = generate_coords(B, S)
     dist_mat = generate_dist(BU_coords, S_coords, B, S)
     parameters = generate_params(B, S, P)
     instance = Instance(B, S, K, M, P, BU_coords, S_coords, dist_mat, parameters...)
-    dir_path = "instances/instances_" * size * "/"
+    dir_path = "instances_new/new_ranges_005_newk" * size * "/"
     if !isdir(dir_path)
         mkdir(dir_path)
     end
-    file_name = "inst_" * string(i) * ".jld2"
+    file_name = "inst_" * string(i) * "_" * size * ".jld2"
     plot_name = replace(file_name, ".jld2" => ".png")
     full_path = dir_path * file_name
     full_plot = dir_path * plot_name
@@ -59,11 +62,11 @@ function generate_dist(BU_coords, S_coords, B, S)
         end
     end
     @debug "Wrote distance matrix"
-    return trunc.(Int, mat)
+    return round.(Int, mat)
 end
 
 function generate_params(B::Int64, S::Int64, P)
-    Sk, Lk, Uk = generate_k(B, S)
+    Sk, Lk, Uk, percentages = generate_k(S, P)
     @debug "Wrote k"
     V, μ, T = generate_activities(B, S, P)
     @debug "Wrote activities"
@@ -72,48 +75,85 @@ function generate_params(B::Int64, S::Int64, P)
     return Sk, Lk, Uk, V, μ, T, R, β
 end
 
-function generate_k(B::Int64, S::Int64)
-    K = 5
-    Ks = rand(1:K, S)
-    Sk = []
-    for i in 1:K
-        Si = findall(x -> x == i, Ks)
-        push!(Sk, Si)
+function generate_k(S::Int64, p::Int64)  # Now we need p as input
+    K = 4
+    percentages = [0.4, 0.3, 0.2, 0.1]
+    shuffle!(percentages)  # Randomly assign percentages to types
+    
+    # Calculate how many facilities should be of each type
+    counts_per_type = round.(Int, S .* percentages)
+    
+    # Adjust for rounding errors to ensure sum equals S
+    while sum(counts_per_type) != S
+        if sum(counts_per_type) < S
+            idx = argmax(percentages .- counts_per_type/S)
+            counts_per_type[idx] += 1
+        else
+            idx = argmin(percentages .- counts_per_type/S)
+            counts_per_type[idx] -= 1
+        end
     end
-    Sk = convert(Vector{Vector{Int64}}, Sk)
-    counts_k = [length(s) for s in Sk]
-    Lk_flt = [k - 0.85k for k in counts_k]
-    Uk_flt = [k - 0.05k for k in counts_k]
-    Lk = trunc.(Int, Lk_flt)
-    Uk = trunc.(Int, Uk_flt)
-    return Sk, Lk, Uk
+    
+    # Create the assignment vector
+    Ks = Int64[]
+    for k in 1:K
+        append!(Ks, fill(k, counts_per_type[k]))
+    end
+    shuffle!(Ks)  # Randomize the order
+    
+    # Create Sk (facilities of each type)
+    Sk = [findall(x -> x == k, Ks) for k in 1:K]
+    
+    # Calculate bounds based on p, not on counts_per_type
+    # For each type k, we want between (percentage-0.05)*p and (percentage+0.05)*p centers
+    Lk = round.(Int, (percentages .- 0.05) .* p)
+    Uk = round.(Int, (percentages .+ 0.05) .* p)
+    
+    # Ensure Lk isn't negative and Uk doesn't exceed available facilities
+    Lk = max.(0, Lk)
+    Uk = min.(Uk, counts_per_type)
+    
+    return Sk, Lk, Uk, percentages
 end
 
 function generate_activities(B::Int64, S::Int64, P)
     M = 3
+    # Initialize V with M arrays, each of length B
     V = [zeros(Int64, B) for _ in 1:M]
-    for i in eachindex(V)
-        V[i] = rand(10:30, B)
+    
+    # Fill each array in V with random numbers according to their ranges
+    for i in 1:B
+        V[1][i] = rand(1:10)
+        V[2][i] = rand(1000:10000)
+        V[3][i] = rand(1000:5000)
     end
+    
+    # Initialize μ with M arrays, each of length S
     μ = [zeros(Int64, S) for _ in 1:M]
-    for i in eachindex(V)
+    
+    # Calculate μ values based on sum of corresponding V array
+    for i in 1:M
         sum_vals = sum(V[i])
-        τ = 0.6
-        upper = trunc(Int, (trunc(Int, (sum_vals / P)) * (1 + τ)))
-        #println("upper $i $upper")
-        μ[i] = fill(upper, S)
+        base_value = round(Int, sum_vals / P)
+        for s in 1:S
+            μ[i][s] = base_value
+        end
     end
-    T = fill(0.4, M)
+    
+    T = [0.10, 0.10, 0.10]
     return V, μ, T
 end
 
 function generate_risk(B::Int64, S::Int64, P)
-    R = rand(40:60, B)
+    R = rand(30:60, B)
     sum_R = sum(R)
-    τ = 0.8
-    upper = trunc(Int, trunc(Int, (sum_R / P) * (1 + τ)))
-    #println("beta: $upper")
-    β = fill(upper, S)
+    # rmin + rmax  / 2 (multiplicado por unidades basicas) dividido entre P multiplicado por un valor adicional
+    τ = 0.1
+    β = zeros(Int64, S)
+    for s in 1:S
+        base_value = round(Int, (((30 + 60 / 2) * B) / P)  * (1 + τ))
+        β[s] = round(Int, base_value)
+    end
     return R, β
 end
 
@@ -126,4 +166,4 @@ function main()
     @info "Done"
 end
 
-#main()
+# main()

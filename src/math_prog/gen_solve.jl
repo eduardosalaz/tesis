@@ -2,7 +2,7 @@ include("../generator/generator.jl")
 include("first_model.jl")
 #TODO fix this
 function generate_solve(size)
-    K = 5
+    K = 4
     M = 3
     contador = 1
     B, S, P = parse.(Int, split(size, "_"))
@@ -34,7 +34,7 @@ function generate_solve(size)
     if !isdir(plot_inst_dir_path)
         mkdir(plot_inst_dir_path)
     end
-    for i in 1:20
+    for i in 1:10
         BU_coords, S_coords = generate_coords(B, S)
         dist_mat = generate_dist(BU_coords, S_coords, B, S)
         parameters = generate_params(B, S, P)
@@ -43,19 +43,19 @@ function generate_solve(size)
         model = build_model(instance)
         println("builded model $i")
         X, Y, obj_val, time = optimize_model(model, i)
-        file_inst_path = "inst_$i" * "_" * size * ".jld2"
-        file_sol_path = "sol_$i" * "_" * size * ".jld2"
+        file_inst_path = "005_newk_inst_$i" * "_" * size * ".jld2"
+        file_sol_path = "005_newk_sol_$i" * "_" * size * ".jld2"
         if obj_val == 0
             @error "Instancia $i no resuelta"
             full_failed_inst_path = failed_dir_path * file_inst_path
             write_instance(instance, full_failed_inst_path)
-            # como determinar si la instancia no es la que es infactible? TODO
+            # como determinar si la instancia no es la que es infactible? con el IIS
         else
             solution = Solution(instance, X, Y, obj_val, time)
             full_sol_path = sol_dir_path * file_sol_path
             full_inst_path = inst_dir_path * file_inst_path
-            plot_sol_path = plot_sol_dir_path * "sol$i" * "_" * size * ".png"
-            plot_inst_path = plot_inst_dir_path * "inst$i" * "_" * size * ".png"
+            plot_sol_path = plot_sol_dir_path * "005_newk_sol$i" * "_" * size * ".png"
+            plot_inst_path = plot_inst_dir_path * "005_newk_inst$i" * "_" * size * ".png"
             contador += 1
             write_instance(instance, full_inst_path)
             write_solution(solution, full_sol_path)

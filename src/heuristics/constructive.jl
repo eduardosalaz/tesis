@@ -57,8 +57,11 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
     elseif assign_method == "opp"
         println("OPP COST")
         X = oppCostAssignment(Y_bool, instancia)
+    elseif assign_method == "strat"
+        println("strat")
+        X, count = strategic_allocation(Y_bool, instancia)
     elseif assign_method == "queue"
-        println("QUEUE")
+        println("queue")
         X, count = oppCostQueue2(Y_bool, instancia)
     end
     after1 = Dates.now()
@@ -99,8 +102,11 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
     elseif assign_method == "opp"
         println("OPP COST")
         X = oppCostAssignment(Y_bool, instancia)
+    elseif assign_method == "strat"
+        println("strat")
+        X, count = strategic_allocation(Y_bool, instancia)
     elseif assign_method == "queue"
-        println("QUEUE")
+        println("queue")
         X, count = oppCostQueue2(Y_bool, instancia)
     end
     after = Dates.now()
@@ -113,6 +119,7 @@ function constructive(instance, id, init_method, assign_method; withdir=false, d
         time += time_init
     end
     println("X done")
+    println(size(X))
     indices = findall(x -> x == 1, X)
     Weight = dot(X, D)
     if time > time1
@@ -214,7 +221,7 @@ function pdisp_2(instance)
     Uk = instance.Uk
     P = instance.P
 
-    k = 5
+    k = 4
     s_coords = instance.S_coords
     metric = Distances.Euclidean()
     d = trunc.(Int, Distances.pairwise(metric, s_coords, dims=1))
@@ -222,38 +229,38 @@ function pdisp_2(instance)
     coords_S2 = s_coords[Sk[2], :]
     coords_S3 = s_coords[Sk[3], :]
     coords_S4 = s_coords[Sk[4], :]
-    coords_S5 = s_coords[Sk[5], :]
+    #coords_S5 = s_coords[Sk[5], :]
 
     d1 = trunc.(Int, Distances.pairwise(metric, coords_S1, dims=1))
     d2 = trunc.(Int, Distances.pairwise(metric, coords_S2, dims=1))
     d3 = trunc.(Int, Distances.pairwise(metric, coords_S3, dims=1))
     d4 = trunc.(Int, Distances.pairwise(metric, coords_S4, dims=1))
-    d5 = trunc.(Int, Distances.pairwise(metric, coords_S5, dims=1))
+    #d5 = trunc.(Int, Distances.pairwise(metric, coords_S5, dims=1))
     N1 = length(Sk[1])
     N2 = length(Sk[2])
     N3 = length(Sk[3])
     N4 = length(Sk[4])
-    N5 = length(Sk[5])
+    #N5 = length(Sk[5])
     p1 = Lk[1]
     p2 = Lk[2]
     p3 = Lk[3]
     p4 = Lk[4]
-    p5 = Lk[5]
+    #p5 = Lk[5]
 
     pdisp1 = pdisp_simple(d1, p1, N1)
     pdisp2 = pdisp_simple(d2, p2, N2)
     pdisp3 = pdisp_simple(d3, p3, N3)
     pdisp4 = pdisp_simple(d4, p4, N4)
-    pdisp5 = pdisp_simple(d5, p5, N5)
+    #pdisp5 = pdisp_simple(d5, p5, N5)
 
     pdisp1_fixed = Sk[1][pdisp1]
     pdisp2_fixed = Sk[2][pdisp2]
     pdisp3_fixed = Sk[3][pdisp3]
     pdisp4_fixed = Sk[4][pdisp4]
-    pdisp5_fixed = Sk[5][pdisp5]
+    #pdisp5_fixed = Sk[5][pdisp5]
 
     N = S
-    pdisp_ok = Set(vcat([pdisp1_fixed, pdisp2_fixed, pdisp3_fixed, pdisp4_fixed, pdisp5_fixed]...))
+    pdisp_ok = Set(vcat([pdisp1_fixed, pdisp2_fixed, pdisp3_fixed, pdisp4_fixed]...))
     if length(pdisp_ok) != P
         count = count_k(pdisp_ok, Sk)
         while length(pdisp_ok) < P
@@ -355,22 +362,29 @@ end
 
 function calculate_targets_upper(instance)
     M = instance.M
+    S = instance.S
     μ = instance.μ
     T = instance.T
-    targets = Vector{Float32}(undef, M)
-    for m in 1:M
-        targets[m] = 1 * μ[m][1] * (1 + T[m]) # corregir esto
+    # Now we need targets for each center and each activity type
+    targets = Matrix{Int}(undef, S, M)
+    for s in 1:S
+        for m in 1:M
+            targets[s, m] = round(Int, (μ[m][s] * (1 + T[m])))
+        end
     end
     return targets
 end
 
 function calculate_targets_lower(instance)
     M = instance.M
+    S = instance.S
     μ = instance.μ
     T = instance.T
-    targets = Vector{Float32}(undef, M)
-    for m in 1:M
-        targets[m] = 1 * μ[m][1] * (1 - T[m]) # corregir esto
+    targets = Matrix{Int}(undef, S, M)
+    for s in 1:S
+        for m in 1:M
+            targets[s, m] = round(Int, (μ[m][s] * (1 - T[m])))
+        end
     end
     return targets
 end
@@ -387,12 +401,12 @@ function update_constraints(M, V, R, i, j, values_matrix, risk_vec, targets, β)
     constraints = 0
     for m in 1:M
         values_matrix[i, m] += V[m][j]
-        if values_matrix[i, m] > targets[m]
+        if values_matrix[i, m] > targets[i, m]  # Note the i,m indexing
             constraints += 1
         end
     end
     risk_vec[i] += R[j]
-    if risk_vec[i] > β
+    if risk_vec[i] > β[i]  # Use center-specific β
         constraints += 1
     end
     return constraints
@@ -499,7 +513,7 @@ FUNCTION update_best_assignments_for_all_clients(facility, best_assignments)
 function oppCostQueue(Y, instance::Types.Instance)
     D = copy(instance.D)
     X = zeros(Int, size(D))
-    targets = calculate_targets_lower(instance)
+    targets_lower = calculate_targets_lower(instance)
     β = instance.β[1]
     S = instance.S
     B = instance.B
@@ -507,8 +521,8 @@ function oppCostQueue(Y, instance::Types.Instance)
     V = instance.V
     P = instance.P
     R = instance.R
-    values_matrix = Matrix{Float32}(undef, S, M)
-    risk_vec = Vector{Float32}(undef, S)
+    values_matrix = Matrix{Int}(undef, S, M)
+    risk_vec = Vector{Int}(undef, S)
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
     N = instance.P # podemos hacerlo en proporcion a P, no necesariamente tiene que ser P
     best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
@@ -527,7 +541,7 @@ function oppCostQueue(Y, instance::Types.Instance)
                 if center ∉ full_centers
                     for m in 1:M
                         values_matrix[center, m] += V[m][bu]
-                        if values_matrix[center, m] > (targets[m] * 1.2)
+                        if values_matrix[center, m] > (targets_lower[m])
                             fulls_m[m] = 1
                         end
                     end
@@ -568,7 +582,7 @@ function oppCostQueue2(Y, instance::Types.Instance)
     X = zeros(Int, size(D))
     targets = calculate_targets_lower(instance)
     targets_upper = calculate_targets_upper(instance)
-    β = instance.β[1]
+    β = instance.β
     S = instance.S
     B = instance.B
     M = instance.M
@@ -576,8 +590,8 @@ function oppCostQueue2(Y, instance::Types.Instance)
     P = instance.P
     R = instance.R
     
-    values_matrix = Matrix{Float32}(undef, S, M)
-    risk_vec = Vector{Float32}(undef, S)
+    values_matrix = Matrix{Int}(undef, S, M)
+    risk_vec = Vector{Int}(undef, S)
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
     
     N = instance.P
@@ -587,7 +601,7 @@ function oppCostQueue2(Y, instance::Types.Instance)
     target_progress = zeros(Float32, S, M)
     for i in 1:S
         for m in 1:M
-            target_progress[i,m] = values_matrix[i,m] / targets[m]
+            target_progress[i,m] = values_matrix[i,m] / targets[i,m] # Use center-specific targets
         end
     end
     
@@ -606,27 +620,28 @@ function oppCostQueue2(Y, instance::Types.Instance)
                 if center ∉ full_centers
                     # Calculate improvement in target progress
                     current_min_progress = minimum(target_progress[center,:])
-                    
-                    # Simulate adding this BU
+        
                     temp_progress = copy(target_progress[center,:])
                     for m in 1:M
-                        temp_progress[m] = (values_matrix[center,m] + V[m][bu]) / targets[m]
+                        temp_progress[m] = (values_matrix[center,m] + V[m][bu]) / targets[center,m]
                     end
                     
                     new_min_progress = minimum(temp_progress)
-                    improvement = new_min_progress - current_min_progress
+                    # Weight improvement by how far we are from minimum
+                    improvement = (new_min_progress - current_min_progress)
+
                     
                     # Check if this assignment would exceed upper bounds
                     exceeds_upper = false
                     for m in 1:M
-                        if values_matrix[center,m] + V[m][bu] > targets_upper[m]
+                        if values_matrix[center,m] + V[m][bu] > targets_upper[center,m]
                             exceeds_upper = true
                             break
                         end
                     end
                     
                     # Check risk constraint
-                    if !exceeds_upper && risk_vec[center] + R[bu] <= β && improvement > best_improvement
+                    if !exceeds_upper && risk_vec[center] + R[bu] <= β[center] && improvement > best_improvement
                         best_improvement = improvement
                         best_center = center
                     end
@@ -638,13 +653,13 @@ function oppCostQueue2(Y, instance::Types.Instance)
                 center = best_center
                 for m in 1:M
                     values_matrix[center,m] += V[m][bu]
-                    target_progress[center,m] = values_matrix[center,m] / targets[m]
+                    target_progress[center,m] = values_matrix[center,m] / targets[center, m]
                 end
                 risk_vec[center] += R[bu]
                 
                 # Check if center should be marked as full
                 min_progress = minimum(target_progress[center,:])
-                if min_progress >= 0.95  # Within 5% of targets
+                if min_progress >= 0.99  # Within 100% of targets, can be adjusted
                     push!(full_centers, center)
                 end
                 
@@ -654,7 +669,6 @@ function oppCostQueue2(Y, instance::Types.Instance)
             end
         end
     end
-    
     unassigned_count = length(unassigned_bus)
     println(unassigned_count)
     if unassigned_count > 0
@@ -664,13 +678,240 @@ function oppCostQueue2(Y, instance::Types.Instance)
     return X, unassigned_count
 end
 
+function oppCostQueue3(Y, instance::Types.Instance)
+    D = copy(instance.D)
+    X = zeros(Int, size(D))
+    targets = calculate_targets_lower(instance)
+    targets_upper = calculate_targets_upper(instance)
+    β = instance.β
+    S = instance.S
+    B = instance.B
+    M = instance.M
+    V = instance.V
+    P = instance.P
+    R = instance.R
+   
+    values_matrix = Matrix{Int}(undef, S, M)
+    risk_vec = Vector{Int}(undef, S)
+    values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
+   
+    N = instance.P
+    best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
+   
+    # Track progress towards targets for each facility
+    target_progress = zeros(Float32, S, M)
+    for i in 1:S
+        for m in 1:M
+            target_progress[i,m] = values_matrix[i,m] / targets[i,m]
+        end
+    end
+   
+    full_centers = Set()
+    assigned_bus = Set()
+    unassigned_bus = Set(collect(1:B))
+   
+    while !isempty(pq) && length(assigned_bus) < B
+        bu = dequeue!(pq)
+        if bu ∉ assigned_bus
+            # Calculate which center needs this BU most
+            best_center = nothing
+            best_improvement = -Inf
+           
+            for center in best_assignments[bu]
+                if center ∉ full_centers
+                    # Calculate improvement in target progress
+                    current_min_progress = minimum(target_progress[center,:])
+       
+                    temp_progress = copy(target_progress[center,:])
+                    for m in 1:M
+                        temp_progress[m] = (values_matrix[center,m] + V[m][bu]) / targets[center,m]
+                    end
+                   
+                    new_min_progress = minimum(temp_progress)
+                    improvement = (new_min_progress - current_min_progress)
+                   
+                    # Check if this assignment would exceed upper bounds
+                    exceeds_upper = false
+                    for m in 1:M
+                        if values_matrix[center,m] + V[m][bu] > targets_upper[center,m]
+                            exceeds_upper = true
+                            break
+                        end
+                    end
+                   
+                    # Check risk constraint
+                    if !exceeds_upper && risk_vec[center] + R[bu] <= β[center] && improvement > best_improvement
+                        best_improvement = improvement
+                        best_center = center
+                    end
+                end
+            end
+           
+            if best_center !== nothing
+                # Make the assignment
+                center = best_center
+                for m in 1:M
+                    values_matrix[center,m] += V[m][bu]
+                    target_progress[center,m] = values_matrix[center,m] / targets[center,m]
+                end
+                risk_vec[center] += R[bu]
+               
+                # NEW: Check if center should be marked as full by checking if ANY remaining unassigned
+                # business unit would violate constraints if added
+                can_accept_more = false
+                for remaining_bu in unassigned_bus
+                    if remaining_bu ∉ assigned_bus
+                        # Check if adding this BU would violate any constraint
+                        would_exceed_upper = false
+                        for m in 1:M
+                            if values_matrix[center,m] + V[m][remaining_bu] > targets_upper[center,m]
+                                would_exceed_upper = true
+                                break
+                            end
+                        end
+                        
+                        # If at least one remaining BU can be added without violations,
+                        # the center is not full
+                        if !would_exceed_upper && risk_vec[center] + R[remaining_bu] <= β[center]
+                            can_accept_more = true
+                            break
+                        end
+                    end
+                end
+                
+                # Only mark as full if NO remaining BU can be added
+                if !can_accept_more
+                    push!(full_centers, center)
+                end
+               
+                push!(assigned_bus, bu)
+                X[center, bu] = 1
+                pop!(unassigned_bus, bu)
+            end
+        end
+    end
+   
+    unassigned_count = length(unassigned_bus)
+    println(unassigned_count)
+    if unassigned_count > 0
+        X = handle_unassigned_clients2(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
+    end
+   
+    return X, unassigned_count
+end
+
+function oppCostQueue4(Y, instance::Instance)
+    D = copy(instance.D)
+    X = zeros(Int, size(D))
+    M = instance.M
+    S = instance.S
+    B = instance.B
+    V = instance.V
+    R = instance.R
+    β = instance.β
+    
+    # Initialize tracking matrices
+    values_matrix = zeros(Int, S, M)
+    risk_vec = zeros(Int, S)
+    
+    targets_lower = calculate_targets_lower(instance)
+    targets_upper = calculate_targets_upper(instance)
+    
+    # Track centers that have met their lower bounds
+    center_status = Dict{Int, Symbol}() # :open, :lower_met, :full
+    for i in 1:S
+        center_status[i] = :open
+    end
+    
+    # Calculate initial assignments and costs
+    N = instance.P
+    best_assignments, pq = compute_assignments_and_opportunity_costs(D, Y, N)
+    
+    assigned_bus = Set{Int}()
+    unassigned_bus = Set(collect(1:B))
+    
+    while !isempty(pq) && length(assigned_bus) < B
+        bu = dequeue!(pq)
+        
+        if bu ∉ assigned_bus
+            for center in best_assignments[bu]
+                if get(center_status, center, :full) == :full
+                    continue
+                end
+                
+                valid_assignment = true
+                
+                # Check risk constraint
+                if risk_vec[center] + R[bu] > β[center]
+                    valid_assignment = false
+                    continue
+                end
+                
+                # Check activity constraints
+                new_values = [values_matrix[center, m] + V[m][bu] for m in 1:M]
+                for m in 1:M
+                    if new_values[m] > targets_upper[center, m]
+                        valid_assignment = false
+                        break
+                    end
+                end
+                
+                if valid_assignment
+                    # Make assignment
+                    X[center, bu] = 1
+                    push!(assigned_bus, bu)
+                    pop!(unassigned_bus, bu)
+                    
+                    # Update matrices
+                    for m in 1:M
+                        values_matrix[center, m] += V[m][bu]
+                    end
+                    risk_vec[center] += R[bu]
+                    
+                    # Check if center has met lower bounds
+                    lower_bounds_met = true
+                    for m in 1:M
+                        if values_matrix[center, m] < targets_lower[center, m]
+                            lower_bounds_met = false
+                            break
+                        end
+                    end
+                    
+                    if lower_bounds_met && center_status[center] == :open
+                        center_status[center] = :lower_met
+                    end
+                    
+                    # Check if center is near full (close to upper bounds)
+                    is_full = true
+                    for m in 1:M
+                        remaining_capacity = targets_upper[center, m] - values_matrix[center, m]
+                        if remaining_capacity > maximum([V[m][j] for j in unassigned_bus])
+                            is_full = false
+                            break
+                        end
+                    end
+                    
+                    if is_full
+                        center_status[center] = :full
+                    end
+                    
+                    break
+                end
+            end
+        end
+    end
+    
+    unassigned_count = length(unassigned_bus)
+    X = handle_unassigned_clients3(X, instance, best_assignments, unassigned_bus, values_matrix, risk_vec)
+    return X, unassigned_count
+end
 
 
 # Function to calculate how much an assignment violates constraints
 function calculate_violation(facility, client, targets_upper, V, M, R, β, values_matrix, risk_vec)
     violation = 0
     for m in 1:M
-        excess = values_matrix[facility, m] + V[m][client] - targets_upper[m]
+        excess = values_matrix[facility, m] + V[m][client] - targets_upper[facility, m]
         if excess > 0
             violation += excess
         end
@@ -688,14 +929,14 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
     S = instance.S
     M = instance.M
     V = instance.V
-    β = instance.β[1]
+    β = instance.β
     R = instance.R
     counter = 0
     # Only loop over unassigned clients
     for client in unassigned_clients
         assigned = false
         # Sort facilities for this client based on their remaining risk capacity
-        sorted_best_assignments = sort(best_assignments[client], by=f -> β - risk_vec[f], rev=true)
+        sorted_best_assignments = sort(best_assignments[client], by=f -> instance.β[f] - risk_vec[f], rev=true)
         for facility in sorted_best_assignments
             potential_assignment_valid = true
             for m in 1:M
@@ -704,7 +945,7 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
                     break
                 end
             end
-            if risk_vec[facility] + R[client] > β
+            if risk_vec[facility] + R[client] > β[facility]
                 potential_assignment_valid = false
             end
             if potential_assignment_valid
@@ -722,7 +963,8 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
             min_violation = 10000000
             least_violating_facility = -1
             for facility in sorted_best_assignments
-                violation = calculate_violation(facility, client, targets_upper, V, M, R, β, values_matrix, risk_vec)
+                violation = calculate_violation(facility, client, targets_upper, V, M, R, β[facility], values_matrix, risk_vec)
+                #println(violation, facility)
                 if violation < min_violation
                     min_violation = violation
                     least_violating_facility = facility
@@ -735,10 +977,114 @@ function handle_unassigned_clients2(X, instance, best_assignments, unassigned_cl
             end
             risk_vec[least_violating_facility] += R[client]
             counter += 1
-            #println("Client $client was assigned to facility $least_violating_facility with a violation of $min_violation.")
+            println("Client $client was assigned to facility $least_violating_facility with a violation of $min_violation.")
         end
     end
-    #println("Number of unassigned clients: $(length(unassigned_clients)), served $counter")
+    println("Number of unassigned clients: $(length(unassigned_clients)), served $counter")
+    return X
+end
+
+function handle_unassigned_clients3(X, instance, best_assignments, unassigned_clients, values_matrix, risk_vec)
+
+    function make_assignment!(X, facility, client, values_matrix, risk_vec, V, M, R)
+        # Update assignment matrix
+        X[facility, client] = 1
+        
+        # Update activity values for all measures
+        for m in 1:M
+            values_matrix[facility, m] += V[m][client]
+        end
+        
+        # Update risk vector
+        risk_vec[facility] += R[client]
+    end
+
+    function is_valid_assignment(facility, client, targets_upper, targets_lower, V, M, R, facility_risk_cap, values_matrix, risk_vec)
+        # Check risk capacity constraint
+        if risk_vec[facility] + R[client] > facility_risk_cap
+            return false
+        end
+        
+        # Check all activity measures constraints
+        for m in 1:M
+            new_value = values_matrix[facility, m] + V[m][client]
+            
+            # Check against upper bound
+            if new_value > targets_upper[m]
+                return false
+            end
+        end
+        
+        return true
+    end
+    targets_upper = calculate_targets_upper(instance)
+    targets_lower = calculate_targets_lower(instance)
+    S = instance.S
+    M = instance.M
+    V = instance.V
+    β = instance.β
+    R = instance.R
+    
+    # Track violation counts per facility
+    facility_violation_counts = zeros(Int, S)
+    
+    for client in unassigned_clients
+        assigned = false
+        # First try: Find valid assignment
+        sorted_best_assignments = sort(best_assignments[client], 
+                                     by=f -> (instance.β[f] - risk_vec[f], -facility_violation_counts[f]), 
+                                     rev=true)
+        
+        # Try valid assignments first
+        for facility in sorted_best_assignments
+            if is_valid_assignment(facility, client, targets_upper, targets_lower, V, M, R, β[facility], values_matrix, risk_vec)
+                make_assignment!(X, facility, client, values_matrix, risk_vec, V, M, R)
+                assigned = true
+                break
+            end
+        end
+        
+        # If no valid assignment found, find least violating facility
+        if !assigned
+            min_violation = typemax(Int)
+            least_violating_facility = -1
+            
+            for facility in sorted_best_assignments
+                # Consider both current facility violations and new violation
+                total_violation = calculate_violation(facility, client, targets_upper, V, M, R, β[facility], values_matrix, risk_vec)
+                weighted_violation = total_violation * (1 + facility_violation_counts[facility] * 0.5)
+                
+                if weighted_violation < min_violation
+                    min_violation = weighted_violation
+                    least_violating_facility = facility
+                end
+            end
+            
+            # Ensure we assign to somewhere, even with violations
+            if least_violating_facility != -1
+                make_assignment!(X, least_violating_facility, client, values_matrix, risk_vec, V, M, R)
+                facility_violation_counts[least_violating_facility] += 1
+                println("Client $client was assigned to facility $least_violating_facility with a violation of $min_violation")
+            else
+                # Absolute fallback: assign to closest facility regardless of violations
+                closest_facility = argmin([instance.D[f, client] for f in 1:S])
+                make_assignment!(X, closest_facility, client, values_matrix, risk_vec, V, M, R)
+                println("FALLBACK: Client $client forced assignment to closest facility $closest_facility")
+            end
+        end
+    end
+    
+    # Verify all clients are assigned
+    for j in 1:instance.B
+        if sum(X[:, j]) == 0
+            println("WARNING: Client $j still unassigned after fallback!")
+            # Force assign to closest facility as absolute last resort
+            closest_facility = argmin(instance.D[:, j])
+            make_assignment!(X, closest_facility, j, values_matrix, risk_vec, V, M, R)
+            println("EMERGENCY: Forced assignment of client $j to facility $closest_facility")
+        end
+    end
+    
     return X
 end
 
@@ -755,6 +1101,287 @@ end
             \STATE \textbf{return} $oppMatrix$
         \EndProcedure
 =#
+
+struct ActivityMetric
+    avg::Float64
+    min::Float64
+    max::Float64
+    range::Float64
+end
+
+mutable struct FacilityState
+    id::Int
+    current_values::Vector{Float64}
+    min_thresholds::Vector{Float64}
+    max_thresholds::Vector{Float64}
+    normalized_gaps::Vector{Float64}
+    current_risk::Float64
+    risk_capacity::Float64
+end
+
+function get_activity_metrics(instance::Instance)
+    activity_metrics = Vector{ActivityMetric}(undef, instance.M)
+    
+    for m in 1:instance.M
+        values = Float64.(instance.V[m])  # Convert to Float64 for precision
+        activity_metrics[m] = ActivityMetric(
+            mean(values),
+            minimum(values),
+            maximum(values),
+            maximum(values) - minimum(values)
+        )
+    end
+    
+    return activity_metrics
+end
+
+function initialize_facility_states(Y::Vector{Int}, instance::Instance)
+    facility_states = Dict{Int, FacilityState}()
+    
+    for f in 1:instance.S
+        if Y[f] == 1
+            min_thresholds = [round(Int, instance.μ[m][f] * (1 - instance.T[m])) for m in 1:instance.M]
+            max_thresholds = [round(Int, instance.μ[m][f] * (1 + instance.T[m])) for m in 1:instance.M]
+            
+            # Initial gaps are just the minimum thresholds since we start at zero
+            normalized_gaps = min_thresholds  # Will be normalized in the calling function
+            
+            facility_states[f] = FacilityState(
+                f,                      # id
+                zeros(instance.M),      # current_values
+                min_thresholds,         # min_thresholds
+                max_thresholds,         # max_thresholds
+                normalized_gaps,        # normalized_gaps
+                0.0,                    # current_risk
+                instance.β[f]           # risk_capacity
+            )
+        end
+    end
+    
+    return facility_states
+end
+
+function get_most_critical_facility(facility_states)
+    critical_facilities = []
+    
+    for (_, state) in facility_states
+        max_gap = maximum(state.normalized_gaps)
+        if max_gap > 0  # Has at least one activity below minimum
+            push!(critical_facilities, (facility=state, priority=max_gap))
+        end
+    end
+    
+    isempty(critical_facilities) && return nothing
+    
+    # Return facility with highest priority (largest gap)
+    return sort(critical_facilities, by = x -> x.priority, rev=true)[1].facility
+end
+
+function select_best_bu(facility_state, unassigned_bus, instance, activity_metrics)
+    critical_activity = argmax(facility_state.normalized_gaps)
+    
+    best_bu = nothing
+    best_contribution = -Inf
+    
+    for bu in unassigned_bus
+        # Check risk constraint first
+        if facility_state.current_risk + instance.R[bu] > facility_state.risk_capacity
+            continue
+        end
+        
+        # Evaluate contribution to critical activity
+        contribution = instance.V[critical_activity][bu] / activity_metrics[critical_activity].avg
+        
+        # Check if this would exceed maximum thresholds
+        would_exceed = false
+        for m in 1:instance.M
+            new_value = facility_state.current_values[m] + instance.V[m][bu]
+            if new_value > facility_state.max_thresholds[m]
+                would_exceed = true
+                break
+            end
+        end
+        
+        if !would_exceed && contribution > best_contribution
+            best_contribution = contribution
+            best_bu = bu
+        end
+    end
+    
+    return best_bu
+end
+
+function make_assignment!(X, facility_id, bu, facility_states, instance)
+    # Update assignment matrix
+    X[facility_id, bu] = 1
+    
+    # Update facility state
+    state = facility_states[facility_id]
+    
+    # Update values and risk
+    for m in 1:instance.M
+        state.current_values[m] += instance.V[m][bu]
+    end
+    state.current_risk += instance.R[bu]
+    
+    # Update normalized gaps
+    for m in 1:instance.M
+        gap = state.min_thresholds[m] - state.current_values[m]
+        state.normalized_gaps[m] = max(0, gap)
+    end
+end
+
+function handle_balanced_phase(facility_states, unassigned_bus, instance, activity_metrics)
+    # When no critical gaps, allocate based on distance to max thresholds
+    best_score = -Inf
+    best_pair = nothing
+    
+    for (_, state) in facility_states
+        # Skip if risk capacity exhausted
+        remaining_risk = state.risk_capacity - state.current_risk
+        remaining_risk <= 0 && continue
+        
+        for bu in unassigned_bus
+            # Basic feasibility check
+            instance.R[bu] > remaining_risk && continue
+            
+            # Check maximum thresholds
+            would_exceed = false
+            for m in 1:instance.M
+                if state.current_values[m] + instance.V[m][bu] > state.max_thresholds[m]
+                    would_exceed = true
+                    break
+                end
+            end
+            would_exceed && continue
+            
+            # Simple scoring: prefer assignments furthest from max thresholds
+            score = minimum(
+                (state.max_thresholds[m] - (state.current_values[m] + instance.V[m][bu])) / 
+                activity_metrics[m].avg for m in 1:instance.M
+            )
+            
+            if score > best_score
+                best_score = score
+                best_pair = (facility=state.id, bu=bu)
+            end
+        end
+    end
+    
+    return best_pair
+end
+
+function strategic_allocation(Y, instance::Instance)
+    println("Starting allocation for instance with $(instance.B) BUs and $(sum(Y)) open facilities")
+    
+    X = zeros(Int, instance.S, instance.B)
+    activity_metrics = get_activity_metrics(instance)
+    println("Activity metrics:")
+    for (m, metric) in enumerate(activity_metrics)
+        println("Activity $m: avg=$(round(metric.avg, digits=2)), range=[$(metric.min), $(metric.max)]")
+    end
+    
+    facility_states = initialize_facility_states(Y, instance)
+    unassigned_bus = Set(1:instance.B)
+    
+    iteration = 1
+    while !isempty(unassigned_bus)
+        println("\nIteration $iteration: $(length(unassigned_bus)) BUs remaining")
+        
+        critical_facility = get_most_critical_facility(facility_states)
+        if critical_facility !== nothing
+            println("Critical facility $(critical_facility.id) found")
+            println("Normalized gaps: ", round.(critical_facility.normalized_gaps, digits=3))
+            
+            best_bu = select_best_bu(critical_facility, unassigned_bus, instance, activity_metrics)
+            if best_bu !== nothing
+                println("Selected BU $best_bu for critical facility")
+                println("Before assignment - Values: ", round.(critical_facility.current_values, digits=2))
+                make_assignment!(X, critical_facility.id, best_bu, facility_states, instance)
+                println("After assignment - Values: ", round.(critical_facility.current_values, digits=2))
+                delete!(unassigned_bus, best_bu)
+            else
+                println("No feasible BU found for critical facility")
+                assignment = handle_balanced_phase(facility_states, unassigned_bus, instance, activity_metrics)
+                if isnothing(assignment)
+                    println("No feasible assignments possible")
+                    break
+                end
+                println("Balanced assignment: facility $(assignment.facility), BU $(assignment.bu)")
+                make_assignment!(X, assignment.facility, assignment.bu, facility_states, instance)
+                delete!(unassigned_bus, assignment.bu)
+            end
+        else
+            println("No critical facilities - entering balanced phase")
+            assignment = handle_balanced_phase(facility_states, unassigned_bus, instance, activity_metrics)
+            isnothing(assignment) && break
+            println("Balanced assignment: facility $(assignment.facility), BU $(assignment.bu)")
+            make_assignment!(X, assignment.facility, assignment.bu, facility_states, instance)
+            delete!(unassigned_bus, assignment.bu)
+        end
+        
+        if iteration % 10 == 0
+            println("\nFacility states after iteration $iteration:")
+            for (f, state) in facility_states
+                println("Facility $f:")
+                println("  Values: ", round.(state.current_values, digits=2))
+                println("  Gaps: ", round.(state.normalized_gaps, digits=3))
+                println("  Risk: $(round(state.current_risk, digits=2))/$(state.risk_capacity)")
+            end
+        end
+        
+        iteration += 1
+    end
+    println("\nAllocation completed. Unassigned BUs: $(length(unassigned_bus))")
+    handle_unassigned_bus!(X, unassigned_bus, facility_states, instance, activity_metrics)
+    println(size(X))
+    return X, 0
+end
+
+function handle_unassigned_bus!(X, unassigned_bus, facility_states, instance, activity_metrics)
+    println("\nHandling $(length(unassigned_bus)) unassigned BUs")
+    
+    function calculate_violation(facility_state, bu)
+        total_violation = 0.0
+        
+        # Check activity violations
+        for m in 1:instance.M
+            new_value = facility_state.current_values[m] + instance.V[m][bu]
+            
+            if new_value < facility_state.min_thresholds[m]
+                total_violation += (facility_state.min_thresholds[m] - new_value) / activity_metrics[m].avg
+            elseif new_value > facility_state.max_thresholds[m]
+                total_violation += (new_value - facility_state.max_thresholds[m]) / activity_metrics[m].avg
+            end
+        end
+        
+        # Check risk violation
+        if facility_state.current_risk + instance.R[bu] > facility_state.risk_capacity
+            total_violation += (facility_state.current_risk + instance.R[bu] - facility_state.risk_capacity) / 
+                             facility_state.risk_capacity
+        end
+        
+        return total_violation
+    end
+    
+    for bu in unassigned_bus
+        min_violation = Inf
+        best_facility = nothing
+        
+        # Try each facility
+        for (_, state) in facility_states
+            violation = calculate_violation(state, bu)
+            if violation < min_violation
+                min_violation = violation
+                best_facility = state
+            end
+        end
+        
+        println("BU $bu assigned to facility $(best_facility.id) with violation $min_violation")
+        make_assignment!(X, best_facility.id, bu, facility_states, instance)
+    end
+end
+
 
 function oppCostAssignment(Y, instance::Types.Instance)
     D = copy(instance.D)
@@ -1080,18 +1707,18 @@ function isFactible(solution::Types.Solution, verbose=true)
 
     for i in 1:S
         for m in 1:M
-            if !(Y[i] * μ[m][i] * (1 - T[m]) <= sum(X[i, j] * V[m][j] for j in 1:B))
+            if !(round(Int, (Y[i] * μ[m][i] * (1 - T[m]))) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
-                    println("μ: ", Y[i] * μ[m][i] * (1 - T[m]))
+                    println("μ: ", round(Int, (Y[i] * μ[m][i] * (1 - T[m]))))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
             end
-            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= Y[i] * μ[m][i] * (1 + T[m]))
+            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= round(Int, Y[i] * μ[m][i] * (1 + T[m])))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
-                    println("μ: ", [i] * μ[m][i] * (1 + T[m]))
+                    println("μ: ", round(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
@@ -1141,7 +1768,7 @@ function main_constructive(init_method, assign_method; path="inst", read_file=tr
 
     solution = constructive(instance, number, init_method, assign_method)
     println(isFactible(solution))
-    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_new5.jld2"
+    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_int_003_003_003_newranges_queue2.jld2"
     write_solution(solution, sol_path)
     println("\a")
     return solution

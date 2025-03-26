@@ -8,7 +8,7 @@ function write_full_iis(model::Model, filename::String)
     # Compute IIS
     compute_conflict!(model)
     iis_model, reference_map = copy_conflict(model)
-    
+
     # Open file in write mode with UTF-8 encoding
     open(filename, "w") do f
         # Get all variables
@@ -16,10 +16,10 @@ function write_full_iis(model::Model, filename::String)
         #for var in all_variables(iis_model)
         #    println(f, var)
         #end
-        
+
         println(f, "\nObjective:")
         println(f, objective_function(iis_model))
-        
+
         println(f, "\nConstraints:")
         # Get all constraint types
         for (F, S) in list_of_constraint_types(iis_model)
@@ -48,30 +48,11 @@ function optimize_model(model::Model, number; verbose=true, solver=Gurobi::Modul
         set_silent(model)
     end
     # show(model)
-    set_optimizer_attribute(model, "LogFile", "really_new_logs/new_log_30_mins_1250_$number.txt")
+    set_optimizer_attribute(model, "LogFile", "really_new_logs/new_log_250_120_12_int_newrange010_tol_30mins_newk_$number.txt")
     optimize!(model)
-    
+
     #write_full_iis(model, "file.ilp")
-    
-    #if get_attribute(model, MOI.ConflictStatus()) == MOI.CONFLICT_FOUND
-     #   iis_model, reference_map = copy_conflict(model)
-      #  save_model_to_file(iis_model, "full_iis_model.txt")
-        #println(iis_model)
-        #println(reference_map)
-        #RBwrite(JuMP.backend(model), "conflict.ilp")
-        
-        #MOI.get.(model, MOI.ConstraintConflictStatus(), bu_service)
-        #=
-        println(MOI.get.(model, MOI.ConstraintConflictStatus(), use_branch))
-        println(MOI.get.(model, MOI.ConstraintConflictStatus(), risk))
-        println(MOI.get.(model, MOI.ConstraintConflictStatus(), tol_l))
-        println(MOI.get.(model, MOI.ConstraintConflictStatus(), tol_u))
-        println(MOI.get.(model, MOI.ConstraintConflictStatus(), low_k))
-        println(MOI.get.(model, MOI.ConstraintConflictStatus(), upp_k))
-        =#
-    #end
-    #
-    
+
     tiempo = MOI.get(model, MOI.SolveTimeSec())
     time_int = trunc(Int, tiempo)
     if primal_status(model) != MOI.FEASIBLE_POINT
@@ -79,6 +60,7 @@ function optimize_model(model::Model, number; verbose=true, solver=Gurobi::Modul
         obj_value = 0 # TODO hacer algo mejor
         X = [0 0; 0 0]
         Y = [0, 0] # idk
+    #write_full_iis(model, "iis_$number.ilp")
     else
         obj_value = trunc(Int, objective_value(model))
         X = value.(model[:x])
@@ -88,7 +70,7 @@ function optimize_model(model::Model, number; verbose=true, solver=Gurobi::Modul
         obj_val = objective_value(model)
         bb_val = dual_objective_value(model)
         gap = relative_gap(model)
-        writedlm("really_new_logs/new_1250_obj_bb_gap_time_30mins_$number.txt", [obj_val, bb_val, gap, time_int])
+        writedlm("really_new_logs/new_250_120_12_newrange_int_010_tol_obj_bb_gap_time_30mins_newk_$number.txt", [obj_val, bb_val, gap, time_int])
         println(time_int)
     end
     if termination_status(model) != MOI.OPTIMAL
@@ -112,7 +94,7 @@ function build_model(instance::Instance)
     β = instance.β
 
     m = 3 # activities
-    k = 5 #  of branches
+    k = 4 #  of branches
 
     model = Model() # THIS IS WHERE THE FUN BEGINS
 
@@ -145,13 +127,12 @@ function build_model(instance::Instance)
     @constraint(
         model,
         tol_l[i in 1:S, M in 1:m],
-        sum(x[i, j] * V[M][j] for j in 1:B) >= (y[i] * μ[M][i] * (1 - T[M])),
+        sum(x[i, j] * V[M][j] for j in 1:B) >= y[i] * ceil(Int, μ[M][i] * (1 - T[M]))
     )
-
     @constraint(
         model,
         tol_u[i in 1:S, M in 1:m],
-        sum(x[i, j] * V[M][j] for j in 1:B) <= (y[i] * μ[M][i] * (1 + T[M])),
+        sum(x[i, j] * V[M][j] for j in 1:B) <= y[i] * floor(Int, μ[M][i] * (1 + T[M]))
     )
 
     # Yᵢμₘⁱ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vⱼᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
@@ -168,6 +149,6 @@ function build_model(instance::Instance)
         sum(y[i] for i in Sk[K]) <= Uk[K],
     )
 
-    # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 5
+    # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 4
     return model
 end
