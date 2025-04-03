@@ -48,7 +48,7 @@ function optimize_model(model::Model, number; verbose=true, solver=Gurobi::Modul
         set_silent(model)
     end
     # show(model)
-    set_optimizer_attribute(model, "LogFile", "really_new_logs/new_log_250_120_12_int_newrange010_tol_30mins_newk_$number.txt")
+    set_optimizer_attribute(model, "LogFile", "logs_new/log_1000_500_50_010_newk_$number.txt")
     optimize!(model)
 
     #write_full_iis(model, "file.ilp")
@@ -70,7 +70,7 @@ function optimize_model(model::Model, number; verbose=true, solver=Gurobi::Modul
         obj_val = objective_value(model)
         bb_val = dual_objective_value(model)
         gap = relative_gap(model)
-        writedlm("really_new_logs/new_250_120_12_newrange_int_010_tol_obj_bb_gap_time_30mins_newk_$number.txt", [obj_val, bb_val, gap, time_int])
+        writedlm("logs_new/results_1000_500_50_010_newk_$number.txt", [obj_val, bb_val, gap, time_int])
         println(time_int)
     end
     if termination_status(model) != MOI.OPTIMAL
@@ -100,6 +100,79 @@ function build_model(instance::Instance)
 
     @variable(model, x[1:S, 1:B], Bin)
     #@variable(model, x[1:S, 1:B], lower_bound = 0, upper_bound = 1)
+    # num suc and num bu, Xᵢⱼ
+
+    @variable(model, y[1:S], Bin)
+    # Yᵢ
+
+    @objective(model, Min, sum(D .* x))
+    # Xᵢⱼ * Dᵢⱼ
+
+    @constraint(model, bu_service[j in 1:B], sum(x[i, j] for i in 1:S) == 1)
+
+    # ∑ᵢ∈S Xᵢⱼ = 1, ∀ j ∈ B
+
+    @constraint(model, use_branch[j in 1:B, i in 1:S], x[i, j] <= y[i])
+
+    # Xᵢⱼ ≤ Yᵢ , ∀ i ∈ S, j ∈ B
+
+    @constraint(model, cardinality, sum(y) == P)
+
+    # ∑ i ∈ S Yᵢ = p
+
+    @constraint(model, risk[i in 1:S], sum(x[i, j] * R[j] for j in 1:B) <= β[i])
+
+    # ∑ j ∈ B Xᵢⱼ Rⱼ ≤ βᵢ, ∀ i ∈ S
+
+    @constraint(
+        model,
+        tol_l[i in 1:S, M in 1:m],
+        sum(x[i, j] * V[M][j] for j in 1:B) >= y[i] * ceil(Int, μ[M][i] * (1 - T[M]))
+    )
+    @constraint(
+        model,
+        tol_u[i in 1:S, M in 1:m],
+        sum(x[i, j] * V[M][j] for j in 1:B) <= y[i] * floor(Int, μ[M][i] * (1 + T[M]))
+    )
+
+    # Yᵢμₘⁱ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vⱼᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
+
+    @constraint(
+        model,
+        low_k[K in 1:k],
+        Lk[K] <= sum(y[i] for i in Sk[K]),
+    )
+
+    @constraint(
+        model,
+        upp_k[K in 1:k],
+        sum(y[i] for i in Sk[K]) <= Uk[K],
+    )
+
+    # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 4
+    return model
+end
+function build_model_x_relaxed(instance::Instance)
+    B = instance.B
+    S = instance.S
+    D = instance.D
+    Sk = instance.Sk
+    Lk = instance.Lk
+    Uk = instance.Uk
+    P = instance.P
+    V = instance.V
+    μ = instance.μ
+    T = instance.T
+    R = instance.R
+    β = instance.β
+
+    m = 3 # activities
+    k = 4 #  of branches
+
+    model = Model() # THIS IS WHERE THE FUN BEGINS
+
+    #@variable(model, x[1:S, 1:B], Bin)
+    @variable(model, x[1:S, 1:B], lower_bound = 0, upper_bound = 1)
     # num suc and num bu, Xᵢⱼ
 
     @variable(model, y[1:S], Bin)

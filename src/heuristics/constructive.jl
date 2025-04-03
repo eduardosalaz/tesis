@@ -3,7 +3,6 @@ using JuMP
 using Distances
 using DelimitedFiles
 using Gurobi
-using HiGHS
 using Dates
 using TimerOutputs
 using MathOptInterface
