@@ -209,6 +209,9 @@ function localize_facs(instance, method)
     elseif method == "relax"
         println("RELAXATION")
         return relax_init(instance)
+    elseif method == "multi"
+        println("MULTI TYPE PDISP")
+        return multi_type_pdp_heuristic_instance(instance, instance.D)
     end
 end
 
@@ -299,6 +302,246 @@ function pdisp_2(instance)
     return collection, delta_init_milli.value
 end
 
+function multi_type_pdp_heuristic_instance(instance, d; objective="minmin", local_search=true)
+    # Extract data from instance object
+    n = instance.S               # Total number of points
+    Sk = instance.Sk             # Sets of points by type (Sk[k] contains indices of all points of type k)
+    Lk = instance.Lk             # Lower bounds for each type (minimum number to select)
+    Uk = instance.Uk             # Upper bounds for each type (maximum number to select)
+    p = instance.P               # Total number of points to select
+    k = length(Sk)               # Number of different types
+    
+    # Initialize solution structures
+    selected = Int[]             # Will store indices of selected points
+    selected_by_type = zeros(Int, k)  # Counter for how many points of each type are selected
+    
+    # Phase 1: Greedy construction with type constraints - ensuring lower bounds are met
+    remaining = p                # Track how many points we still need to select
+    
+    # First, ensure we meet lower bounds for each type
+    for k_idx in 1:k             # Iterate through each type
+        # Create a list of candidate points of this type that haven't been selected yet
+        candidates = copy(Sk[k_idx])
+        filter!(i -> !(i in selected), candidates)
+        
+        # Determine how many points of this type we need to select to meet lower bound
+        needed = Lk[k_idx]
+        
+        # Keep selecting points of this type until lower bound is met
+        while needed > 0 && !isempty(candidates)
+            best_idx = -1        # Will store index of best candidate
+            best_value = -Inf    # Will store value of best candidate
+            
+            # Evaluate each candidate point
+            for idx in candidates
+                # For the first point being selected, use distance from center as criterion
+                if isempty(selected)
+                    # Calculate center of all points
+                    center_x = sum(instance.S_coords[:, 1]) / n
+                    center_y = sum(instance.S_coords[:, 2]) / n
+                    # Calculate distance from center
+                    value = sqrt((instance.S_coords[idx, 1] - center_x)^2 + (instance.S_coords[idx, 2] - center_y)^2)
+                else
+                    # For subsequent points, evaluate based on chosen objective
+                    if objective == "sumsum"
+                        # Sum of distances to all already selected points
+                        value = sum(d[idx, j] for j in selected)
+                    else # minmin
+                        # Minimum distance to any already selected point
+                        value = minimum(d[idx, j] for j in selected)
+                    end
+                end
+                
+                # Keep track of the best candidate
+                if value > best_value
+                    best_value = value
+                    best_idx = idx
+                end
+            end
+            
+            # If we found a suitable candidate, add it to our solution
+            if best_idx != -1
+                push!(selected, best_idx)           # Add to selected set
+                selected_by_type[k_idx] += 1        # Increment counter for this type
+                needed -= 1                         # One less point needed for this type
+                remaining -= 1                      # One less point needed overall
+                filter!(x -> x != best_idx, candidates)  # Remove from candidates list
+            else
+                break  # No suitable candidates found, move to next type
+            end
+        end
+    end
+    
+    # Phase 2: Fill remaining slots greedily while respecting upper bounds
+    while remaining > 0          # Continue until we've selected enough points
+        best_idx = -1            # Will store index of best candidate
+        best_value = -Inf        # Will store value of best candidate
+        
+        # Consider points of all types, but respect upper bounds
+        for k_idx in 1:k
+            # Skip if we're already at upper bound for this type
+            if selected_by_type[k_idx] >= Uk[k_idx]
+                continue
+            end
+            
+            # Evaluate all unselected points of this type
+            for i in Sk[k_idx]
+                if !(i in selected)
+                    # For the first point being selected, use distance from center
+                    if isempty(selected)
+                        center_x = sum(instance.S_coords[:, 1]) / n
+                        center_y = sum(instance.S_coords[:, 2]) / n
+                        value = sqrt((instance.S_coords[i, 1] - center_x)^2 + (instance.S_coords[i, 2] - center_y)^2)
+                    else
+                        # For subsequent points, evaluate based on objective
+                        if objective == "sumsum"
+                            value = sum(d[i, j] for j in selected)
+                        else # minmin
+                            value = minimum(d[i, j] for j in selected)
+                        end
+                    end
+                    
+                    # Keep track of the best candidate
+                    if value > best_value
+                        best_value = value
+                        best_idx = i
+                    end
+                end
+            end
+        end
+        
+        # If we couldn't find any valid point, stop the algorithm
+        if best_idx == -1
+            break
+        end
+        
+        # Add the best point to our solution
+        push!(selected, best_idx)
+        
+        # Update the type counter for the selected point
+        for k_idx in 1:k
+            if best_idx in Sk[k_idx]
+                selected_by_type[k_idx] += 1
+                break
+            end
+        end
+        
+        remaining -= 1  # One less point needed overall
+    end
+    
+    # Phase 3: Local search improvement - try to improve the solution through swaps
+    if local_search && length(selected) >= 2
+        improved = true          # Flag to track if we made an improvement
+        iterations = 0           # Counter for number of iterations
+        max_iterations = 100     # Maximum number of iterations allowed
+        
+        # Continue as long as we're still finding improvements
+        while improved && iterations < max_iterations
+            improved = false
+            iterations += 1
+            
+            # Calculate current objective value
+            current_obj = 0
+            if objective == "sumsum"
+                # Sum of all pairwise distances between selected points
+                current_obj = sum(d[s1, s2] for s1 in selected for s2 in selected if s1 < s2)
+            else # minmin
+                # Minimum distance between any pair of selected points
+                # First create all pairs of selected points
+                if length(selected) >= 2
+                    # Calculate minimum distance between any pair of selected points
+                    min_dist = Inf
+                    for i in 1:length(selected)
+                        for j in i+1:length(selected)
+                            dist = d[selected[i], selected[j]]
+                            if dist < min_dist
+                                min_dist = dist
+                            end
+                        end
+                    end
+                    current_obj = min_dist
+                end
+            end
+            
+            # Try swapping each selected point with each non-selected point of same type
+            for i in selected
+                # Find type of this point
+                i_type = 0
+                for k_idx in 1:k
+                    if i in Sk[k_idx]
+                        i_type = k_idx
+                        break
+                    end
+                end
+                
+                # Try all non-selected points of the same type
+                for j in Sk[i_type]
+                    if !(j in selected)
+                        # Simulate swap by creating a modified selected set
+                        new_selected = copy(selected)
+                        replace!(new_selected, i => j)
+                        
+                        # Calculate objective value with the simulated swap
+                        new_obj = 0
+                        if objective == "sumsum"
+                            new_obj = sum(d[s1, s2] for s1 in new_selected for s2 in new_selected if s1 < s2)
+                        else # minmin
+                            # Calculate minimum distance between any pair of points in new selection
+                            if length(new_selected) >= 2
+                                min_dist = Inf
+                                for i2 in 1:length(new_selected)
+                                    for j2 in i2+1:length(new_selected)
+                                        dist = d[new_selected[i2], new_selected[j2]]
+                                        if dist < min_dist
+                                            min_dist = dist
+                                        end
+                                    end
+                                end
+                                new_obj = min_dist
+                            end
+                        end
+                        
+                        # If the swap improves the objective, make it permanent
+                        if new_obj > current_obj
+                            replace!(selected, i => j)
+                            improved = true
+                            break  # Move to next selected point
+                        end
+                    end
+                end
+                
+                # If we improved the solution, start over with the new solution
+                if improved
+                    break
+                end
+            end
+        end
+    end
+    
+    # Calculate final objective value for the solution
+    obj_value = 0
+    if length(selected) >= 2
+        if objective == "sumsum"
+            # Sum of all pairwise distances
+            obj_value = sum(d[s1, s2] for s1 in selected for s2 in selected if s1 < s2)
+        else # minmin
+            # Minimum distance between any pair of selected points
+            min_dist = Inf
+            for i in 1:length(selected)
+                for j in i+1:length(selected)
+                    dist = d[selected[i], selected[j]]
+                    if dist < min_dist
+                        min_dist = dist
+                    end
+                end
+            end
+            obj_value = min_dist
+        end
+    end
+    
+    return selected, selected_by_type, obj_value
+end
+
 function minimums(matrix::Matrix, n)::Tuple{Vector{Int64},Vector{CartesianIndex{2}}}
     type = eltype(matrix)
     vals = fill(10000000000000, n)
@@ -368,7 +611,7 @@ function calculate_targets_upper(instance)
     targets = Matrix{Int}(undef, S, M)
     for s in 1:S
         for m in 1:M
-            targets[s, m] = round(Int, (μ[m][s] * (1 + T[m])))
+            targets[s, m] = floor(Int, (μ[m][s] * (1 + T[m])))
         end
     end
     return targets
@@ -382,7 +625,7 @@ function calculate_targets_lower(instance)
     targets = Matrix{Int}(undef, S, M)
     for s in 1:S
         for m in 1:M
-            targets[s, m] = round(Int, (μ[m][s] * (1 - T[m])))
+            targets[s, m] = ceil(Int, (μ[m][s] * (1 - T[m])))
         end
     end
     return targets
@@ -658,7 +901,7 @@ function oppCostQueue2(Y, instance::Types.Instance)
                 
                 # Check if center should be marked as full
                 min_progress = minimum(target_progress[center,:])
-                if min_progress >= 0.99  # Within 100% of targets, can be adjusted
+                if min_progress >= 0.95  # Within 100% of targets, can be adjusted
                     push!(full_centers, center)
                 end
                 
@@ -1706,7 +1949,7 @@ function isFactible(solution::Types.Solution, verbose=true)
 
     for i in 1:S
         for m in 1:M
-            if !(round(Int, (Y[i] * μ[m][i] * (1 - T[m]))) <= sum(X[i, j] * V[m][j] for j in 1:B))
+            if !(ceil(Int, (Y[i] * μ[m][i] * (1 - T[m]))) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
                     println("μ: ", round(Int, (Y[i] * μ[m][i] * (1 - T[m]))))
@@ -1714,7 +1957,7 @@ function isFactible(solution::Types.Solution, verbose=true)
                 end
                 number_constraints_violated += 1
             end
-            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= round(Int, Y[i] * μ[m][i] * (1 + T[m])))
+            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= floor(Int, Y[i] * μ[m][i] * (1 + T[m])))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
                     println("μ: ", round(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
@@ -1767,7 +2010,7 @@ function main_constructive(init_method, assign_method; path="inst", read_file=tr
 
     solution = constructive(instance, number, init_method, assign_method)
     println(isFactible(solution))
-    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_int_003_003_003_newranges_queue2.jld2"
+    sol_path = "sol_$number" * "_$B" * "_$S" * "_$P" * "_$init_method" * "_$assign_method" * "_int_010_010_010_newranges_queue2.jld2"
     write_solution(solution, sol_path)
     println("\a")
     return solution

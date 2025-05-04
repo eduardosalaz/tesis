@@ -1,7 +1,8 @@
 using JuMP
 using Gurobi
 using LinearAlgebra
-using CPLEX
+using Plots
+
 # Create model
 function build_multi_p_dispersion()
     # Data
@@ -380,75 +381,19 @@ function build_multi_p_dispersion()
     function multi_pdp_min()
         model = Model(Gurobi.Optimizer)
         
-        @variable(model, y[I], Bin)      # 1 if point i is selected
-        @variable(model, u >= 0)         # Minimum distance between any two selected points
-        @variable(model, z[i=I,j=I; i<j], Bin)  # 1 if both points i and j are selected
-        @variable(model, w[K], Int)      # Number of points of type k selected
+        # Variables
+        @variable(model, y[I], Bin)  # 1 if point i is selected
+        @variable(model, u >= 0)     # Minimum distance between any two selected points
+        @variable(model, w[K], Int)  # Number of points of type k selected
         
         # Objective: Maximize the minimum distance
         @objective(model, Max, u)
         
-        # Constraint: z[i,j] = 1 if and only if both i and j are selected
+        # Constraint: Linearization of minimum distance
         for i in I
             for j in I
                 if i < j
-                    @constraint(model, z[i,j] <= y[i])
-                    @constraint(model, z[i,j] <= y[j])
-                    @constraint(model, z[i,j] >= y[i] + y[j] - 1)
-                end
-            end
-        end
-        
-        # Minimum distance constraints with tighter linearization
-        for i in I
-            for j in I
-                if i < j
-                    @constraint(model, u <= d[i,j] + Dmax * (1 - z[i,j]))
-                end
-            end
-        end
-        
-        # Remaining constraints...
-        @constraint(model, sum(y) == p)
-        
-        for k in K
-            @constraint(model, w[k] == sum(y[i] for i in I if data[i][3] == k))
-            @constraint(model, w[k] >= lb[k])
-            @constraint(model, w[k] <= ub[k])
-        end
-        
-
-        
-        
-        return model
-    end
-
-    function multi_pdp_min_alternative()
-        print("hola")
-        model = Model(Gurobi.Optimizer)
-        
-        # Variables for point selection
-        @variable(model, y[I], Bin)  # 1 if point i is selected
-        @variable(model, w[K], Int)  # Number of points of type k selected
-        
-        # Get all unique distance values
-        possible_distances = sort(unique([round(sqrt((data[i][1] - data[j][1])^2 + 
-                                                   (data[i][2] - data[j][2])^2)) 
-                                         for i in I for j in I if i < j]))
-        
-        # Binary variable for each possible distance - equals 1 if this is the minimum distance
-        @variable(model, z[possible_distances], Bin)
-        
-        # Exactly one distance value is the minimum
-        @constraint(model, sum(z[dist] for dist in possible_distances) == 1)
-        
-        # Link variables: if z[dist]=1, then no pair of points closer than dist can be selected
-        for dist in possible_distances
-            for i in I
-                for j in I
-                    if i < j && d[i,j] < dist
-                        @constraint(model, y[i] + y[j] <= 1 + (1 - z[dist]))
-                    end
+                    @constraint(model, u <= d[i,j] + Dmax * (2 - (y[i] + y[j])))
                 end
             end
         end
@@ -467,12 +412,8 @@ function build_multi_p_dispersion()
             @constraint(model, w[k] <= ub[k])
         end
         
-        # Objective: maximize the selected minimum distance
-        @objective(model, Max, sum(dist * z[dist] for dist in possible_distances))
-        
         return model
     end
-    
     
     # Model C: p-Dispersion with minmin objective (no type constraints)
     function pdp_min()
@@ -500,63 +441,638 @@ function build_multi_p_dispersion()
         return model
     end
     
-    return pdp_min, multi_pdp_min, multi_pdp_min_alternative, data
+    return pdp_min, multi_pdp_min, multi_pdp_sum, data, d, lb, ub, K
+end
+
+function multi_type_pdp_heuristic(data, p; objective="sumsum", local_search=true)
+    n = length(data)
+    
+    # Calculate distances between all points
+    d = zeros(n, n)
+    for i in 1:n
+        for j in 1:n
+            if i != j
+                d[i,j] = round(sqrt((data[i][1] - data[j][1])^2 + (data[i][2] - data[j][2])^2))
+            end
+        end
+    end
+    
+    # Get unique types and their proportions
+    types = sort(unique([point[3] for point in data]))
+    type_counts = Dict(k => count(p -> p[3] == k, data) for k in types)
+    proportion = Dict(k => type_counts[k] / n for k in types)
+    
+    # Calculate bounds for each type
+    lb = Dict(k => floor(Int, p * proportion[k]) for k in types)
+    ub = Dict(k => ceil(Int, p * proportion[k]) for k in types)
+    
+    # Initialize solution
+    selected = Int[]
+    selected_by_type = Dict(k => 0 for k in types)
+    
+    # Phase 1: Greedy construction with type constraints
+    remaining = p
+    
+    # First, ensure we meet lower bounds for each type
+    for k in types
+        # We need to select at least lb[k] points of type k
+        candidates = findall(i -> data[i][3] == k && !(i in selected), 1:n)
+        needed = lb[k]
+        
+        while needed > 0 && !isempty(candidates)
+            best_idx = -1
+            best_value = -Inf
+            
+            for idx in candidates
+                # For the first point, use distance from center
+                if isempty(selected)
+                    center_x = sum(data[i][1] for i in 1:n) / n
+                    center_y = sum(data[i][2] for i in 1:n) / n
+                    value = sqrt((data[idx][1] - center_x)^2 + (data[idx][2] - center_y)^2)
+                else
+                    # For subsequent points, evaluate based on objective
+                    if objective == "sumsum"
+                        value = sum(d[idx, j] for j in selected)
+                    else # minmin
+                        value = minimum(d[idx, j] for j in selected)
+                    end
+                end
+                
+                if value > best_value
+                    best_value = value
+                    best_idx = idx
+                end
+            end
+            
+            if best_idx != -1
+                push!(selected, best_idx)
+                selected_by_type[k] += 1
+                needed -= 1
+                remaining -= 1
+                filter!(x -> x != best_idx, candidates)
+            else
+                break
+            end
+        end
+    end
+    
+    # Phase 2: Fill remaining slots greedily while respecting upper bounds
+    while remaining > 0
+        best_idx = -1
+        best_value = -Inf
+        
+        for i in 1:n
+            if !(i in selected) && selected_by_type[data[i][3]] < ub[data[i][3]]
+                # Evaluate contribution to objective
+                if isempty(selected)
+                    # For the first point, use distance from center
+                    center_x = sum(data[j][1] for j in 1:n) / n
+                    center_y = sum(data[j][2] for j in 1:n) / n
+                    value = sqrt((data[i][1] - center_x)^2 + (data[i][2] - center_y)^2)
+                else
+                    # For subsequent points
+                    if objective == "sumsum"
+                        value = sum(d[i, j] for j in selected)
+                    else # minmin
+                        value = minimum(d[i, j] for j in selected)
+                    end
+                end
+                
+                if value > best_value
+                    best_value = value
+                    best_idx = i
+                end
+            end
+        end
+        
+        if best_idx == -1
+            break  # No valid points left to add
+        end
+        
+        push!(selected, best_idx)
+        selected_by_type[data[best_idx][3]] += 1
+        remaining -= 1
+    end
+    
+    # Phase 3: Local search improvement
+    if local_search && length(selected) >= 2
+        improved = true
+        iterations = 0
+        max_iterations = 100
+        
+        while improved && iterations < max_iterations
+            improved = false
+            iterations += 1
+            
+            # Calculate current objective value
+            current_obj = 0
+            if objective == "sumsum"
+                current_obj = sum(d[s1, s2] for s1 in selected for s2 in selected if s1 < s2)
+            else # minmin
+                current_obj = minimum(d[s1, s2] for s1 in selected for s2 in selected if s1 < s2)
+            end
+            
+            # Try swapping each selected point with each non-selected point of same type
+            for i in selected
+                type_i = data[i][3]
+                
+                for j in 1:n
+                    if !(j in selected) && data[j][3] == type_i
+                        # Simulate swap
+                        new_selected = copy(selected)
+                        replace!(new_selected, i => j)
+                        
+                        # Calculate new objective
+                        new_obj = 0
+                        if objective == "sumsum"
+                            new_obj = sum(d[s1, s2] for s1 in new_selected for s2 in new_selected if s1 < s2)
+                        else # minmin
+                            new_obj = minimum(d[s1, s2] for s1 in new_selected for s2 in new_selected if s1 < s2)
+                        end
+                        
+                        # If improvement found, make the swap
+                        if new_obj > current_obj
+                            replace!(selected, i => j)
+                            improved = true
+                            break
+                        end
+                    end
+                end
+                
+                if improved
+                    break
+                end
+            end
+        end
+    end
+    
+    # Calculate final objective value
+    obj_value = 0
+    if length(selected) >= 2
+        if objective == "sumsum"
+            obj_value = sum(d[s1, s2] for s1 in selected for s2 in selected if s1 < s2)
+        else # minmin
+            obj_value = minimum(d[s1, s2] for s1 in selected for s2 in selected if s1 < s2)
+        end
+    end
+    
+    return selected, selected_by_type, obj_value
+end
+
+# NEW FUNCTION: Simple p-dispersion algorithm
+function pdisp_simple(d, p, N)
+    maxdist = 0
+    bestpair = (0, 1)
+    
+    # Find the pair of points with maximum distance
+    for i in 1:N
+        for j in i+1:N
+            if d[i, j] > maxdist
+                maxdist = d[i, j]
+                bestpair = (i, j)
+            end
+        end
+    end
+    
+    # Initialize solution with the maximum distance pair
+    P = Set([])
+    push!(P, bestpair[1])
+    push!(P, bestpair[2])
+    
+    # Iteratively add points to maximize the minimum distance
+    while length(P) < p
+        maxdist = 0
+        vbest = 0
+        for v in 1:N
+            if v in P
+                continue
+            end
+            mindist = Inf
+            for vprime in P
+                if d[v, vprime] < mindist
+                    mindist = d[v, vprime]
+                end
+            end
+            if mindist > maxdist
+                maxdist = mindist
+                vbest = v
+            end
+        end
+        if vbest != 0 && !(vbest in P)
+            push!(P, vbest)
+        end
+    end
+    
+    collection = collect(P)
+    return collection
+end
+
+# NEW FUNCTION: Determine the type of a node
+function node_type(i, Sk)
+    for k in eachindex(Sk)
+        if i in Sk[k]
+            return k
+        end
+    end
+    println("Node $i not found in Sk")
+    return 0  # Return default if not found
+end
+
+# NEW FUNCTION: Count how many points of each type are in solution P
+function count_k(P, Sk)
+    count = zeros(Int, length(Sk))
+    for i in P
+        k = node_type(i, Sk)
+        count[k] += 1
+    end
+    return count
+end
+
+# NEW FUNCTION: Enhanced p-dispersion algorithm with type constraints
+function pdisp_2(data, p)
+    # Extract data
+    n = length(data)  # Number of points
+    
+    # Calculate distances
+    d = zeros(n, n)
+    for i in 1:n
+        for j in 1:n
+            d[i,j] = round(sqrt((data[i][1] - data[j][1])^2 + (data[i][2] - data[j][2])^2))
+        end
+    end
+    
+    # Get unique types and create Sk (sets of nodes by type)
+    types = sort(unique([point[3] for point in data]))
+    Sk = [Int[] for _ in 1:length(types)]
+    
+    for i in 1:n
+        type_idx = findfirst(t -> t == data[i][3], types)
+        push!(Sk[type_idx], i)
+    end
+    
+    # Calculate proportions and bounds for each type
+    proportion = Dict(k => length(Sk[k]) / n for k in 1:length(types))
+    Lk = Dict(k => floor(Int, p * proportion[k]) for k in 1:length(types))
+    Uk = Dict(k => ceil(Int, p * proportion[k]) for k in 1:length(types))
+    
+    # Create distance matrices for each type
+    d_by_type = []
+    for k in 1:length(types)
+        d_k = zeros(length(Sk[k]), length(Sk[k]))
+        for i in 1:length(Sk[k])
+            for j in 1:length(Sk[k])
+                d_k[i, j] = d[Sk[k][i], Sk[k][j]]
+            end
+        end
+        push!(d_by_type, d_k)
+    end
+    
+    # Solve p-dispersion for each type
+    p_disp_by_type = []
+    for k in 1:length(types)
+        p_k = pdisp_simple(d_by_type[k], Lk[k], length(Sk[k]))
+        # Convert indices back to original data indices
+        p_k_fixed = [Sk[k][i] for i in p_k]
+        push!(p_disp_by_type, p_k_fixed)
+    end
+    
+    # Combine solutions
+    pdisp_ok = Set(vcat(p_disp_by_type...))
+    
+    # Adjust solution if needed
+    if length(pdisp_ok) != p
+        count = count_k(pdisp_ok, Sk)
+        
+        while length(pdisp_ok) < p
+            # Find the node v that maximizes the distance to its closest neighbor in P
+            maxdist = 0
+            vbest = 0
+            
+            for v in 1:n
+                if v in pdisp_ok
+                    continue
+                end
+                
+                k = node_type(v, Sk)
+                if k == 0 || count[k] >= Uk[k]
+                    continue
+                end
+                
+                dist = minimum([d[v, vprime] for vprime in pdisp_ok])
+                if dist > maxdist
+                    maxdist = dist
+                    vbest = v
+                end
+            end
+            
+            # If no such node exists, stop the algorithm
+            if vbest == 0
+                println("PDISP_2 could not find a valid solution that satisfies all constraints")
+                break
+            end
+            
+            # Add the node vbest to the set P and update the counts
+            k = node_type(vbest, Sk)
+            if k > 0  # Ensure valid type
+                count[k] += 1
+                push!(pdisp_ok, vbest)
+            end
+        end
+    end
+    
+    # Calculate objective value - minimum distance between any two selected points
+    collection = collect(pdisp_ok)
+    min_dist = Inf
+    
+    if length(collection) >= 2
+        for i in 1:length(collection)
+            for j in i+1:length(collection)
+                min_dist = min(min_dist, d[collection[i], collection[j]])
+            end
+        end
+    end
+    
+    return collection, min_dist
+end
+
+# Plot the solution with different shapes for types and colors for selection status
+function plot_solution(data, selected_indices; filename="solution_plot.png", title="Multi-Type p-Dispersion Solution")
+    # Create a new plot
+    p = plot(
+        size=(800, 800),
+        xlabel="X",
+        ylabel="Y",
+        title=title,
+        legend=:topright,
+        framestyle=:box,
+        grid=false
+    )
+    
+    # Define marker shapes for different types
+    # Use different markers for different types: :circle, :rect, :star5, :diamond, :hexagon
+    shapes = Dict(
+        1 => :circle,
+        2 => :rect,
+        3 => :star5,
+        4 => :diamond,
+        5 => :hexagon
+    )
+    
+    # Define colors for selected/non-selected
+    selected_color = :red
+    non_selected_color = :blue
+    
+    # Get unique types
+    types = sort(unique([point[3] for point in data]))
+    
+    # First plot non-selected points (blue)
+    for t in types
+        # Get indices of non-selected points of type t
+        non_selected = [i for i in 1:length(data) if data[i][3] == t && !(i in selected_indices)]
+        
+        if !isempty(non_selected)
+            x_coords = [data[i][1] for i in non_selected]
+            y_coords = [data[i][2] for i in non_selected]
+            
+            scatter!(
+                p, 
+                x_coords, 
+                y_coords, 
+                markershape=shapes[t],
+                markercolor=non_selected_color, 
+                markerstrokecolor=:black,
+                markersize=6,
+                markerstrokewidth=1,
+                label="Type $t (not selected)"
+            )
+        end
+    end
+    
+    # Then plot selected points (red) so they appear on top
+    for t in types
+        # Get indices of selected points of type t
+        selected = [i for i in selected_indices if data[i][3] == t]
+        
+        if !isempty(selected)
+            x_coords = [data[i][1] for i in selected]
+            y_coords = [data[i][2] for i in selected]
+            
+            scatter!(
+                p, 
+                x_coords, 
+                y_coords, 
+                markershape=shapes[t],
+                markercolor=selected_color, 
+                markerstrokecolor=:black,
+                markersize=8,
+                markerstrokewidth=1.5,
+                label="Type $t (selected)"
+            )
+        end
+    end
+    
+    # Save the plot to a file
+    savefig(p, filename)
+    
+    return p
+end
+
+# Compare multiple solutions
+function compare_multiple_solutions(data, solutions_dict; filename="multi_solution_comparison.png")
+    # Create a new plot
+    p = plot(
+        size=(1000, 800),
+        xlabel="X",
+        ylabel="Y",
+        title="Comparison of Multiple Solution Methods",
+        legend=:topright,
+        framestyle=:box,
+        grid=false
+    )
+    
+    # Define marker shapes for different types
+    shapes = Dict(
+        1 => :circle,
+        2 => :rect,
+        3 => :star5,
+        4 => :diamond,
+        5 => :hexagon
+    )
+    
+    # Define colors for different solutions
+    solution_colors = Dict(
+        "Optimal" => :red,
+        "Heuristic" => :blue,
+        "Simple" => :green,
+        "Type-Constrained" => :purple
+    )
+    
+    # Get unique types
+    types = sort(unique([point[3] for point in data]))
+    
+    # First plot non-selected points (light gray)
+    non_selected = Set(1:length(data))
+    for (_, indices) in solutions_dict
+        non_selected = setdiff(non_selected, indices)
+    end
+    
+    for t in types
+        # Get indices of non-selected points of type t
+        type_non_selected = [i for i in non_selected if data[i][3] == t]
+        
+        if !isempty(type_non_selected)
+            x_coords = [data[i][1] for i in type_non_selected]
+            y_coords = [data[i][2] for i in type_non_selected]
+            
+            scatter!(
+                p, 
+                x_coords, 
+                y_coords, 
+                markershape=shapes[t],
+                markercolor=:lightgray, 
+                markerstrokecolor=:gray,
+                markersize=4,
+                markerstrokewidth=0.5,
+                label=t==1 ? "Non-selected" : ""  # Only show in legend once
+            )
+        end
+    end
+    
+    # Plot each solution
+    for (method_name, indices) in solutions_dict
+        color = solution_colors[method_name]
+        
+        for t in types
+            # Get indices of selected points of type t
+            selected = [i for i in indices if data[i][3] == t]
+            
+            if !isempty(selected)
+                x_coords = [data[i][1] for i in selected]
+                y_coords = [data[i][2] for i in selected]
+                
+                scatter!(
+                    p, 
+                    x_coords, 
+                    y_coords, 
+                    markershape=shapes[t],
+                    markercolor=color, 
+                    markerstrokecolor=:black,
+                    markersize=8,
+                    markerstrokewidth=1.5,
+                    label="Type $t ($method_name)"
+                )
+            end
+        end
+    end
+    
+    savefig(p, filename)
+    println("Multi-solution comparison plot saved to '$filename'")
+    
+    return p
 end
 
 # Execute the models
 function run_models()
-    pdp_min_model, multi_pdp_min_model, multi_pdp_min_alternative, data = build_multi_p_dispersion()
-    #=
-    # Solve Model C: p-Dispersion with minmin objective
-    println("\nSolving basic p-dispersion model (pdp_min)...")
-    model_c = pdp_min_model()
-    #set_silent(model_c)
-    set_time_limit_sec(model_c, 2000)
-    optimize!(model_c)
+    pdp_min_model, multi_pdp_min_model, multi_pdp_sum_model, data, d, lb, ub, K = build_multi_p_dispersion()
+    p = 40  # Number of points to select
     
-    if termination_status(model_c) == MOI.OPTIMAL
-        y_val_c = value.(model_c[:y])
-        z_min_val_c = objective_value(model_c)
-        
-        println("Solution status: ", termination_status(model_c))
-        println("Objective value (z_min): ", z_min_val_c)
-        #println("Selected points (y): ", findall(x -> x > 0.5, y_val_c))
-    else
-        println("Model C could not be solved to optimality.")
-        println("Status: ", termination_status(model_c))
-    end
-    =#
+    # Store all solutions for comparison
+    solutions = Dict{String, Vector{Int}}()
+    
     # Solve Model B: Multi p-Dispersion with minmin objective
     println("\nSolving multi p-dispersion model (multi_pdp_min)...")
     model_b = multi_pdp_min_model()
-    #set_silent(model_b)
     set_time_limit_sec(model_b, 2000)
     optimize!(model_b)
     
-    if termination_status(model_b) == MOI.OPTIMAL
+    if termination_status(model_b) == MOI.OPTIMAL || termination_status(model_b) == MOI.TIME_LIMIT
         y_val_b = value.(model_b[:y])
-        w_val_b = value.(model_b[:w])
+        y_round = round.(Int, y_val_b)
         z_min_val_b = objective_value(model_b)
         
         println("Solution status: ", termination_status(model_b))
         println("Objective value (z_min): ", z_min_val_b)
-        #println("Selected points (y): ", findall(x -> x > 0.5, y_val_b))
-        #println("Points by type (w): ", Dict(k => w_val_b[k] for k in keys(w_val_b)))
         
-        # Show actual points selected
-        #=
-        selected_indices = findall(x -> x > 0.5, y_val_b)
-        selected_points = [data[i] for i in selected_indices]
-        println("Selected point coordinates and types:")
-        for (idx, point) in zip(selected_indices, selected_points)
-            println("P$(lpad(idx, 3, "0")): ($(point[1]), $(point[2])), type $(point[3])")
-        end
-        =#
+        selected_indices = findall(x -> x == 1, y_round.data)
+        println("Selected points (optimal): ", selected_indices)
+        
+        # Plot the optimal solution
+        plot_solution(data, selected_indices, filename="optimal_solution.png", title="Optimal Solution (MinMin Objective)")
+        println("Optimal solution plot saved to 'optimal_solution.png'")
+        
+        # Store solution
+        solutions["Optimal"] = selected_indices
     else
         println("Model B could not be solved to optimality.")
         println("Status: ", termination_status(model_b))
     end
+    
+    # Run the multi-type p-dispersion heuristic
+    println("\nRunning multi-type heuristic solution...")
+    heuristic_selected, type_distribution, heuristic_obj = multi_type_pdp_heuristic(data, p, objective="minmin")
+    println("Heuristic solution selected points: ", heuristic_selected)
+    println("Heuristic objective value: ", heuristic_obj)
+    println("Type distribution: ", type_distribution)
+    
+    # Plot the heuristic solution
+    plot_solution(data, heuristic_selected, filename="heuristic_solution.png", title="Heuristic Solution (MinMin Objective)")
+    println("Heuristic solution plot saved to 'heuristic_solution.png'")
+    
+    # Store solution
+    solutions["Heuristic"] = heuristic_selected
+    
+    # Run the simple p-dispersion algorithm (no type constraints)
+    println("\nRunning simple p-dispersion algorithm...")
+    n = length(data)
+    simple_selected = pdisp_simple(d, p, n)
+    
+    # Calculate objective value for simple solution
+    simple_obj = Inf
+    for i in simple_selected
+        for j in simple_selected
+            if i < j
+                simple_obj = min(simple_obj, d[i, j])
+            end
+        end
+    end
+    
+    println("Simple p-dispersion solution: ", simple_selected)
+    println("Simple p-dispersion objective value: ", simple_obj)
+    
+    # Check type distribution of simple solution
+    simple_type_count = Dict(k => count(i -> data[i][3] == k, simple_selected) for k in K)
+    println("Simple solution type distribution: ", simple_type_count)
+    
+    # Plot the simple solution
+    plot_solution(data, simple_selected, filename="simple_solution.png", title="Simple p-Dispersion Solution (No Type Constraints)")
+    println("Simple solution plot saved to 'simple_solution.png'")
+    
+    # Store solution
+    solutions["Simple"] = simple_selected
+    
+    # Run the type-constrained p-dispersion algorithm (pdisp_2)
+    println("\nRunning type-constrained p-dispersion algorithm...")
+    type_constrained_selected, type_constrained_obj = pdisp_2(data, p)
+    
+    println("Type-constrained p-dispersion solution: ", type_constrained_selected)
+    println("Type-constrained p-dispersion objective value: ", type_constrained_obj)
+    
+    # Check type distribution of type-constrained solution
+    type_constrained_count = Dict(k => count(i -> data[i][3] == k, type_constrained_selected) for k in K)
+    println("Type-constrained solution type distribution: ", type_constrained_count)
+    
+    # Plot the type-constrained solution
+    plot_solution(data, type_constrained_selected, filename="type_constrained_solution.png", title="Type-Constrained p-Dispersion Solution")
+    println("Type-constrained solution plot saved to 'type_constrained_solution.png'")
+    
+    # Store solution
+    solutions["Type-Constrained"] = type_constrained_selected
+    
+    # Create a multi-solution comparison plot
+    compare_multiple_solutions(data, solutions)
+    
+    return data, solutions
 end
 
-# Run the models
+# Run the models with visualization
 run_models()

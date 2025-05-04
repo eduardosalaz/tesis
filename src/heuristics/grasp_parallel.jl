@@ -116,8 +116,8 @@ function calculate_targets(instance)
     targets_upper = Matrix{Int}(undef, S, M)
     for s in 1:S
         for m in 1:M
-            targets_lower[s, m] = round(Int, (1 * μ[m][s] * (1 - T[m])))
-            targets_upper[s, m] = round(Int, (1 * μ[m][s] * (1 + T[m])))
+            targets_lower[s, m] = ceil(Int, (1 * μ[m][s] * (1 - T[m])))
+            targets_upper[s, m] = floor(Int, (1 * μ[m][s] * (1 + T[m])))
         end
     end
     return targets_lower, targets_upper
@@ -133,7 +133,7 @@ function calculate_targets_upper(instance)
     targets = Matrix{Int}(undef, S, M)
     for s in 1:S
         for m in 1:M
-            targets[s, m] = round(Int, μ[m][s] * (1 + T[m]))
+            targets[s, m] = floor(Int, μ[m][s] * (1 + T[m]))
         end
     end
     return targets
@@ -147,7 +147,7 @@ function calculate_targets_lower(instance)
     targets = Matrix{Int}(undef, S, M)
     for s in 1:S
         for m in 1:M
-            targets[s, m] = round(Int, μ[m][s] * (1 - T[m]))
+            targets[s, m] = ceil(Int, μ[m][s] * (1 - T[m]))
         end
     end
     return targets
@@ -166,8 +166,8 @@ function calculate_targets_optimized(instance)
     # Calculate bounds for each center i and activity m
     for i in 1:S
         for m in 1:M
-            targets_lower[i,m] = round(Int, (μ[m][i] * (1 - T[m])))
-            targets_upper[i,m] = round(Int, (μ[m][i] * (1 + T[m])))
+            targets_lower[i,m] = ceil(Int, (μ[m][i] * (1 - T[m])))
+            targets_upper[i,m] = floor(Int, (μ[m][i] * (1 + T[m])))
         end
     end
     

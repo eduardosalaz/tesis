@@ -4,6 +4,295 @@ using LinearAlgebra
 using Dates
 using StaticArrays
 
+function repair_activity_constraints(instance::Instance, x_binary, y_fixed)
+    B = instance.B
+    S = instance.S
+    D = instance.D
+    V = instance.V
+    μ = instance.μ
+    R = instance.R
+    β = instance.β
+    m = 3 # activities
+    ε = instance.T[1]
+
+    # Make a copy of the solution to modify
+    x_repaired = copy(x_binary)
+
+    # Calculate current activity levels for each service and activity type
+    activity_levels = zeros(S, m)
+    for i in 1:S, M in 1:m
+        activity_levels[i, M] = sum(x_repaired[i, j] * V[M][j] for j in 1:B)
+    end
+
+    # Check which services violate their activity constraints
+    violations = Dict{Tuple{Int,Int},Float64}() # (service, activity) => violation amount
+
+    for i in 1:S
+        if y_fixed[i] == 1 # Only check active services
+            for M in 1:m
+                lower_bound = (1 - ε) * μ[M][i]
+                upper_bound = (1 + ε) * μ[M][i]
+
+                if activity_levels[i, M] < ceil(lower_bound)
+                    violations[(i, M)] = ceil(lower_bound) - activity_levels[i, M]
+                elseif activity_levels[i, M] > floor(upper_bound)
+                    violations[(i, M)] = activity_levels[i, M] - floor(upper_bound)
+                end
+            end
+        end
+    end
+
+    if isempty(violations)
+        println("No activity violations to repair!")
+        return x_repaired
+    end
+
+    println("Found $(length(violations)) activity violations")
+
+    # Sort violations by magnitude (largest first)
+    sorted_violations = sort(collect(violations), by=x -> x[2], rev=true)
+
+    # Maximum number of repair iterations to avoid infinite loops
+    max_repair_iterations = 100
+    iteration = 0
+
+    # Track branches that have been moved recently to detect cycling
+    recently_moved = Set{Int}()
+
+    while !isempty(violations) && iteration < max_repair_iterations
+        iteration += 1
+
+        # Take the largest violation
+        (service_i, activity_M), violation_amount = first(sorted_violations)
+
+        # Determine if we need to increase or decrease activity
+        needs_increase = activity_levels[service_i, activity_M] < ceil((1 - ε) * μ[activity_M][service_i])
+
+        if needs_increase
+            # Need to increase activity - look for branches to add
+            # Find branches currently assigned to other services
+            other_service_branches = [(j, i) for j in 1:B, i in 1:S if x_repaired[i, j] == 1 && i != service_i]
+
+            # Calculate the benefit of reassigning each branch
+            candidates = []
+            for (branch_j, current_service) in other_service_branches
+                # Skip recently moved branches to avoid cycling
+                if branch_j in recently_moved
+                    continue
+                end
+
+                # Skip if this would violate risk constraint
+                if sum(x_repaired[service_i, j] * R[j] for j in 1:B) + R[branch_j] > β[service_i]
+                    continue
+                end
+
+                # Check if adding this branch would cause violations for any activity measure
+                valid_assignment = true
+                for check_M in 1:m
+                    new_level = activity_levels[service_i, check_M] + V[check_M][branch_j]
+                    if new_level > floor((1 + ε) * μ[check_M][service_i])
+                        valid_assignment = false
+                        break
+                    end
+                end
+
+                if !valid_assignment
+                    continue
+                end
+
+                # Calculate the activity gain for the deficient service
+                activity_gain = V[activity_M][branch_j]
+
+                # Calculate the activity loss for the current service
+                activity_loss = V[activity_M][branch_j]
+
+                # FIX: Check if removal would cause violations for ANY activity type for the donor service
+                valid_removal = true
+                for check_M in 1:m
+                    current_level = activity_levels[current_service, check_M]
+                    new_level = current_level - V[check_M][branch_j]
+
+                    if new_level < ceil((1 - ε) * μ[check_M][current_service])
+                        valid_removal = false
+                        break
+                    end
+                end
+
+                if !valid_removal
+                    continue
+                end
+
+                # Calculate net benefit (weighted by how much each service is out of bounds)
+                current_violation = get(violations, (current_service, activity_M), 0.0)
+                benefit = activity_gain - (current_violation > 0 ? activity_loss : 0)
+
+                # Calculate cost impact
+                cost_change = D[service_i, branch_j] - D[current_service, branch_j]
+
+                push!(candidates, (branch_j, current_service, benefit, cost_change))
+            end
+
+            # Sort candidates by benefit (descending) and then by cost change (ascending)
+            sort!(candidates, by=x -> (x[3], -x[4]), rev=true)
+
+            # Try the best candidate
+            if !isempty(candidates)
+                branch_j, current_service, _, _ = first(candidates)
+
+                # Reassign the branch
+                x_repaired[service_i, branch_j] = 1
+                x_repaired[current_service, branch_j] = 0
+
+                # Update activity levels for ALL activity types
+                for M in 1:m
+                    activity_levels[service_i, M] += V[M][branch_j]
+                    activity_levels[current_service, M] -= V[M][branch_j]
+                end
+
+                # Add to recently moved set
+                push!(recently_moved, branch_j)
+
+                println("Iteration $iteration: Reassigned BU $branch_j from center $current_service to center $service_i to increase activity $activity_M")
+            else
+                println("Iteration $iteration: Could not find a suitable BU to increase activity $activity_M for center $service_i")
+                # Mark this violation as unresolvable for now to avoid getting stuck
+                delete!(violations, (service_i, activity_M))
+                sorted_violations = sort(collect(violations), by=x -> x[2], rev=true)
+                continue
+            end
+        else
+            # Need to decrease activity - look for branches to remove
+            # Find branches currently assigned to this service
+            current_branches = [j for j in 1:B if x_repaired[service_i, j] == 1]
+
+            # Calculate the benefit of reassigning each branch
+            candidates = []
+            for branch_j in current_branches
+                # Skip recently moved branches to avoid cycling
+                if branch_j in recently_moved
+                    continue
+                end
+
+                # Calculate the activity reduction
+                activity_reduction = V[activity_M][branch_j]
+
+                # Find potential services to receive this branch
+                receiving_services = [i for i in 1:S if i != service_i && y_fixed[i] == 1]
+
+                for receiving_service in receiving_services
+                    # Skip if this would violate risk constraint
+                    if sum(x_repaired[receiving_service, j] * R[j] for j in 1:B) + R[branch_j] > β[receiving_service]
+                        continue
+                    end
+
+                    # Check if adding this branch would cause violations for any activity measure
+                    valid_assignment = true
+                    for check_M in 1:m
+                        new_level = activity_levels[receiving_service, check_M] + V[check_M][branch_j]
+                        if new_level > floor((1 + ε) * μ[check_M][receiving_service])
+                            valid_assignment = false
+                            break
+                        end
+                    end
+
+                    if !valid_assignment
+                        continue
+                    end
+
+                    # FIX: Check if removal would cause violations for ANY activity type for the donor service
+                    valid_removal = true
+                    for check_M in 1:m
+                        current_level = activity_levels[service_i, check_M]
+                        new_level = current_level - V[check_M][branch_j]
+
+                        if new_level < ceil((1 - ε) * μ[check_M][service_i])
+                            valid_removal = false
+                            break
+                        end
+                    end
+
+                    if !valid_removal
+                        continue
+                    end
+
+                    # Calculate net benefit
+                    receiving_violation = get(violations, (receiving_service, activity_M), 0.0)
+                    benefit = activity_reduction - (receiving_violation > 0 ? activity_reduction : 0)
+
+                    # Calculate cost impact
+                    cost_change = D[receiving_service, branch_j] - D[service_i, branch_j]
+
+                    push!(candidates, (branch_j, receiving_service, benefit, cost_change))
+                end
+            end
+
+            # Sort candidates by benefit (descending) and then by cost change (ascending)
+            sort!(candidates, by=x -> (x[3], -x[4]), rev=true)
+
+            # Try the best candidate
+            if !isempty(candidates)
+                branch_j, receiving_service, _, _ = first(candidates)
+
+                # Reassign the branch
+                x_repaired[service_i, branch_j] = 0
+                x_repaired[receiving_service, branch_j] = 1
+
+                # Update activity levels for ALL activity types
+                for M in 1:m
+                    activity_levels[service_i, M] -= V[M][branch_j]
+                    activity_levels[receiving_service, M] += V[M][branch_j]
+                end
+
+                # Add to recently moved set
+                push!(recently_moved, branch_j)
+
+                println("Iteration $iteration: Reassigned BU $branch_j from center $service_i to center $receiving_service to decrease activity $activity_M")
+            else
+                println("Iteration $iteration: Could not find a suitable center to receive BU from center $service_i to decrease activity $activity_M")
+                # Mark this violation as unresolvable for now to avoid getting stuck
+                delete!(violations, (service_i, activity_M))
+                sorted_violations = sort(collect(violations), by=x -> x[2], rev=true)
+                continue
+            end
+        end
+
+        # Limit the size of recently_moved to avoid memory issues and allow branches to be moved again eventually
+        if length(recently_moved) > 10
+            # Keep only the most recent 5 moves
+            recently_moved = Set(collect(recently_moved)[end-4:end])
+        end
+
+        # Recalculate violations after the reassignment
+        violations = Dict{Tuple{Int,Int},Float64}()
+        for i in 1:S
+            if y_fixed[i] == 1
+                for M in 1:m
+                    lower_bound = (1 - ε) * μ[M][i]
+                    upper_bound = (1 + ε) * μ[M][i]
+
+                    if activity_levels[i, M] < ceil(lower_bound)
+                        violations[(i, M)] = ceil(lower_bound) - activity_levels[i, M]
+                    elseif activity_levels[i, M] > floor(upper_bound)
+                        violations[(i, M)] = activity_levels[i, M] - floor(upper_bound)
+                    end
+                end
+            end
+        end
+
+        sorted_violations = sort(collect(violations), by=x -> x[2], rev=true)
+    end
+
+    # Final check to see if we resolved all violations
+    if isempty(violations)
+        println("Successfully repaired all activity violations in $iteration iterations!")
+    else
+        println("Could not repair all violations after $iteration iterations. Remaining violations: $(length(violations))")
+    end
+
+    # Verify all constraints are satisfied
+    return x_repaired
+end
+
 function find_one_in_column_unrolled(X::Matrix{Int64}, col::Int)
     rows = size(X, 1)
     @inbounds begin
@@ -134,18 +423,18 @@ function isFactible(solution::Types.Solution, verbose=true)
 
     for i in 1:S
         for m in 1:M
-            if !(round(Int, Y[i] * μ[m][i] * (1 - T[m])) <= sum(X[i, j] * V[m][j] for j in 1:B))
+            if !(ceil(Int, Y[i] * μ[m][i] * (1 - T[m])) <= sum(X[i, j] * V[m][j] for j in 1:B))
                 if verbose
                     println("violando V inferior en i: $i y m: $m")
-                    println("μ: ", round(Int, (Y[i] * μ[m][i] * (1 - T[m]))))
+                    println("μ: ", ceil(Int, (Y[i] * μ[m][i] * (1 - T[m]))))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
             end
-            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= round(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
+            if !(sum(X[i, j] * V[m][j] for j in 1:B) <= floor(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
                 if verbose
                     println("violando V superior en i: $i y m: $m")
-                    println("μ: ", round(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
+                    println("μ: ", floor(Int, (Y[i] * μ[m][i] * (1 + T[m]))))
                     println("V: ", sum(X[i, j] * V[m][j] for j in 1:B))
                 end
                 number_constraints_violated += 1
@@ -184,8 +473,8 @@ function calculate_targets(instance)
     targets_upper = Matrix{Int}(undef, S, M)
     for s in 1:S
         for m in 1:M
-            targets_lower[s, m] = round(Int, (1 * μ[m][s] * (1 - T[m])))
-            targets_upper[s, m] = round(Int, (1 * μ[m][s] * (1 + T[m])))
+            targets_lower[s, m] = ceil(Int, (1 * μ[m][s] * (1 - T[m])))
+            targets_upper[s, m] = floor(Int, (1 * μ[m][s] * (1 + T[m])))
         end
     end
     return targets_lower, targets_upper
@@ -200,7 +489,7 @@ function calculate_targets_upper(instance)
     targets = Matrix{Int}(undef, S, M)
     for s in 1:S
         for m in 1:M
-            targets[s, m] = round(Int, (μ[m][s] * (1 + T[m])))
+            targets[s, m] = floor(Int, (μ[m][s] * (1 + T[m])))
         end
     end
     return targets
@@ -214,7 +503,7 @@ function calculate_targets_lower(instance)
     targets = Matrix{Int}(undef, S, M)
     for s in 1:S
         for m in 1:M
-            targets[s, m] = round(Int, (μ[m][s] * (1 - T[m])))
+            targets[s, m] = ceil(Int, (μ[m][s] * (1 - T[m])))
         end
     end
     return targets
@@ -233,8 +522,8 @@ function calculate_targets_optimized(instance)
     # Calculate bounds for each center i and activity m
     for i in 1:S
         for m in 1:M
-            targets_lower[i, m] = round(Int, μ[m][i] * (1 - T[m]))
-            targets_upper[i, m] = round(Int, μ[m][i] * (1 + T[m]))
+            targets_lower[i, m] = ceil(Int, μ[m][i] * (1 - T[m]))
+            targets_upper[i, m] = floor(Int, μ[m][i] * (1 + T[m]))
         end
     end
 
@@ -823,43 +1112,43 @@ function repair_solution4(solution, cons, targets_lower, targets_upper, remove, 
     values_matrix = Matrix{Int}(undef, S, M)
     risk_vec = Vector{Int}(undef, S)
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
-    
+
     # Handle facilities that need to remove BUs
     for ĩ in remove
         assigned_bus = findall(==(1), X[ĩ, :])
-        
+
         for j in assigned_bus  # Try every assigned BU
             # Try every possible facility (ignoring distance)
             for i in 1:S
                 i == ĩ && continue
                 Y[i] == 0 && continue
-                
+
                 # Test move feasibility
                 can_do_move = true
-                
+
                 # Simulate move
                 for m in 1:M
                     values_matrix[ĩ, m] -= V[m][j]
                     values_matrix[i, m] += V[m][j]
-                    
+
                     # Check bounds
                     if values_matrix[i, m] > targets_upper[i, m] ||
-                        values_matrix[i, m] < targets_lower[i, m] ||
-                        values_matrix[ĩ, m] > targets_upper[ĩ, m] ||
-                        values_matrix[ĩ, m] < targets_lower[ĩ, m]
-                         can_do_move = false
-                         break
-                     end
+                       values_matrix[i, m] < targets_lower[i, m] ||
+                       values_matrix[ĩ, m] > targets_upper[ĩ, m] ||
+                       values_matrix[ĩ, m] < targets_lower[ĩ, m]
+                        can_do_move = false
+                        break
+                    end
                 end
-                
+
                 # Check risk
                 temp_risk_i = risk_vec[i] + R[j]
                 temp_risk_ĩ = risk_vec[ĩ] - R[j]
-                
+
                 if temp_risk_i > β[i] || temp_risk_ĩ > β[ĩ]
                     can_do_move = false
                 end
-                
+
                 if can_do_move
                     # Execute move
                     X[ĩ, j] = 0
@@ -877,29 +1166,29 @@ function repair_solution4(solution, cons, targets_lower, targets_upper, remove, 
             end
         end
     end
-    
+
     # Handle facilities that need BUs
     for i in add
         min_progress = minimum(values_matrix[i, m] / targets_lower[i, m] for m in 1:M)
-        
+
         # Find critical measures (those furthest from target)
         critical_measures = findall(m -> values_matrix[i, m] / targets_lower[i, m] <= min_progress + 0.05, 1:M)
-        
+
         # Sort BUs by their contribution to critical measures
         all_bus = collect(1:B)
         sort!(all_bus, by=j -> begin
-            # Calculate weighted contribution to critical measures
-            contribution = sum(V[m][j] for m in critical_measures) / length(critical_measures)
-            return contribution
-        end, rev=true)  # Highest contributors first
-        
+                # Calculate weighted contribution to critical measures
+                contribution = sum(V[m][j] for m in critical_measures) / length(critical_measures)
+                return contribution
+            end, rev=true)  # Highest contributors first
+
         for j in all_bus
             ĩ = findfirst(==(1), X[:, j])  # Current assignment
             ĩ === nothing && continue
             if ĩ === i
                 continue
             end
-            
+
             # First check if removing from current center would maintain feasibility
             would_maintain_feasibility = true
             for m in 1:M
@@ -909,23 +1198,23 @@ function repair_solution4(solution, cons, targets_lower, targets_upper, remove, 
                     break
                 end
             end
-            
+
             if !would_maintain_feasibility
                 continue  # Skip this BU if it would make current center infeasible
             end
-            
+
             # Now test move feasibility for target center
             can_do_move = true
-            
+
             # Temporary arrays to track changes
             temp_values_i = copy(values_matrix[i, :])
             temp_values_ĩ = copy(values_matrix[ĩ, :])
-            
+
             # Simulate move
             for m in 1:M
                 temp_values_ĩ[m] -= V[m][j]
                 temp_values_i[m] += V[m][j]
-                
+
                 if temp_values_i[m] > targets_upper[i, m] ||
                    temp_values_i[m] < targets_lower[i, m] ||
                    temp_values_ĩ[m] > targets_upper[ĩ, m] ||
@@ -934,15 +1223,15 @@ function repair_solution4(solution, cons, targets_lower, targets_upper, remove, 
                     break
                 end
             end
-            
+
             # Check risk constraints
             temp_risk_i = risk_vec[i] + R[j]
             temp_risk_ĩ = risk_vec[ĩ] - R[j]
-            
+
             if temp_risk_i > β[i] || temp_risk_ĩ > β[ĩ]
                 can_do_move = false
             end
-            
+
             if can_do_move
                 # Execute move and update all matrices
                 X[ĩ, j] = 0
@@ -953,7 +1242,7 @@ function repair_solution4(solution, cons, targets_lower, targets_upper, remove, 
                     values_matrix[ĩ, m] = temp_values_ĩ[m]
                     values_matrix[i, m] = temp_values_i[m]
                 end
-                
+
                 # Check if we've met the minimum targets
                 if all(values_matrix[i, m] >= targets_lower[i, m] for m in 1:M)
                     break  # Stop adding BUs if we've met targets
@@ -961,8 +1250,8 @@ function repair_solution4(solution, cons, targets_lower, targets_upper, remove, 
             end
         end
     end
-    
-    Weight = sum(instance.D[i,j] for i in 1:S, j in 1:B if X[i,j] == 1)
+
+    Weight = sum(instance.D[i, j] for i in 1:S, j in 1:B if X[i, j] == 1)
 
     #swap_problematic_centers!(X, Y, values_matrix, risk_vec, targets_lower, targets_upper, instance)
     return Solution(instance, X, Y, Weight, solution.Time)
@@ -980,12 +1269,12 @@ function repair_solution_simplified(solution, cons, targets_lower, targets_upper
     R = instance.R
     β = instance.β
     D = instance.D
-    
+
     # Initialize and maintain values_matrix for efficient constraint checking
     values_matrix = Matrix{Int}(undef, S, M)
     risk_vec = Vector{Int}(undef, S)
     values_matrix, risk_vec = start_constraints_optimized_v5(S, B, M, V, R, X, values_matrix, risk_vec)
-    
+
     # Handle facilities that need to remove BUs
     for ĩ in remove
         assigned_bus = findall(==(1), X[ĩ, :])
@@ -993,16 +1282,16 @@ function repair_solution_simplified(solution, cons, targets_lower, targets_upper
             # Try every other active facility
             candidates = collect(1:S)
             filter!(i -> i != ĩ && Y[i] == 1, candidates)
-            
+
             for i in candidates
                 # Test move feasibility using values_matrix
                 can_do_move = true
-                
+
                 # Try the move
                 for m in 1:M
                     values_matrix[ĩ, m] -= V[m][j]
                     values_matrix[i, m] += V[m][j]
-                    
+
                     if values_matrix[i, m] > targets_upper[i, m] ||
                        values_matrix[i, m] < targets_lower[i, m] ||
                        values_matrix[ĩ, m] > targets_upper[ĩ, m] ||
@@ -1011,15 +1300,15 @@ function repair_solution_simplified(solution, cons, targets_lower, targets_upper
                         break
                     end
                 end
-                
+
                 # Check risk
                 temp_risk_i = risk_vec[i] + R[j]
                 temp_risk_ĩ = risk_vec[ĩ] - R[j]
-                
+
                 if temp_risk_i > β[i] || temp_risk_ĩ > β[ĩ]
                     can_do_move = false
                 end
-                
+
                 if can_do_move
                     # Execute move
                     X[ĩ, j] = 0
@@ -1037,7 +1326,7 @@ function repair_solution_simplified(solution, cons, targets_lower, targets_upper
             end
         end
     end
-    
+
     # Handle facilities that need BUs
     for i in add
         # Try all BUs
@@ -1045,15 +1334,15 @@ function repair_solution_simplified(solution, cons, targets_lower, targets_upper
             ĩ = findfirst(==(1), X[:, j])
             ĩ === nothing && continue
             ĩ == i && continue
-            
+
             # Test move feasibility
             can_do_move = true
-            
+
             # Try the move
             for m in 1:M
                 values_matrix[ĩ, m] -= V[m][j]
                 values_matrix[i, m] += V[m][j]
-                
+
                 if values_matrix[i, m] > targets_upper[i, m] ||
                    values_matrix[i, m] < targets_lower[i, m] ||
                    values_matrix[ĩ, m] > targets_upper[ĩ, m] ||
@@ -1062,22 +1351,22 @@ function repair_solution_simplified(solution, cons, targets_lower, targets_upper
                     break
                 end
             end
-            
+
             # Check risk
             temp_risk_i = risk_vec[i] + R[j]
             temp_risk_ĩ = risk_vec[ĩ] - R[j]
-            
+
             if temp_risk_i > β[i] || temp_risk_ĩ > β[ĩ]
                 can_do_move = false
             end
-            
+
             if can_do_move
                 # Execute move
                 X[ĩ, j] = 0
                 X[i, j] = 1
                 risk_vec[ĩ] -= R[j]
                 risk_vec[i] += R[j]
-                
+
                 # Check if we've met all constraints
                 if all(values_matrix[i, m] >= targets_lower[i, m] for m in 1:M)
                     break
@@ -1091,8 +1380,8 @@ function repair_solution_simplified(solution, cons, targets_lower, targets_upper
             end
         end
     end
-    
-    Weight = sum(D[i,j] for i in 1:S, j in 1:B if X[i,j] == 1)
+
+    Weight = sum(D[i, j] for i in 1:S, j in 1:B if X[i, j] == 1)
     return Solution(instance, X, Y, Weight, solution.Time)
 end
 
@@ -3146,28 +3435,28 @@ function fine_tune_assignments!(X, values_matrix, risk_vec, targets_lower, targe
     Y = copy(solution.Y)
 
     function get_split_violations()
-        split_facilities = Dict{Int, Dict{Int,Tuple{Float64,Float64}}}()
-        
+        split_facilities = Dict{Int,Dict{Int,Tuple{Float64,Float64}}}()
+
         for i in 1:instance.S
             Y[i] == 0 && continue
-            
+
             activity_gaps = Dict{Int,Tuple{Float64,Float64}}()
             has_under = false
             has_over = false
-            
+
             for m in 1:instance.M
-                current = values_matrix[i,m]
-                if current < targets_lower[i,m]
-                    gap = targets_lower[i,m] - current
+                current = values_matrix[i, m]
+                if current < targets_lower[i, m]
+                    gap = targets_lower[i, m] - current
                     activity_gaps[m] = (gap, 0.0)  # (need_to_add, need_to_reduce)
                     has_under = true
-                elseif current > targets_upper[i,m]
-                    gap = current - targets_upper[i,m]
+                elseif current > targets_upper[i, m]
+                    gap = current - targets_upper[i, m]
                     activity_gaps[m] = (0.0, gap)
                     has_over = true
                 end
             end
-            
+
             # Only include if facility has both under and over violations
             if has_under && has_over
                 split_facilities[i] = activity_gaps
@@ -3180,10 +3469,10 @@ function fine_tune_assignments!(X, values_matrix, risk_vec, targets_lower, targe
         improvement_score = 0.0
         total_improvements = 0  # Count how many violations we improve
         creates_new_violation = false
-        
+
         for (m, (need_add, need_reduce)) in needed_gaps
             current_change = -instance.V[m][j] + instance.V[m][j̃]  # Net change for facility i
-            
+
             if need_add > 0  # Need to increase this activity
                 if current_change > 0
                     improvement_score += current_change  # Use absolute improvement
@@ -3202,49 +3491,49 @@ function fine_tune_assignments!(X, values_matrix, risk_vec, targets_lower, targe
                 end
             end
         end
-        
+
         # Only consider valid if we improve at least as many violations as we have
         if total_improvements < length(needed_gaps) || creates_new_violation
             return -Inf
         end
-        
+
         return improvement_score
-     end
+    end
 
     function try_fix_split_violations(split_facilities)
         made_improvement = false
-        
+
         for (i, needed_gaps) in split_facilities
             assigned_to_i = findall(==(1), X[i, :])
             best_swap = nothing
             best_score = -1.0
-            
+
             for ĩ in 1:instance.S
                 ĩ == i && continue
                 Y[ĩ] == 0 && continue
-                
+
                 assigned_to_ĩ = findall(==(1), X[ĩ, :])
-                
+
                 for j in assigned_to_i
                     for j̃ in assigned_to_ĩ
                         # Check if swap would be feasible for facility ĩ
                         would_violate = false
                         new_values = copy(values_matrix)
                         new_risks = copy(risk_vec)
-                        
+
                         # Simulate swap
                         for m in 1:instance.M
-                            new_values[i,m] = values_matrix[i,m] - instance.V[m][j] + instance.V[m][j̃]
-                            new_values[ĩ,m] = values_matrix[ĩ,m] - instance.V[m][j̃] + instance.V[m][j]
-                            
+                            new_values[i, m] = values_matrix[i, m] - instance.V[m][j] + instance.V[m][j̃]
+                            new_values[ĩ, m] = values_matrix[ĩ, m] - instance.V[m][j̃] + instance.V[m][j]
+
                             # Check if swap would create new violations in ĩ
-                            if new_values[ĩ,m] < targets_lower[ĩ,m] || 
-                               new_values[ĩ,m] > targets_upper[ĩ,m]
+                            if new_values[ĩ, m] < targets_lower[ĩ, m] ||
+                               new_values[ĩ, m] > targets_upper[ĩ, m]
                                 would_violate = true
                                 break
                             end
                         end
-                        
+
                         if !would_violate
                             score = evaluate_swap_for_split(i, j, ĩ, j̃, needed_gaps)
                             if score > best_score
@@ -3255,42 +3544,42 @@ function fine_tune_assignments!(X, values_matrix, risk_vec, targets_lower, targe
                     end
                 end
             end
-            
+
             # Execute best swap if found
             if best_swap !== nothing
                 j, j̃, ĩ, new_values, new_risks = best_swap
-                X[i,j], X[i,j̃] = 0, 1
-                X[ĩ,j̃], X[ĩ,j] = 0, 1
+                X[i, j], X[i, j̃] = 0, 1
+                X[ĩ, j̃], X[ĩ, j] = 0, 1
                 values_matrix = new_values
                 risk_vec = new_risks
                 made_improvement = true
                 println("Fixed split violation in facility $i with score $best_score")
             end
         end
-        
+
         return made_improvement
     end
 
     # Main loop
     iteration = 0
     max_iterations = 150
-    
+
     while iteration < max_iterations
         split_facilities = get_split_violations()
         if isempty(split_facilities)
             println("No split violations found")
             break
         end
-        
+
         println("Iteration $iteration: Found $(length(split_facilities)) facilities with split violations")
         if !try_fix_split_violations(split_facilities)
             println("Could not improve split violations further")
             break
         end
-        
+
         iteration += 1
     end
-    
+
     return X
 end
 
@@ -3305,17 +3594,17 @@ function swap_problematic_centers!(X, Y, values_matrix, risk_vec, targets_lower,
         problematic = Set{Int}()
         for i in 1:S
             Y[i] == 0 && continue
-            
+
             has_over = false
             has_under = false
             for m in 1:M
-                if values_matrix[i,m] > targets_upper[i,m]
+                if values_matrix[i, m] > targets_upper[i, m]
                     has_over = true
-                elseif values_matrix[i,m] < targets_lower[i,m]
+                elseif values_matrix[i, m] < targets_lower[i, m]
                     has_under = true
                 end
             end
-            
+
             has_over || has_under && push!(problematic, i)
         end
         println(problematic)
@@ -3324,33 +3613,33 @@ function swap_problematic_centers!(X, Y, values_matrix, risk_vec, targets_lower,
 
     function rollback_changes(modified_X, modified_values, modified_risk)
         # Restore X matrix
-        for ((i,j), val) in modified_X
-            X[i,j] = val
+        for ((i, j), val) in modified_X
+            X[i, j] = val
         end
-        
+
         # Restore values matrix
-        for ((i,m), val) in modified_values
-            values_matrix[i,m] = val
+        for ((i, m), val) in modified_values
+            values_matrix[i, m] = val
         end
-        
+
         # Restore risk vector
         for (i, val) in modified_risk
             risk_vec[i] = val
         end
-        
+
         return false  # Indicate the swap was unsuccessful
     end
 
-    
+
     function try_center_swap(ĩ, i✶)
         modified_X = Dict{Tuple{Int,Int},Int}()
         modified_values = Dict{Tuple{Int,Int},Int}()
         modified_risk = Dict{Int,Int}()
-        
+
         # First, get the BUs that will become orphaned from ĩ
-        js_assigned_to_old = findall(==(1), X[ĩ,:])
+        js_assigned_to_old = findall(==(1), X[ĩ, :])
         js_assigned_set = Set(js_assigned_to_old)
-        
+
         # Clear the old center
         for j in js_assigned_to_old
             modified_X[(ĩ, j)] = X[ĩ, j]
@@ -3361,17 +3650,17 @@ function swap_problematic_centers!(X, Y, values_matrix, risk_vec, targets_lower,
             modified_risk[ĩ] = risk_vec[ĩ]
             risk_vec[ĩ] = 0
         end
-        X[ĩ,:] .= 0
-        
+        X[ĩ, :] .= 0
+
         # Try to populate new center with any suitable BUs
         fulls_m = zeros(Int, M)
         factible_yet = false
-        
+
         # Try assigning BUs to new center (considering all BUs, not just the orphaned ones)
         for j in 1:B
             potential_assignment_valid = true
-            current_center = findfirst(==(1), X[:,j])
-            
+            current_center = findfirst(==(1), X[:, j])
+
             if current_center !== nothing  # If BU is assigned somewhere
                 # Check if we can remove from current center
                 for m in 1:M
@@ -3381,7 +3670,7 @@ function swap_problematic_centers!(X, Y, values_matrix, risk_vec, targets_lower,
                     end
                 end
             end
-            
+
             # Check if we can add to new center
             if potential_assignment_valid
                 for m in 1:M
@@ -3390,12 +3679,12 @@ function swap_problematic_centers!(X, Y, values_matrix, risk_vec, targets_lower,
                         break
                     end
                 end
-                
+
                 if risk_vec[i✶] + R[j] > β[i✶]
                     potential_assignment_valid = false
                 end
             end
-            
+
             if potential_assignment_valid
                 # Make the assignment
                 if current_center !== nothing
@@ -3408,10 +3697,10 @@ function swap_problematic_centers!(X, Y, values_matrix, risk_vec, targets_lower,
                     modified_risk[current_center] = risk_vec[current_center]
                     risk_vec[current_center] -= R[j]
                 end
-                
+
                 modified_X[(i✶, j)] = X[i✶, j]
                 X[i✶, j] = 1
-                
+
                 for m in 1:M
                     modified_values[(i✶, m)] = get(modified_values, (i✶, m), values_matrix[i✶, m])
                     values_matrix[i✶, m] += V[m][j]
@@ -3419,51 +3708,51 @@ function swap_problematic_centers!(X, Y, values_matrix, risk_vec, targets_lower,
                         fulls_m[m] = 1
                     end
                 end
-                
+
                 modified_risk[i✶] = get(modified_risk, i✶, risk_vec[i✶])
                 risk_vec[i✶] += R[j]
-                
+
                 if j in js_assigned_set
                     delete!(js_assigned_set, j)
                 end
-                
+
                 if all(==(1), fulls_m)
                     factible_yet = true
                     break
                 end
             end
         end
-        
+
         if !factible_yet
             # Couldn't populate new center adequately
             return rollback_changes(modified_X, modified_values, modified_risk)
         end
-        
+
         # Now handle orphaned BUs
         for j in js_assigned_set
             assigned = false
             for i in 1:S
                 (i == ĩ || Y[i] == 0) && continue  # Skip closed centers and the one we're closing
-                
+
                 # Check if assignment is feasible
                 can_assign = true
                 for m in 1:M
-                    if values_matrix[i,m] + V[m][j] > targets_upper[i,m]
+                    if values_matrix[i, m] + V[m][j] > targets_upper[i, m]
                         can_assign = false
                         break
                     end
                 end
-                
+
                 if risk_vec[i] + R[j] > β[i]
                     can_assign = false
                 end
-                
+
                 if can_assign
-                    modified_X[(i,j)] = X[i,j]
-                    X[i,j] = 1
+                    modified_X[(i, j)] = X[i, j]
+                    X[i, j] = 1
                     for m in 1:M
-                        modified_values[(i,m)] = get(modified_values, (i,m), values_matrix[i,m])
-                        values_matrix[i,m] += V[m][j]
+                        modified_values[(i, m)] = get(modified_values, (i, m), values_matrix[i, m])
+                        values_matrix[i, m] += V[m][j]
                     end
                     modified_risk[i] = get(modified_risk, i, risk_vec[i])
                     risk_vec[i] += R[j]
@@ -3471,24 +3760,24 @@ function swap_problematic_centers!(X, Y, values_matrix, risk_vec, targets_lower,
                     break
                 end
             end
-            
+
             if !assigned
                 return rollback_changes(modified_X, modified_values, modified_risk)
             end
         end
-        
+
         return true
     end
 
 
     problematic = identify_problematic_centers()
     improvement = false
-    
+
     for ĩ in problematic
         # Try each potential replacement center
         for i✶ in 1:S
             Y[i✶] == 1 && continue  # Skip already open centers
-            
+
             if try_center_swap(ĩ, i✶)
                 Y[ĩ] = 0
                 Y[i✶] = 1
@@ -3498,7 +3787,7 @@ function swap_problematic_centers!(X, Y, values_matrix, risk_vec, targets_lower,
             end
         end
     end
-    
+
     return improvement
 end
 
@@ -3532,9 +3821,14 @@ function localSearch(solution)
         #println(original_weight)
         factible_after_repair = true
     else
+        x_new = repair_activity_constraints(instance, oldSol.X, oldSol.Y)
+        weight = dot(x_new, instance.D)
+        newnewsol = Solution(instance, x_new, oldSol.Y, weight, 1000)
+        print("uhhhhhhhhhh")
+        println(isFactible(newnewsol), true)
         println("Reparando")
-        repaired_1 = repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
-        fac_repaired_1, cons = isFactible(repaired_1, true)
+        #repaired_1 = repair_solution1(oldSol, constraints, targets_lower, targets_upper, remove, add)
+        fac_repaired_1, cons = isFactible(newnewsol, true)
         #println(fac_repaired_1)
         if !fac_repaired_1
             println("con la 4")
@@ -3555,7 +3849,7 @@ function localSearch(solution)
                 repaired = repaired_4
             end
         else
-            repaired = repaired_1
+            repaired = newnewsol
             factible_after_repair = true
         end
         #println("intercambiando")
@@ -3574,90 +3868,55 @@ function localSearch(solution)
     end
     oldSol = repaired
     D_original = oldSol.Instance.D
-    improvement = true
     loop = 0
+    any_improvement = true
 
-    while improvement
+    println(oldSol.Weight)
+
+    while any_improvement
         loop += 1
-        improvement = false  # Reset the flag at the start of each loop iteration
         prev_weight = oldSol.Weight
+        any_improvement = false  # Reset the flag at the start
 
-        # Array to keep track of individual improvements
-        improvements = Bool[]
         # First improvement function
         println("simple optimized bf")
-        #println(@benchmark simple_bu_improve_optimized($oldSol, $targets_lower_op, $targets_upper_op, :bf))
         sol_moved_bu = simple_bu_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :bf)
         new_weight_moved = sol_moved_bu.Weight
         println(new_weight_moved)
 
-        push!(improvements, new_weight_moved < prev_weight)
-        if improvements[end]
+        if new_weight_moved < prev_weight
+            any_improvement = true
             prev_weight = new_weight_moved
-            #println("En el loop loop el movimiento simple mejora con un new_weight_moved")
-            oldSol = sol_moved_bu  # Update oldSol if there was an improvement
+            oldSol = sol_moved_bu
         end
 
         # Second improvement function
-
         println("interchange optimized bf")
-        #println(@benchmark interchange_bu_improve_optimized($oldSol, $targets_lower_op, $targets_upper_op, :bf))
         sol_interchanged_bu = interchange_bu_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :bf)
         new_weight_moved = sol_interchanged_bu.Weight
         println(new_weight_moved)
-        push!(improvements, new_weight_moved < prev_weight)
-        if improvements[end]
+
+        if new_weight_moved < prev_weight
+            any_improvement = true
             prev_weight = new_weight_moved
-            #println("En el loop loop el movimiento intercambio mejora con un new_weight_moved")
-            oldSol = sol_interchanged_bu  # Update oldSol if there was an improvement
+            oldSol = sol_interchanged_bu
         end
         println("---------------------")
 
-        #println(isFactible(sol_interchanged_bu, true))
-
         # Third improvement function
-
         println("deactivate ")
-        #println(@benchmark deactivate_center_improve($oldSol, $targets_lower, $targets_upper))
         sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
         new_weight_moved = sol_deactivated_center.Weight
         println(new_weight_moved)
-        push!(improvements, new_weight_moved < prev_weight)
-        if improvements[end]
+
+        if new_weight_moved < prev_weight
+            any_improvement = true
             prev_weight = new_weight_moved
-            #println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
-            oldSol = sol_deactivated_center  # Update oldSol if there was an improvement
+            oldSol = sol_deactivated_center
         end
         println("---------------------")
-        #=
-                println(" chain ")
-                #println(@benchmark deactivate_center_improve($oldSol, $targets_lower, $targets_upper))
-                sol_chain = chain_move_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :bf, 2)
-                new_weight_moved = sol_chain.Weight
-                println(new_weight_moved)
-                push!(improvements, new_weight_moved < prev_weight)
-                if improvements[end]
-                    prev_weight = new_weight_moved
-                    #println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
-                    oldSol = sol_chain  # Update oldSol if there was an improvement
-                end
-                =#
-        #=
-        println("---------------------")
-        println("ejection chain ")
-        #println(@benchmark deactivate_center_improve($oldSol, $targets_lower, $targets_upper))
-        sol_chain = classical_ejection_chain_improve(oldSol, targets_lower_op, targets_upper_op, 4)
-        new_weight_moved = sol_chain.Weight
-        println(new_weight_moved)
-        push!(improvements, new_weight_moved < prev_weight)
-        if improvements[end]
-            prev_weight = new_weight_moved
-            #println("En el loop $loop el movimiento desactivar mejora con un $new_weight_moved")
-            oldSol = sol_chain  # Update oldSol if there was an improvement
-        end
-        println("---------------------")
-        =#
-        improvement = any(improvements)
+
+        @info any_improvement
     end
     after_time = Dates.now()
     println(after_time - before_time)

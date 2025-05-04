@@ -219,6 +219,20 @@ function repair_activity_constraints(instance::Instance, x_binary, y_fixed)
                     continue
                 end
                 
+                # FIX: Check if adding this branch would cause violations for any activity measure
+                valid_assignment = true
+                for check_M in 1:m
+                    new_level = activity_levels[service_i, check_M] + V[check_M][branch_j]
+                    if new_level > floor((1+ε) * μ[check_M][service_i])
+                        valid_assignment = false
+                        break
+                    end
+                end
+                
+                if !valid_assignment
+                    continue
+                end
+                
                 # Calculate the activity gain for the deficient service
                 activity_gain = V[activity_M][branch_j]
                 
@@ -255,9 +269,11 @@ function repair_activity_constraints(instance::Instance, x_binary, y_fixed)
                 x_repaired[service_i, branch_j] = 1
                 x_repaired[current_service, branch_j] = 0
                 
-                # Update activity levels
-                activity_levels[service_i, activity_M] += V[activity_M][branch_j]
-                activity_levels[current_service, activity_M] -= V[activity_M][branch_j]
+                # Update activity levels for ALL activity types
+                for M in 1:m
+                    activity_levels[service_i, M] += V[M][branch_j]
+                    activity_levels[current_service, M] -= V[M][branch_j]
+                end
                 
                 println("Iteration $iteration: Reassigned BU $branch_j from center $current_service to center $service_i to increase activity $activity_M")
             else
@@ -287,14 +303,23 @@ function repair_activity_constraints(instance::Instance, x_binary, y_fixed)
                         continue
                     end
                     
+                    # FIX: Check if adding this branch would cause violations for any activity measure
+                    valid_assignment = true
+                    for check_M in 1:m
+                        new_level = activity_levels[receiving_service, check_M] + V[check_M][branch_j]
+                        if new_level > floor((1+ε) * μ[check_M][receiving_service])
+                            valid_assignment = false
+                            break
+                        end
+                    end
+                    
+                    if !valid_assignment
+                        continue
+                    end
+                    
                     # Check if this reassignment would cause a violation for the receiving service
                     receiving_level = activity_levels[receiving_service, activity_M]
                     new_level = receiving_level + activity_reduction
-                    
-                    # Skip if it would cause a new violation
-                    if new_level > floor((1+ε) * μ[activity_M][receiving_service])
-                        continue
-                    end
                     
                     # Calculate net benefit
                     receiving_violation = get(violations, (receiving_service, activity_M), 0.0)
@@ -318,9 +343,11 @@ function repair_activity_constraints(instance::Instance, x_binary, y_fixed)
                 x_repaired[service_i, branch_j] = 0
                 x_repaired[receiving_service, branch_j] = 1
                 
-                # Update activity levels
-                activity_levels[service_i, activity_M] -= V[activity_M][branch_j]
-                activity_levels[receiving_service, activity_M] += V[activity_M][branch_j]
+                # Update activity levels for ALL activity types
+                for M in 1:m
+                    activity_levels[service_i, M] -= V[M][branch_j]
+                    activity_levels[receiving_service, M] += V[M][branch_j]
+                end
                 
                 println("Iteration $iteration: Reassigned BU $branch_j from center $service_i to center $receiving_service to decrease activity $activity_M")
             else
@@ -363,6 +390,61 @@ function repair_activity_constraints(instance::Instance, x_binary, y_fixed)
     return x_repaired
 end
 
+function multi_pdp_min_instance(instance)
+    # Extract data from instance
+    n = instance.S
+    Sk = instance.Sk
+    Lk = instance.Lk
+    Uk = instance.Uk
+    p = instance.P
+    
+    # Calculate distance matrix
+    metric = Distances.Euclidean()
+    d = trunc.(Int, Distances.pairwise(metric, instance.S_coords, dims=1))
+    
+    # Maximum distance
+    Dmax = maximum(d)
+    
+    # Number of types
+    k = length(Sk)
+    
+    # Create model
+    model = Model(Gurobi.Optimizer)
+    
+    # Variables
+    @variable(model, y[1:n], Bin)  # 1 if point i is selected
+    @variable(model, u >= 0)       # Minimum distance between any two selected points
+    @variable(model, w[1:k], Int)  # Number of points of type k selected
+    
+    # Objective: Maximize the minimum distance
+    @objective(model, Max, u)
+    
+    # Constraint: Linearization of minimum distance
+    for i in 1:n
+        for j in i+1:n
+            @constraint(model, u <= d[i,j] + Dmax * (2 - (y[i] + y[j])))
+        end
+    end
+    
+    # Constraint: Select exactly p points
+    @constraint(model, sum(y) == p)
+    
+    # Constraint: Relationship between y and w variables
+    for k_idx in 1:k
+        @constraint(model, w[k_idx] == sum(y[i] for i in Sk[k_idx]))
+    end
+    
+    # Constraints: Type balance
+    for k_idx in 1:k
+        @constraint(model, w[k_idx] >= Lk[k_idx])
+        @constraint(model, w[k_idx] <= Uk[k_idx])
+    end
+
+    set_time_limit_sec(model, 600)
+    
+    return model, d
+end
+
 function main()
     instance = read_instance(ARGS[1])
     #Y, time = pdisp_2(instance)
@@ -373,14 +455,17 @@ function main()
     #end
     #plot_ys2(instance, Y_bool, "pdisp_plotted_all.png")
     #println(Y_bool)
-    model_original = build_model_x_relaxed(instance)
-    set_optimizer(model_original, Gurobi.Optimizer)
-    set_time_limit_sec(model_original, 300)
+    #model_original = build_model_x_relaxed(instance)
+    #set_optimizer(model_original, Gurobi.Optimizer)
+    #set_time_limit_sec(model_original, 600)
     #write_to_file(model_original, "original_model_grb.lp")
-    optimize!(model_original)
-    x_solution = value.(model_original[:x])
-    y_sol = value.(model_original[:y])
+    #optimize!(model_original)
+    #x_solution = value.(model_original[:x])
+    #y_sol = value.(model_original[:y])
     #X = round.(Int, x_solution)
+    model, d = multi_pdp_min_instance(instance)
+    optimize!(model)
+    y_sol = value.(model[:y])
     Y2 = round.(Int, y_sol)
     model_transport = solve_phase2_model(instance, Y2)
     set_optimizer(model_transport, Gurobi.Optimizer)
