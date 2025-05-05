@@ -1,0 +1,34 @@
+# Configuration for experiment runs
+
+[general]
+base_path = "first_experiments_run"
+prefix = "first_experiments_run"
+time_limit = 180.0  # 30 minutes
+method = 1
+
+# Model parameters
+[model]
+K = 4  # Number of facility types
+M = 3  # Number of activities
+T = [0.05, 0.05, 0.05]  # Tolerance values for activities
+tau = 0.1  # Risk parameter
+
+# Instance type definitions
+[instance_sets]
+# Define different instance sets
+[instance_sets.small]
+B = 1000
+S = 200
+P_values = [15, 20]
+num_instances = 2  # Number of instances to generate per P value
+percentages = [0.4, 0.3, 0.2, 0.1]  # Percentages for facility types
+
+# Ranges for activity values
+[activity_ranges]
+act1_range = [1, 10]      # Range for activity 1 values
+act2_range = [1000, 10000]  # Range for activity 2 values
+act3_range = [1000, 5000]   # Range for activity 3 values
+
+# Ranges for risk values
+[risk_ranges]
+risk_range = [30, 60]
