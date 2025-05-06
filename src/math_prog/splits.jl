@@ -7,6 +7,7 @@ using Plots
 using CPLEX
 include("../heuristics/constructive.jl")
 include("first_model.jl")
+include("../heuristics/ls.jl")
 
 # Phase 2: Fix Y values and solve transportation problem
 function solve_phase2_model(instance::Instance, y_fixed)
@@ -144,8 +145,7 @@ function analyze_splits(x_continuous, S, B)
     
     return split_count, split_proportion, split_branches
 end
-
-function repair_activity_constraints(instance::Instance, x_binary, y_fixed)
+function repair_activity_and_risk_constraints(instance::Instance, x_binary, y_fixed)
     B = instance.B
     S = instance.S
     D = instance.D
@@ -165,149 +165,93 @@ function repair_activity_constraints(instance::Instance, x_binary, y_fixed)
         activity_levels[i, M] = sum(x_repaired[i, j] * V[M][j] for j in 1:B)
     end
     
-    # Check which services violate their activity constraints
-    violations = Dict{Tuple{Int, Int}, Float64}() # (service, activity) => violation amount
+    # Calculate current risk levels for each service
+    risk_levels = zeros(S)
+    for i in 1:S
+        risk_levels[i] = sum(x_repaired[i, j] * R[j] for j in 1:B)
+    end
+    
+    # Check which services violate their activity or risk constraints
+    activity_violations = Dict{Tuple{Int, Int}, Float64}() # (service, activity) => violation amount
+    risk_violations = Dict{Int, Float64}() # service => violation amount
     
     for i in 1:S
         if y_fixed[i] == 1 # Only check active services
+            # Check activity constraints
             for M in 1:m
                 lower_bound = (1-ε) * μ[M][i]
                 upper_bound = (1+ε) * μ[M][i]
                 
                 if activity_levels[i, M] < ceil(lower_bound)
-                    violations[(i, M)] = ceil(lower_bound) - activity_levels[i, M]
+                    activity_violations[(i, M)] = ceil(lower_bound) - activity_levels[i, M]
                 elseif activity_levels[i, M] > floor(upper_bound)
-                    violations[(i, M)] = activity_levels[i, M] - floor(upper_bound)
+                    activity_violations[(i, M)] = activity_levels[i, M] - floor(upper_bound)
                 end
+            end
+            
+            # Check risk constraint
+            if risk_levels[i] > β[i]
+                risk_violations[i] = risk_levels[i] - β[i]
             end
         end
     end
     
-    if isempty(violations)
-        println("No activity violations to repair!")
+    if isempty(activity_violations) && isempty(risk_violations)
+        println("No constraints violations to repair!")
         return x_repaired
     end
     
-    println("Found $(length(violations)) activity violations")
-    
-    # Sort violations by magnitude (largest first)
-    sorted_violations = sort(collect(violations), by=x->x[2], rev=true)
+    println("Found $(length(activity_violations)) activity violations and $(length(risk_violations)) risk violations")
     
     # Maximum number of repair iterations to avoid infinite loops
-    max_repair_iterations = 100
+    max_repair_iterations = 200
     iteration = 0
     
-    while !isempty(violations) && iteration < max_repair_iterations
+    # Continue until all violations are fixed or max iterations reached
+    while ((!isempty(activity_violations) || !isempty(risk_violations)) && iteration < max_repair_iterations)
         iteration += 1
         
-        # Take the largest violation
-        (service_i, activity_M), violation_amount = first(sorted_violations)
-        
-        # Determine if we need to increase or decrease activity
-        needs_increase = activity_levels[service_i, activity_M] < ceil((1-ε) * μ[activity_M][service_i])
-        
-        if needs_increase
-            # Need to increase activity - look for branches to add
-            # Find branches currently assigned to other services
-            other_service_branches = [(j, i) for j in 1:B, i in 1:S if x_repaired[i, j] == 1 && i != service_i]
+        # Determine which type of violation to fix first
+        # Prioritize risk violations if they exist
+        if !isempty(risk_violations)
+            # Sort risk violations by magnitude (largest first)
+            sorted_risk_violations = sort(collect(risk_violations), by=x->x[2], rev=true)
+            service_i, violation_amount = first(sorted_risk_violations)
             
-            # Calculate the benefit of reassigning each branch
-            candidates = []
-            for (branch_j, current_service) in other_service_branches
-                # Skip if this would violate risk constraint
-                if sum(x_repaired[service_i, j] * R[j] for j in 1:B) + R[branch_j] > β[service_i]
-                    continue
-                end
-                
-                # FIX: Check if adding this branch would cause violations for any activity measure
-                valid_assignment = true
-                for check_M in 1:m
-                    new_level = activity_levels[service_i, check_M] + V[check_M][branch_j]
-                    if new_level > floor((1+ε) * μ[check_M][service_i])
-                        valid_assignment = false
-                        break
-                    end
-                end
-                
-                if !valid_assignment
-                    continue
-                end
-                
-                # Calculate the activity gain for the deficient service
-                activity_gain = V[activity_M][branch_j]
-                
-                # Calculate the activity loss for the current service
-                activity_loss = V[activity_M][branch_j]
-                
-                # Check if this reassignment would cause a violation for the current service
-                current_level = activity_levels[current_service, activity_M]
-                new_level = current_level - activity_loss
-                
-                # Skip if it would cause a new violation
-                if new_level < ceil((1-ε) * μ[activity_M][current_service])
-                    continue
-                end
-                
-                # Calculate net benefit (weighted by how much each service is out of bounds)
-                current_violation = get(violations, (current_service, activity_M), 0.0)
-                benefit = activity_gain - (current_violation > 0 ? activity_loss : 0)
-                
-                # Calculate cost impact
-                cost_change = D[service_i, branch_j] - D[current_service, branch_j]
-                
-                push!(candidates, (branch_j, current_service, benefit, cost_change))
-            end
+            println("Iteration $iteration: Fixing risk violation for center $service_i (excess: $violation_amount)")
             
-            # Sort candidates by benefit (descending) and then by cost change (ascending)
-            sort!(candidates, by=x->(x[3], -x[4]), rev=true)
+            # Find branches currently assigned to this service, sorted by risk (highest first)
+            current_branches = [(j, R[j]) for j in 1:B if x_repaired[service_i, j] == 1]
+            sort!(current_branches, by=x->x[2], rev=true)
             
-            # Try the best candidate
-            if !isempty(candidates)
-                branch_j, current_service, _, _ = first(candidates)
-                
-                # Reassign the branch
-                x_repaired[service_i, branch_j] = 1
-                x_repaired[current_service, branch_j] = 0
-                
-                # Update activity levels for ALL activity types
-                for M in 1:m
-                    activity_levels[service_i, M] += V[M][branch_j]
-                    activity_levels[current_service, M] -= V[M][branch_j]
-                end
-                
-                println("Iteration $iteration: Reassigned BU $branch_j from center $current_service to center $service_i to increase activity $activity_M")
-            else
-                println("Iteration $iteration: Could not find a suitable BU to increase activity $activity_M for center $service_i")
-                # Mark this violation as unresolvable for now to avoid getting stuck
-                delete!(violations, (service_i, activity_M))
-                sorted_violations = sort(collect(violations), by=x->x[2], rev=true)
-                continue
-            end
-        else
-            # Need to decrease activity - look for branches to remove
-            # Find branches currently assigned to this service
-            current_branches = [j for j in 1:B if x_repaired[service_i, j] == 1]
+            # Try to reassign high-risk branches to other services
+            reassignment_success = false
             
-            # Calculate the benefit of reassigning each branch
-            candidates = []
-            for branch_j in current_branches
-                # Calculate the activity reduction
-                activity_reduction = V[activity_M][branch_j]
-                
+            for (branch_j, branch_risk) in current_branches
                 # Find potential services to receive this branch
                 receiving_services = [i for i in 1:S if i != service_i && y_fixed[i] == 1]
                 
+                valid_candidates = []
                 for receiving_service in receiving_services
-                    # Skip if this would violate risk constraint
-                    if sum(x_repaired[receiving_service, j] * R[j] for j in 1:B) + R[branch_j] > β[receiving_service]
+                    # Skip if this would violate risk constraint for receiving service
+                    if risk_levels[receiving_service] + branch_risk > β[receiving_service]
                         continue
                     end
                     
-                    # FIX: Check if adding this branch would cause violations for any activity measure
+                    # Check if reassignment would create/worsen activity violations
                     valid_assignment = true
-                    for check_M in 1:m
-                        new_level = activity_levels[receiving_service, check_M] + V[check_M][branch_j]
-                        if new_level > floor((1+ε) * μ[check_M][receiving_service])
+                    
+                    for M in 1:m
+                        # Check if the receiving service would violate upper activity bound
+                        new_receiver_level = activity_levels[receiving_service, M] + V[M][branch_j]
+                        if new_receiver_level > floor((1+ε) * μ[M][receiving_service])
+                            valid_assignment = false
+                            break
+                        end
+                        
+                        # Check if removing from current service would violate lower activity bound
+                        new_current_level = activity_levels[service_i, M] - V[M][branch_j]
+                        if new_current_level < ceil((1-ε) * μ[M][service_i])
                             valid_assignment = false
                             break
                         end
@@ -317,76 +261,282 @@ function repair_activity_constraints(instance::Instance, x_binary, y_fixed)
                         continue
                     end
                     
-                    # Check if this reassignment would cause a violation for the receiving service
-                    receiving_level = activity_levels[receiving_service, activity_M]
-                    new_level = receiving_level + activity_reduction
-                    
-                    # Calculate net benefit
-                    receiving_violation = get(violations, (receiving_service, activity_M), 0.0)
-                    benefit = activity_reduction - (receiving_violation > 0 ? activity_reduction : 0)
-                    
                     # Calculate cost impact
                     cost_change = D[receiving_service, branch_j] - D[service_i, branch_j]
                     
-                    push!(candidates, (branch_j, receiving_service, benefit, cost_change))
+                    push!(valid_candidates, (receiving_service, cost_change))
+                end
+                
+                # Sort candidates by cost change (ascending)
+                sort!(valid_candidates, by=x->x[2])
+                
+                if !isempty(valid_candidates)
+                    receiving_service, _ = first(valid_candidates)
+                    
+                    # Reassign the branch
+                    x_repaired[service_i, branch_j] = 0
+                    x_repaired[receiving_service, branch_j] = 1
+                    
+                    # Update activity levels
+                    for M in 1:m
+                        activity_levels[service_i, M] -= V[M][branch_j]
+                        activity_levels[receiving_service, M] += V[M][branch_j]
+                    end
+                    
+                    # Update risk levels
+                    risk_levels[service_i] -= branch_risk
+                    risk_levels[receiving_service] += branch_risk
+                    
+                    println("  Reassigned BU $branch_j (risk: $branch_risk) from center $service_i to center $receiving_service")
+                    reassignment_success = true
+                    break
                 end
             end
             
-            # Sort candidates by benefit (descending) and then by cost change (ascending)
-            sort!(candidates, by=x->(x[3], -x[4]), rev=true)
+            if !reassignment_success
+                println("  Could not find a suitable reassignment to reduce risk for center $service_i")
+                # Mark as unresolvable to avoid getting stuck
+                delete!(risk_violations, service_i)
+            end
             
-            # Try the best candidate
-            if !isempty(candidates)
-                branch_j, receiving_service, _, _ = first(candidates)
+        else
+            # No risk violations, handle activity violations
+            # Sort violations by magnitude (largest first)
+            sorted_activity_violations = sort(collect(activity_violations), by=x->x[2], rev=true)
+            (service_i, activity_M), violation_amount = first(sorted_activity_violations)
+            
+            # Determine if we need to increase or decrease activity
+            needs_increase = activity_levels[service_i, activity_M] < ceil((1-ε) * μ[activity_M][service_i])
+            
+            if needs_increase
+                # Need to increase activity - look for branches to add
+                println("Iteration $iteration: Fixing low activity violation for center $service_i, activity $activity_M")
                 
-                # Reassign the branch
-                x_repaired[service_i, branch_j] = 0
-                x_repaired[receiving_service, branch_j] = 1
+                # Find branches currently assigned to other services
+                other_service_branches = [(j, i) for j in 1:B, i in 1:S if x_repaired[i, j] == 1 && i != service_i]
                 
-                # Update activity levels for ALL activity types
-                for M in 1:m
-                    activity_levels[service_i, M] -= V[M][branch_j]
-                    activity_levels[receiving_service, M] += V[M][branch_j]
+                # Calculate the benefit of reassigning each branch
+                candidates = []
+                for (branch_j, current_service) in other_service_branches
+                    # Skip if this would violate risk constraint
+                    if risk_levels[service_i] + R[branch_j] > β[service_i]
+                        continue
+                    end
+                    
+                    # Check if adding this branch would cause violations for any activity measure
+                    valid_assignment = true
+                    for check_M in 1:m
+                        new_level = activity_levels[service_i, check_M] + V[check_M][branch_j]
+                        if new_level > floor((1+ε) * μ[check_M][service_i])
+                            valid_assignment = false
+                            break
+                        end
+                    end
+                    
+                    if !valid_assignment
+                        continue
+                    end
+                    
+                    # Check if removing would cause a violation for the current service
+                    for check_M in 1:m
+                        new_level = activity_levels[current_service, check_M] - V[check_M][branch_j]
+                        if new_level < ceil((1-ε) * μ[check_M][current_service])
+                            valid_assignment = false
+                            break
+                        end
+                    end
+                    
+                    if !valid_assignment
+                        continue
+                    end
+                    
+                    # Check if removing would cause a risk violation for the current service
+                    # This shouldn't be possible since we're lowering risk, but included for completeness
+                    
+                    # Calculate activity gain for the target activity
+                    activity_gain = V[activity_M][branch_j]
+                    
+                    # Calculate cost impact
+                    cost_change = D[service_i, branch_j] - D[current_service, branch_j]
+                    
+                    push!(candidates, (branch_j, current_service, activity_gain, cost_change))
                 end
                 
-                println("Iteration $iteration: Reassigned BU $branch_j from center $service_i to center $receiving_service to decrease activity $activity_M")
+                # Sort candidates by activity gain (descending) and then by cost change (ascending)
+                sort!(candidates, by=x->(x[3], -x[4]), rev=true)
+                
+                # Try the best candidate
+                if !isempty(candidates)
+                    branch_j, current_service, gain, _ = first(candidates)
+                    
+                    # Reassign the branch
+                    x_repaired[service_i, branch_j] = 1
+                    x_repaired[current_service, branch_j] = 0
+                    
+                    # Update activity levels for ALL activity types
+                    for M in 1:m
+                        activity_levels[service_i, M] += V[M][branch_j]
+                        activity_levels[current_service, M] -= V[M][branch_j]
+                    end
+                    
+                    # Update risk levels
+                    risk_levels[service_i] += R[branch_j]
+                    risk_levels[current_service] -= R[branch_j]
+                    
+                    println("  Reassigned BU $branch_j from center $current_service to center $service_i to increase activity $activity_M by $gain")
+                else
+                    println("  Could not find a suitable BU to increase activity $activity_M for center $service_i")
+                    # Mark this violation as unresolvable for now to avoid getting stuck
+                    delete!(activity_violations, (service_i, activity_M))
+                end
             else
-                println("Iteration $iteration: Could not find a suitable center to receive BU from center $service_i to decrease activity $activity_M")
-                # Mark this violation as unresolvable for now to avoid getting stuck
-                delete!(violations, (service_i, activity_M))
-                sorted_violations = sort(collect(violations), by=x->x[2], rev=true)
-                continue
+                # Need to decrease activity - look for branches to remove
+                println("Iteration $iteration: Fixing high activity violation for center $service_i, activity $activity_M")
+                
+                # Find branches currently assigned to this service
+                current_branches = [(j, V[activity_M][j]) for j in 1:B if x_repaired[service_i, j] == 1]
+                # Sort by activity contribution (highest first)
+                sort!(current_branches, by=x->x[2], rev=true)
+                
+                # Try to reassign high-activity branches to other services
+                reassignment_success = false
+                
+                for (branch_j, branch_activity) in current_branches
+                    # Find potential services to receive this branch
+                    receiving_services = [i for i in 1:S if i != service_i && y_fixed[i] == 1]
+                    
+                    valid_candidates = []
+                    for receiving_service in receiving_services
+                        # Skip if this would violate risk constraint for receiving service
+                        if risk_levels[receiving_service] + R[branch_j] > β[receiving_service]
+                            continue
+                        end
+                        
+                        # Check if reassignment would create/worsen activity violations
+                        valid_assignment = true
+                        
+                        for M in 1:m
+                            # Check if the receiving service would violate upper activity bound
+                            new_receiver_level = activity_levels[receiving_service, M] + V[M][branch_j]
+                            if new_receiver_level > floor((1+ε) * μ[M][receiving_service])
+                                valid_assignment = false
+                                break
+                            end
+                        end
+                        
+                        if !valid_assignment
+                            continue
+                        end
+                        
+                        # Calculate cost impact
+                        cost_change = D[receiving_service, branch_j] - D[service_i, branch_j]
+                        
+                        push!(valid_candidates, (receiving_service, cost_change))
+                    end
+                    
+                    # Sort candidates by cost change (ascending)
+                    sort!(valid_candidates, by=x->x[2])
+                    
+                    if !isempty(valid_candidates)
+                        receiving_service, _ = first(valid_candidates)
+                        
+                        # Reassign the branch
+                        x_repaired[service_i, branch_j] = 0
+                        x_repaired[receiving_service, branch_j] = 1
+                        
+                        # Update activity levels
+                        for M in 1:m
+                            activity_levels[service_i, M] -= V[M][branch_j]
+                            activity_levels[receiving_service, M] += V[M][branch_j]
+                        end
+                        
+                        # Update risk levels
+                        risk_levels[service_i] -= R[branch_j]
+                        risk_levels[receiving_service] += R[branch_j]
+                        
+                        println("  Reassigned BU $branch_j from center $service_i to center $receiving_service to decrease activity $activity_M by $branch_activity")
+                        reassignment_success = true
+                        break
+                    end
+                end
+                
+                if !reassignment_success
+                    println("  Could not find a suitable reassignment to decrease activity $activity_M for center $service_i")
+                    # Mark as unresolvable to avoid getting stuck
+                    delete!(activity_violations, (service_i, activity_M))
+                end
             end
         end
         
         # Recalculate violations after the reassignment
-        violations = Dict{Tuple{Int, Int}, Float64}()
+        activity_violations = Dict{Tuple{Int, Int}, Float64}()
+        risk_violations = Dict{Int, Float64}()
+        
         for i in 1:S
             if y_fixed[i] == 1
+                # Check activity constraints
                 for M in 1:m
                     lower_bound = (1-ε) * μ[M][i]
                     upper_bound = (1+ε) * μ[M][i]
                     
                     if activity_levels[i, M] < ceil(lower_bound)
-                        violations[(i, M)] = ceil(lower_bound) - activity_levels[i, M]
+                        activity_violations[(i, M)] = ceil(lower_bound) - activity_levels[i, M]
                     elseif activity_levels[i, M] > floor(upper_bound)
-                        violations[(i, M)] = activity_levels[i, M] - floor(upper_bound)
+                        activity_violations[(i, M)] = activity_levels[i, M] - floor(upper_bound)
                     end
+                end
+                
+                # Check risk constraint
+                if risk_levels[i] > β[i]
+                    risk_violations[i] = risk_levels[i] - β[i]
                 end
             end
         end
-        
-        sorted_violations = sort(collect(violations), by=x->x[2], rev=true)
     end
     
-    # Final check to see if we resolved all violations
-    if isempty(violations)
-        println("Successfully repaired all activity violations in $iteration iterations!")
+    # Final report on violations
+    if isempty(activity_violations) && isempty(risk_violations)
+        println("Successfully repaired all constraints violations in $iteration iterations!")
     else
-        println("Could not repair all violations after $iteration iterations. Remaining violations: $(length(violations))")
+        println("Could not repair all violations after $iteration iterations:")
+        println("  Remaining activity violations: $(length(activity_violations))")
+        println("  Remaining risk violations: $(length(risk_violations))")
     end
     
     # Verify all constraints are satisfied
+    # 1. Final check of activity constraints
+    activity_satisfied = true
+    for i in 1:S
+        if y_fixed[i] == 1
+            for M in 1:m
+                lower_bound = (1-ε) * μ[M][i]
+                upper_bound = (1+ε) * μ[M][i]
+                
+                if activity_levels[i, M] < ceil(lower_bound) || activity_levels[i, M] > floor(upper_bound)
+                    activity_satisfied = false
+                    println("  Activity constraint violated: Service $i, Activity $M, Level: $(activity_levels[i, M]), Bounds: [$(ceil(lower_bound)), $(floor(upper_bound))]")
+                end
+            end
+        end
+    end
+    
+    # 2. Final check of risk constraints
+    risk_satisfied = true
+    for i in 1:S
+        if y_fixed[i] == 1
+            if risk_levels[i] > β[i]
+                risk_satisfied = false
+                println("  Risk constraint violated: Service $i, Risk: $(risk_levels[i]), Threshold: $(β[i])")
+            end
+        end
+    end
+    
+    if activity_satisfied && risk_satisfied
+        println("All constraints are satisfied in the final solution!")
+    else
+        println("The final solution still has constraint violations.")
+    end
+    
     return x_repaired
 end
 
@@ -425,6 +575,8 @@ function multi_pdp_min_instance(instance)
             @constraint(model, u <= d[i,j] + Dmax * (2 - (y[i] + y[j])))
         end
     end
+
+    #@constraint(model, u >= minimum(d[i,j]) for i in 1:n for j in 1:n)
     
     # Constraint: Select exactly p points
     @constraint(model, sum(y) == p)
@@ -440,29 +592,14 @@ function multi_pdp_min_instance(instance)
         @constraint(model, w[k_idx] <= Uk[k_idx])
     end
 
-    set_time_limit_sec(model, 600)
+    set_time_limit_sec(model, 300)
     
     return model, d
 end
 
 function main()
     instance = read_instance(ARGS[1])
-    #Y, time = pdisp_2(instance)
-    #println(Y)
-    #Y_bool = zeros(Int, instance.S)
-    #for idx in Y
-    #    Y_bool[idx] = 1
-    #end
-    #plot_ys2(instance, Y_bool, "pdisp_plotted_all.png")
-    #println(Y_bool)
-    #model_original = build_model_x_relaxed(instance)
-    #set_optimizer(model_original, Gurobi.Optimizer)
-    #set_time_limit_sec(model_original, 600)
-    #write_to_file(model_original, "original_model_grb.lp")
-    #optimize!(model_original)
-    #x_solution = value.(model_original[:x])
-    #y_sol = value.(model_original[:y])
-    #X = round.(Int, x_solution)
+    # phase 1
     model, d = multi_pdp_min_instance(instance)
     optimize!(model)
     y_sol = value.(model[:y])
@@ -476,14 +613,69 @@ function main()
     weight = dot(x_binary, instance.D)
     sol_binary = Solution(instance, x_binary, Y2, weight, 1)
     println(isFactible(sol_binary, true))
-    x_repaired = repair_activity_constraints(instance, x_binary, Y2)
+    targets_lower, targets_upper = calculate_targets(instance)
+    targets_lower_op, targets_upper_op = calculate_targets_optimized(instance)
+    x_repaired = repair_activity_and_risk_constraints(instance, x_binary, Y2)
+    weight = dot(x_repaired, instance.D)
+    oldSol = Solution(instance, x_repaired, Y2, weight, 1)
+    loop = 0
+    any_improvement = true
+
+    println(oldSol.Weight)
+
+    while any_improvement
+        loop += 1
+        prev_weight = oldSol.Weight
+        any_improvement = false  # Reset the flag at the start
+        # First improvement function
+        println("simple optimized bf")
+        sol_moved_bu = simple_bu_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :bf)
+        new_weight_moved = sol_moved_bu.Weight
+        println(new_weight_moved)
+
+        if new_weight_moved < prev_weight
+            any_improvement = true
+            prev_weight = new_weight_moved
+            oldSol = sol_moved_bu
+        end
+
+        # Second improvement function
+        println("interchange optimized bf")
+        sol_interchanged_bu = interchange_bu_improve_optimized(oldSol, targets_lower_op, targets_upper_op, :bf)
+        new_weight_moved = sol_interchanged_bu.Weight
+        println(new_weight_moved)
+
+        if new_weight_moved < prev_weight
+            any_improvement = true
+            prev_weight = new_weight_moved
+            oldSol = sol_interchanged_bu
+        end
+        println("---------------------")
+
+        # Third improvement function
+        println("deactivate ")
+        sol_deactivated_center = deactivate_center_improve(oldSol, targets_lower, targets_upper)
+        new_weight_moved = sol_deactivated_center.Weight
+        println(new_weight_moved)
+
+        if new_weight_moved < prev_weight
+            any_improvement = true
+            prev_weight = new_weight_moved
+            oldSol = sol_deactivated_center
+        end
+        println("---------------------")
+
+        @info any_improvement
+    end
+    println(oldSol.Weight)
     #analyze_splits(x_solution)
     model_warmstart = build_model(instance)
     x = model_warmstart[:x]
     y = model_warmstart[:y]
-    set_start_value.(x, x_repaired)
-    set_start_value.(y, Y2)
+    set_start_value.(x, oldSol.X)
+    set_start_value.(y, oldSol.Y)
     set_optimizer(model_warmstart, Gurobi.Optimizer)
+    #set_optimizer_attribute(model, "Method", 1)
     set_time_limit_sec(model_warmstart, 1800)
     optimize!(model_warmstart)
 end
