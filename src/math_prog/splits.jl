@@ -9,6 +9,13 @@ include("../heuristics/constructive.jl")
 include("first_model.jl")
 include("../heuristics/ls.jl")
 
+function pdisp_heuristic(instance)
+    Y_integer, time = pdisp_2(instance)
+    Y_bool = zeros(Int, instance.S)
+    Y_bool[Y_integer] .= 1
+    return Y_bool
+end
+
 # Phase 2: Fix Y values and solve transportation problem
 function solve_phase2_model(instance::Instance, y_fixed)
     B = instance.B
@@ -41,6 +48,81 @@ function solve_phase2_model(instance::Instance, y_fixed)
         tol_ub[i in 1:S, M in 1:m],
         sum(x[i, j] * V[M][j] for j in 1:B) <= (1+ε) * y_fixed[i] * μ[M][i]
     )
+    return model
+end
+
+
+function build_model_x_relaxed(instance::Instance)
+    B = instance.B
+    S = instance.S
+    D = instance.D
+    Sk = instance.Sk
+    Lk = instance.Lk
+    Uk = instance.Uk
+    P = instance.P
+    V = instance.V
+    μ = instance.μ
+    T = instance.T
+    R = instance.R
+    β = instance.β
+
+    m = 3 # activities
+    k = 4 #  of branches
+
+    model = Model() # THIS IS WHERE THE FUN BEGINS
+
+    #@variable(model, x[1:S, 1:B], Bin)
+    @variable(model, x[1:S, 1:B], lower_bound = 0, upper_bound = 1)
+    # num suc and num bu, Xᵢⱼ
+
+    @variable(model, y[1:S], Bin)
+    # Yᵢ
+
+    @objective(model, Min, sum(D .* x))
+    # Xᵢⱼ * Dᵢⱼ
+
+    @constraint(model, bu_service[j in 1:B], sum(x[i, j] for i in 1:S) == 1)
+
+    # ∑ᵢ∈S Xᵢⱼ = 1, ∀ j ∈ B
+
+    @constraint(model, use_branch[j in 1:B, i in 1:S], x[i, j] <= y[i])
+
+    # Xᵢⱼ ≤ Yᵢ , ∀ i ∈ S, j ∈ B
+
+    @constraint(model, cardinality, sum(y) == P)
+
+    # ∑ i ∈ S Yᵢ = p
+
+    @constraint(model, risk[i in 1:S], sum(x[i, j] * R[j] for j in 1:B) <= β[i])
+
+    # ∑ j ∈ B Xᵢⱼ Rⱼ ≤ βᵢ, ∀ i ∈ S
+
+    @constraint(
+        model,
+        tol_l[i in 1:S, M in 1:m],
+        sum(x[i, j] * V[M][j] for j in 1:B) >= y[i] * ceil(Int, μ[M][i] * (1 - T[M]))
+    )
+    @constraint(
+        model,
+        tol_u[i in 1:S, M in 1:m],
+        sum(x[i, j] * V[M][j] for j in 1:B) <= y[i] * floor(Int, μ[M][i] * (1 + T[M]))
+    )
+
+    # Yᵢμₘⁱ(1-tᵐ) ≤ ∑i∈S Xᵢⱼ vⱼᵐ ≤ Yᵢμₘʲ(1+tᵐ) ∀ j ∈ B, m = 1 … 3
+
+    @constraint(
+        model,
+        low_k[K in 1:k],
+        Lk[K] <= sum(y[i] for i in Sk[K]),
+    )
+
+    @constraint(
+        model,
+        upp_k[K in 1:k],
+        sum(y[i] for i in Sk[K]) <= Uk[K],
+    )
+
+    # lₖ ≤ ∑i ∈ Sₖ Yᵢ ≤ uₖ, k = 1 … 4
     return model
 end
 
@@ -129,17 +211,17 @@ function analyze_splits(x_continuous, S, B)
     
     # Optionally, analyze the severity of splits
     if split_count > 0
-        println("\nAnalyzing split severity:")
+        #println("\nAnalyzing split severity:")
         for j in split_branches
             # Get all non-zero assignments for this branch
             assignments = [(i, x_continuous[i, j]) for i in 1:S if x_continuous[i, j] > tolerance]
             # Sort by assignment value (descending)
             sort!(assignments, by = x -> x[2], rev = true)
             
-            println("  BU $j assignments:")
-            for (i, val) in assignments
-                println("    Center $i: $(round(val, digits=4))")
-            end
+            #println("  BU $j assignments:")
+            #for (i, val) in assignments
+            #    println("    Center $i: $(round(val, digits=4))")
+            #end
         end
     end
     
@@ -600,9 +682,14 @@ end
 function main()
     instance = read_instance(ARGS[1])
     # phase 1
-    model, d = multi_pdp_min_instance(instance)
+    #model, d = multi_pdp_min_instance(instance)
+    #optimize!(model)
+    model = build_model_x_relaxed(instance)
+    set_optimizer(model, Gurobi.Optimizer)
+    set_time_limit_sec(model, 180)
     optimize!(model)
     y_sol = value.(model[:y])
+    #y_sol = pdisp_heuristic(instance)
     Y2 = round.(Int, y_sol)
     model_transport = solve_phase2_model(instance, Y2)
     set_optimizer(model_transport, Gurobi.Optimizer)
@@ -622,7 +709,7 @@ function main()
     any_improvement = true
 
     println(oldSol.Weight)
-
+    start_time = time()
     while any_improvement
         loop += 1
         prev_weight = oldSol.Weight
@@ -667,7 +754,10 @@ function main()
 
         @info any_improvement
     end
+    end_time = time()
+    println("LS time: ", end_time - start_time)
     println(oldSol.Weight)
+    plot_solution(oldSol, "solution_laih_3000_600_40_1.png")
     #analyze_splits(x_solution)
     model_warmstart = build_model(instance)
     x = model_warmstart[:x]

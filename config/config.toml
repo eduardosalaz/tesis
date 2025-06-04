@@ -1,9 +1,9 @@
 # Configuration for experiment runs
 
 [general]
-base_path = "first_experiments_run"
-prefix = "first_experiments_run"
-time_limit = 180.0  # 30 minutes
+base_path = "first_instance_set"
+prefix = "first_instance_set"
+time_limit = 1800.0  # 30 minutes
 method = 1
 
 # Model parameters
@@ -19,8 +19,8 @@ tau = 0.1  # Risk parameter
 [instance_sets.small]
 B = 1000
 S = 200
-P_values = [15, 20]
-num_instances = 2  # Number of instances to generate per P value
+P_values = [15, 20, 25]
+num_instances = 6  # Number of instances to generate per P value
 percentages = [0.4, 0.3, 0.2, 0.1]  # Percentages for facility types
 
 # Ranges for activity values

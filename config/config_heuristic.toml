@@ -1,0 +1,27 @@
+[general]
+base_path = "."
+experiment_name = "heuristic_comparison_1"
+input_directory = "testinggg/insts"
+
+[methods]
+test_relaxed = true
+test_pdisp = true
+test_multi_pdp = true
+
+[time_limits]
+y_init_relaxed = 180      # Time limit for relaxed Y initialization
+y_init_pdisp = 60         # P-dispersion is usually fast
+y_init_multi_pdp = 300    # Multi-p-dispersion can take longer
+phase2 = 60               # Phase 2 transportation problem
+local_search_max = 600    # Maximum time for local search
+warmstart = 1800          # Warm-start Gurobi time limit
+
+[local_search]
+max_iterations = 100
+enable_simple_move = true
+enable_interchange_move = true
+enable_deactivate_move = true
+
+[warmstart]
+enable = false   # Set to true to run warm-start phase
+method = 1       # Gurobi method: 0=primal simplex, 1=dual simplex, 2=barrier

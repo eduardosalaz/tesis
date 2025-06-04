@@ -48,7 +48,8 @@ function optimize_model(model::Model, number; verbose=true, solver=Gurobi::Modul
         set_silent(model)
     end
     # show(model)
-    set_optimizer_attribute(model, "LogFile", "logs_new/log_1000_500_50_010_newk_$number.txt")
+    set_optimizer_attribute(model, "LogFile", "logs_new/log_1000_300_30_005_newk_1800s_$number.txt")
+    set_optimizer_attribute(model, "Method", 1)
     optimize!(model)
 
     #write_full_iis(model, "file.ilp")
@@ -70,7 +71,7 @@ function optimize_model(model::Model, number; verbose=true, solver=Gurobi::Modul
         obj_val = objective_value(model)
         bb_val = dual_objective_value(model)
         gap = relative_gap(model)
-        writedlm("logs_new/results_1000_500_50_010_newk_$number.txt", [obj_val, bb_val, gap, time_int])
+        writedlm("logs_new/results_1000_300_30_005_newk_1800s_$number.txt", [obj_val, bb_val, gap, time_int])
         println(time_int)
     end
     if termination_status(model) != MOI.OPTIMAL

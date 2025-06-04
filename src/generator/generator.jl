@@ -140,7 +140,7 @@ function generate_activities(B::Int64, S::Int64, P)
         end
     end
     
-    T = [0.10, 0.10, 0.10]
+    T = [0.05, 0.05, 0.05]
     return V, μ, T
 end
 
