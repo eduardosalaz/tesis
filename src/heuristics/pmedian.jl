@@ -7,6 +7,20 @@ using Gurobi
 using LinearAlgebra
 using Printf
 
+# Helper functions for Benders preprocessing
+function calculate_dist_min(D::Matrix)
+    return [minimum(filter(x -> x != typemax(eltype(D)), D[:,j])) for j in axes(D,2)]
+end
+
+function calculate_p_max(D::Matrix, p_value::Int)
+    n = size(D, 2)
+    if p_value > n
+        return fill(nothing, n)
+    end
+    
+    return [partialsort(filter(x -> x != typemax(eltype(D)), D[:,j]), p_value, rev=true) for j in axes(D,2)]
+end
+
 """
     solve_multi_type_p_median(instance; kwargs...)
 
@@ -32,10 +46,10 @@ Returns:
 - info: solution information
 """
 function solve_multi_type_p_median(instance;
-                                  time_limit=300,
-                                  gap_tolerance=0.01,
+                                  time_limit=600,
+                                  gap_tolerance=0.0001,
                                   verbose=true,
-                                  formulation=:strong)  # :strong or :weak
+                                  formulation=:strong)  # :strong or :benders
     
     S = instance.S  # number of centers
     P = instance.P  # number to select
@@ -50,6 +64,7 @@ function solve_multi_type_p_median(instance;
         println("Centers to select: $P")
         println("Branches to serve: $B")
         println("Types: $n_types")
+        println("Formulation: $formulation")
     end
     
     # Get distance matrix
@@ -66,6 +81,16 @@ function solve_multi_type_p_median(instance;
         D = compute_distance_matrix_centers_branches(instance)
     end
     
+    if formulation == :strong
+        return solve_strong_formulation(instance, D, S, P, B, n_types, time_limit, gap_tolerance, verbose)
+    elseif formulation == :benders
+        return solve_benders_formulation(instance, D, S, P, B, n_types, time_limit, gap_tolerance, verbose)
+    else
+        error("Unknown formulation: $formulation. Use :strong or :benders")
+    end
+end
+
+function solve_strong_formulation(instance, D, S, P, B, n_types, time_limit, gap_tolerance, verbose)
     # Create model
     model = Model(Gurobi.Optimizer)
     set_optimizer_attribute(model, "TimeLimit", time_limit)
@@ -76,35 +101,21 @@ function solve_multi_type_p_median(instance;
     
     # Variables
     @variable(model, y[1:S], Bin)  # 1 if center i is selected
+    @variable(model, x[1:S, 1:B], Bin)  # 1 if center i serves branch j
     
-    if formulation == :strong
-        # Strong formulation with assignment variables
-        @variable(model, x[1:S, 1:B], Bin)  # 1 if center i serves branch j
-        
-        # Objective: minimize total distance
-        @objective(model, Min, sum(D[i,j] * x[i,j] for i in 1:S, j in 1:B))
-        
-        # Each branch must be served by exactly one center
-        @constraint(model, serve[j in 1:B], sum(x[i,j] for i in 1:S) == 1)
-        
-        # Can only assign to open centers
-        @constraint(model, link[i in 1:S, j in 1:B], x[i,j] <= y[i])
-        
-    else  # :weak formulation
-        # Weak formulation - let solver figure out assignments
-        @variable(model, z[1:B] >= 0)  # distance from branch j to nearest center
-        
-        # Objective
-        @objective(model, Min, sum(z[j] for j in 1:B))
-        
-        # z[j] >= d[i,j] if center i not selected
-        # This ensures z[j] = min_i{d[i,j] : y[i] = 1}
-        @constraint(model, nearest[i in 1:S, j in 1:B], 
-                    z[j] >= D[i,j] * (1 - y[i]))
-    end
+    # Objective: minimize total distance
+    @objective(model, Min, sum(D[i,j] * x[i,j] for i in 1:S, j in 1:B))
+    
+    # Each branch must be served by exactly one center
+    @constraint(model, serve[j in 1:B], sum(x[i,j] for i in 1:S) == 1)
+    
+    # Can only assign to open centers
+    @constraint(model, link[i in 1:S, j in 1:B], x[i,j] <= y[i])
     
     # Select exactly P centers
     @constraint(model, cardinality, sum(y) == P)
+    
+    # Type constraints
     k = instance.K
     @constraint(
         model,
@@ -117,13 +128,118 @@ function solve_multi_type_p_median(instance;
         upp_k[K in 1:k],
         sum(y[i] for i in instance.Sk[K]) <= instance.Uk[K],
     )
-
     
     # Solve
     start_time = time()
     optimize!(model)
     solve_time = time() - start_time
     
+    return extract_solution(model, y, S, P, B, n_types, instance, solve_time, verbose, D, :strong)
+end
+
+function solve_benders_formulation(instance, D, S, P, B, n_types, time_limit, gap_tolerance, verbose)
+    # Preprocess distance bounds
+    dist_min = calculate_dist_min(D)
+    p_max = calculate_p_max(D, P)
+    
+    # Master problem
+    master = Model(Gurobi.Optimizer)
+    set_optimizer_attribute(master, "TimeLimit", time_limit)
+    set_optimizer_attribute(master, "MIPGap", gap_tolerance)
+    if !verbose
+        set_silent(master)
+    end
+    
+    @variable(master, y[1:S], Bin)
+    @variable(master, z[j in 1:B], lower_bound=dist_min[j], upper_bound=p_max[j])
+    
+    # Objective
+    @objective(master, Min, sum(z))
+    
+    # Select exactly P centers
+    @constraint(master, sum(y) == P)
+    
+    # Type constraints
+    k = instance.K
+    @constraint(
+        master,
+        low_k[K in 1:k],
+        instance.Lk[K] <= sum(y[i] for i in instance.Sk[K]),
+    )
+
+    @constraint(
+        master,
+        upp_k[K in 1:k],
+        sum(y[i] for i in instance.Sk[K]) <= instance.Uk[K],
+    )
+    
+    # Set up for lazy constraints
+    set_optimizer_attribute(master, "LazyConstraints", 1)
+    #set_optimizer_attribute(master, "BranchDir", 1)
+    #set_optimizer_attribute(master, "MIPGapAbs", 0.9999)
+    set_optimizer_attribute(master, "StartNodeLimit", 2000000)
+    
+    # Benders callback
+    function benders_callback(cb_data, cb_where::Cint)
+        if cb_where == GRB_CB_MIPSOL
+            Gurobi.load_callback_variable_primal(cb_data, cb_where)
+            ȳ = callback_value.(cb_data, master[:y])
+            
+            sub = Model(Gurobi.Optimizer)
+            set_optimizer_attribute(sub, "OutputFlag", 0)
+            set_optimizer_attribute(sub, "InfUnbdInfo", 0)
+            
+            # Add bounds to dual variables
+            @variable(sub, u >= 0)  # Add lower bound to u
+            @variable(sub, v[1:S] >= 0)  # Add lower bound to v
+            
+            # Initialize constraints
+            dual_constraints = Dict{Int, ConstraintRef}()
+            for i in 1:S
+                dual_constraints[i] = @constraint(sub, u - v[i] <= 0)
+            end
+            
+            cuts = []
+            for j in 1:B
+                # Update RHS of constraints
+                for i in 1:S
+                    set_normalized_rhs(dual_constraints[i], D[i, j])
+                end
+                
+                # Set objective - High pareto density cut
+                @objective(sub, Max, (1-1/S)*(u - sum(ȳ[i] * v[i] for i in 1:S)))
+                
+                optimize!(sub)
+                
+                if termination_status(sub) == MOI.OPTIMAL
+                    ū = value(u)
+                    v̄ = value.(v)
+                    cut_expr = @build_constraint(z[j] >= ū - sum(y[i] * v̄[i] for i in 1:S))
+                    push!(cuts, cut_expr)
+                else
+                    if verbose
+                        println("Warning: Subproblem for j=$j is not optimal. Status: $(termination_status(sub))")
+                    end
+                end
+            end
+            
+            for cut in cuts
+                MOI.submit(master, MOI.LazyConstraint(cb_data), cut)
+            end
+        end
+    end
+    
+    MOI.set(master, Gurobi.CallbackFunction(), benders_callback)
+    
+    # Solve
+    start_time = time()
+    optimize!(master)
+    solve_time = time() - start_time
+    
+    return extract_solution(master, y, S, P, B, n_types, instance, solve_time, verbose, D, :benders)
+end
+
+function extract_solution(model, y, S, P, B, n_types, instance, solve_time, verbose, D, formulation)
     # Extract solution
     status = termination_status(model)
     
@@ -151,7 +267,7 @@ function solve_multi_type_p_median(instance;
                         k, count, percent, instance.Lk[k], instance.Uk[k])
             end
             
-            # Coverage analysis
+            # Coverage analysis for strong formulation
             if formulation == :strong && has_values(model)
                 x_val = value.(model[:x])
                 
@@ -177,7 +293,8 @@ function solve_multi_type_p_median(instance;
             "average_distance" => objective_val / B,
             "gap" => gap,
             "time" => solve_time,
-            "status" => status
+            "status" => status,
+            "formulation" => formulation
         )
         
         return Y_solution, info

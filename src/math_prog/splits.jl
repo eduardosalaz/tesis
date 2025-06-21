@@ -675,7 +675,7 @@ function multi_pdp_min_instance(instance)
         @constraint(model, w[k_idx] <= Uk[k_idx])
     end
 
-    set_time_limit_sec(model, 300)
+    set_time_limit_sec(model, 600)
     
     return model, d
 end
@@ -691,7 +691,7 @@ function main()
     #set_time_limit_sec(model, 600)
     #optimize!(model)
     #y_sol = value.(model[:y])
-    y_sol, info = solve_multi_type_p_median(instance, formulation=:weak)
+    y_sol, info = solve_multi_type_p_median(instance, formulation=:benders)
     println(info)
     Y2 = round.(Int, y_sol)
     model_transport = solve_phase2_model(instance, Y2)
