@@ -41,3 +41,4 @@ warmstart_procedure.txt
 Manifest.toml
 src/utils/venv
 src/venv
+src/paper/.venv/
