@@ -2,8 +2,8 @@
 
 [general]
 base_path = "first_instance_set"
-prefix = "first_instance_set"
-time_limit = 1800.0  # 30 minutes
+prefix = "first_instance_set_large"
+time_limit = 7200.0  # 30 minutes
 method = 1
 
 # Model parameters
@@ -17,10 +17,10 @@ tau = 0.1  # Risk parameter
 [instance_sets]
 # Define different instance sets
 [instance_sets.small]
-B = 1000
-S = 200
-P_values = [15, 20, 25]
-num_instances = 6  # Number of instances to generate per P value
+B = 3000
+S = 600
+P_values = [40, 60, 80]
+num_instances = 1 # Number of instances to generate per P value
 percentages = [0.4, 0.3, 0.2, 0.1]  # Percentages for facility types
 
 # Ranges for activity values

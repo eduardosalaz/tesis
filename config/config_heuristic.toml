@@ -1,27 +1,38 @@
 [general]
 base_path = "."
-experiment_name = "heuristic_comparison_1"
+experiment_name = "heuristic_comparison_move_ablation"
 input_directory = "testinggg/insts"
 
 [methods]
-test_relaxed = true
-test_pdisp = true
-test_multi_pdp = true
+# Y initialization methods to test
+test_relaxed = true           # 1a - Solve with X continuous, Y integer
+test_pdisp = true             # 1b - Multi-type p-dispersion
+test_multi_pdp = true         # 1c - Original heuristic (mentioned as "mala")
+test_multi_p_median = true    # 1d - Multi-type p-median (strong formulation)
+test_multi_p_median_benders = true  # 1e - Multi-type p-median (Benders)
 
 [time_limits]
-y_init_relaxed = 180      # Time limit for relaxed Y initialization
-y_init_pdisp = 60         # P-dispersion is usually fast
-y_init_multi_pdp = 300    # Multi-p-dispersion can take longer
-phase2 = 60               # Phase 2 transportation problem
-local_search_max = 600    # Maximum time for local search
-warmstart = 1800          # Warm-start Gurobi time limit
+# All exact methods use the same time limit now
+exact_methods = 180           # Time limit for all Y initialization methods (in seconds)
+phase2 = 60                   # Phase 2 transportation problem
+local_search_max = 600        # Maximum time for local search (not actually enforced, uses iterations)
+warmstart = 1800              # Warm-start Gurobi time limit (if enabled)
 
 [local_search]
-max_iterations = 100
+max_iterations = 100          # Maximum iterations for local search
+test_move_ablation = true     # If true, test all move combinations; if false, only test with all moves
+
+# These are the default settings when not doing ablation study
 enable_simple_move = true
 enable_interchange_move = true
 enable_deactivate_move = true
 
 [warmstart]
-enable = false   # Set to true to run warm-start phase
-method = 1       # Gurobi method: 0=primal simplex, 1=dual simplex, 2=barrier
+enable = false                # Set to true to run warm-start phase after local search
+method = 1                    # Gurobi method: 0=primal simplex, 1=dual simplex, 2=barrier
+
+# Notes on the move configurations that will be tested when test_move_ablation = true:
+# 1. all_moves: All three moves enabled (baseline)
+# 2. simple_interchange: Simple + Interchange (no Deactivate)
+# 3. simple_deactivate: Simple + Deactivate (no Interchange)
+# 4. interchange_deactivate: Interchange + Deactivate (no Simple)

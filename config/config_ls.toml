@@ -1,0 +1,37 @@
+# config_ls.toml
+# Configuration for Local Search Ablation Experiment
+
+[general]
+base_path = "."
+experiment_name = "local_search_ablation"
+input_directory = "testinggg/insts"
+
+# Specify which instance IDs to process (leave empty to process all)
+# Should match the instances used in the Y initialization experiment
+instance_ids = []  # Empty means process all instances
+
+[method]
+# Which Y initialization method to use (based on results from Experiment 1)
+# Options: "relaxed", "pdisp", "multi_pdp", "multi_p_median", "multi_p_median_benders"
+y_initialization = "multi_p_median"  # Update this based on Experiment 1 results!
+
+[time_limits]
+# Time limits in seconds
+exact_methods = 300      # Time limit for Y initialization
+phase2 = 60             # Phase 2 transportation problem
+
+[local_search]
+max_iterations = 100
+
+# Notes:
+# This experiment will test 4 move configurations:
+# 1. all_moves: All three moves enabled (baseline)
+# 2. simple_interchange: Simple + Interchange (no Deactivate)
+# 3. simple_deactivate: Simple + Deactivate (no Interchange)
+# 4. interchange_deactivate: Interchange + Deactivate (no Simple)
+#
+# The experiment builds the pre-LS solution ONCE per instance,
+# then applies each move configuration to test their contributions.
+#
+# After running Experiment 1, update the y_initialization field above
+# to use the best-performing method.
