@@ -42,3 +42,5 @@ Manifest.toml
 src/utils/venv
 src/venv
 src/paper/.venv/
+*.json
+*.toml
