@@ -28,10 +28,12 @@ def analyze_single_dataset(df, dataset_name):
     print("Methods available:")
     print(successful_data['method'].unique())
     print()
+
+    successful_data['post_ls_gap'] = successful_data['post_ls_gap'] * 100 # get percentage
     
     return successful_data
 
-def create_method_comparison_single(data, dataset_name, metrics=['init_time', 'prop_split_bus', 'total_time', 'post_ls_obj']):
+def create_method_comparison_single(data, dataset_name, metrics=['init_time', 'prop_split_bus', 'total_time', 'post_ls_gap']):
     """
     Create comprehensive comparison of methods for a single dataset
     """
@@ -67,7 +69,7 @@ def create_method_comparison_single(data, dataset_name, metrics=['init_time', 'p
                 best_value = method_means.min()
                 worst_method = method_means.idxmax()
                 worst_value = method_means.max()
-            elif metric == 'post_ls_obj':
+            elif metric == 'post_ls_gap':
                 # Lower is typically better for objective values
                 best_method = method_means.idxmin()
                 best_value = method_means.min()
@@ -103,7 +105,7 @@ def create_visualizations_single(data, dataset_name, save_plots=True):
     Create visualizations for a single dataset
     """
     
-    metrics = ['init_time', 'prop_split_bus', 'total_time', 'post_ls_obj']
+    metrics = ['init_time', 'prop_split_bus', 'total_time', 'post_ls_gap']
     
     # Set up the plotting style
     plt.style.use('default')
@@ -123,9 +125,9 @@ def create_visualizations_single(data, dataset_name, save_plots=True):
         
         if metric in ['init_time', 'total_time']:
             ax.set_ylabel(f'{metric} (seconds)')
-        elif metric == 'post_ls_obj':
-            ax.set_ylabel('Objective Value')
-            ax.ticklabel_format(style='scientific', axis='y', scilimits=(0,0))
+        elif metric == 'post_ls_gap':
+            ax.set_ylabel('Optimality gap %')
+            ax.ticklabel_format(axis='y')
     
     plt.suptitle(f'Method Comparison - {dataset_name.upper()} Dataset', fontsize=16)
     plt.tight_layout()
@@ -163,7 +165,7 @@ def statistical_analysis_single(data, dataset_name):
     
     print(f"\n=== STATISTICAL ANALYSIS - {dataset_name.upper()} DATASET ===")
     
-    metrics = ['init_time', 'prop_split_bus', 'total_time', 'post_ls_obj']
+    metrics = ['init_time', 'prop_split_bus', 'total_time', 'post_ls_gap']
     
     for p_value in sorted(data['P'].unique()):
         p_data = data[data['P'] == p_value]
@@ -213,7 +215,7 @@ def generate_recommendations_single(data, dataset_name):
     weights = {
         'init_time': -0.3,      # Negative because lower is better
         'total_time': -0.4,     # Negative because lower is better  
-        'post_ls_obj': -0.2,    # Negative because lower is better
+        'post_ls_gap': -0.2,    # Negative because lower is better
         'prop_split_bus': 0.1   # Adjust based on whether higher or lower split is better
     }
     
@@ -328,15 +330,15 @@ if __name__ == "__main__":
     print("STARTING ANALYSIS...")
     
     small_data, small_results, small_recommendations = analyze_dataset(
-        "small_constructive_data.csv", "small"  # Replace with your actual file path
+        "combined_results_small.csv", "small"  # Replace with your actual file path
     )
     
     medium_data, medium_results, medium_recommendations = analyze_dataset(
-        "medium_constructive_data.csv", "medium"  # Replace with your actual file path
+        "combined_results_medium.csv", "medium"  # Replace with your actual file path
     )
     
     large_data, large_results, large_recommendations = analyze_dataset(
-        "large_constructive_data.csv", "large"  # Replace with your actual file path
+        "combined_results_large.csv", "large"  # Replace with your actual file path
     )
     
     # Final summary across all datasets
