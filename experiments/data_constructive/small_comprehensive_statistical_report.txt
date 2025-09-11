@@ -1,0 +1,58 @@
+================================================================================
+COMPREHENSIVE STATISTICAL ANALYSIS REPORT
+Dataset: SMALL
+================================================================================
+
+SUMMARY STATISTICS
+----------------------------------------
+
+P = 15:
+                init_time                              final_gap                                   prop_split_bus                        
+                     mean        std     min      max       mean        std        min         max           mean       std    min    max
+method                                                                                                                                   
+multi_p_median   38.54244  42.280318   6.374  180.996   2.802468   1.872226   0.353337    7.237703        0.03800  0.001915  0.034  0.041
+multi_pdp        18.56712   7.126363   7.351   33.226  19.327385   4.802223   9.367309   25.703301        0.03852  0.001960  0.033  0.042
+pdisp             0.00084   0.003387   0.000    0.017  66.787232  24.056589  19.798767  111.495727        0.04236  0.002099  0.038  0.045
+relaxed         168.61864  34.475915  59.578  183.607   9.157605  10.307031   0.107771   37.786513        0.03716  0.001951  0.033  0.041
+
+P = 20:
+                        init_time                               final_gap                                  prop_split_bus                        
+                             mean        std      min      max       mean        std        min        max           mean       std    min    max
+method                                                                                                                                           
+multi_p_median           22.05080  13.365925    9.398   63.838   3.750061   2.086196   1.157269   9.509798        0.05224  0.002204  0.048  0.056
+multi_p_median_benders   25.11316   5.723704   14.483   38.737   3.390692   1.887453   1.125066   9.509798        0.05156  0.002200  0.047  0.056
+multi_pdp                26.14604   8.726786   15.299   38.673  13.941829   4.456384   4.647198  23.140799        0.05316  0.001795  0.049  0.056
+pdisp                     0.00080   0.001633    0.000    0.006  36.026755  18.834402  17.022159  86.459690        0.05608  0.002798  0.050  0.061
+relaxed                 181.76860   0.122906  181.612  182.185  11.195779   6.775954   0.385470  23.748096        0.05164  0.002767  0.047  0.056
+
+P = 25:
+                        init_time                              final_gap                                 prop_split_bus                        
+                             mean       std      min      max       mean       std        min        max           mean       std    min    max
+method                                                                                                                                         
+multi_p_median           14.36356  4.827294    8.040   28.473   5.104838  2.676721   1.957447  13.925496        0.06596  0.002835  0.062  0.073
+multi_p_median_benders   22.62612  6.630583   13.118   37.395   5.104838  2.676721   1.957447  13.925496        0.06596  0.002835  0.062  0.073
+multi_pdp                26.64872  7.480142   16.189   44.638  14.413202  3.736225   7.939940  23.911454        0.06592  0.003174  0.057  0.072
+pdisp                     0.00080  0.000408    0.000    0.001  24.215764  6.469252  14.739952  38.659449        0.07008  0.002660  0.062  0.074
+relaxed                 181.67236  0.045473  181.602  181.805   6.432832  3.288411   1.815485  15.279646        0.06548  0.003268  0.057  0.070
+
+================================================================================
+KEY FINDINGS AND RECOMMENDATIONS
+----------------------------------------
+
+P = 15:
+  Fastest initialization: pdisp
+  Best solution quality: multi_p_median
+  Trade-off exists between pdisp (speed) and multi_p_median (quality)
+
+P = 20:
+  Fastest initialization: pdisp
+  Best solution quality: multi_p_median_benders
+  Trade-off exists between pdisp (speed) and multi_p_median_benders (quality)
+
+P = 25:
+  Fastest initialization: pdisp
+  Best solution quality: multi_p_median
+  Trade-off exists between pdisp (speed) and multi_p_median (quality)
+
+================================================================================
+Report generated successfully
