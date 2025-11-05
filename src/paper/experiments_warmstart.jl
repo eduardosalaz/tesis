@@ -48,7 +48,7 @@ struct WarmstartResult
     gurobi_status::String
     # Improvement analysis
     total_time::Float64
-    warmstart_improvement::Float64  # gurobi_obj - heuristic_obj
+    warmstart_improvement::Float64  # heuristic_obj - gurobi_obj (positive = improvement)
     warmstart_improvement_pct::Float64
     # Status
     heuristic_status::String
@@ -218,14 +218,15 @@ end
 function solve_with_warmstart(instance, heuristic_solution, Y, time_limit, config, logs_dir, instance_name)
     """
     Builds Gurobi model, applies warmstart, and solves.
-    Returns (obj, bound, gap, actual_time, status)
+    Returns (obj, bound, gap, actual_time, status, X_solution, Y_solution)
     """
     
     println("  Solving with Gurobi warmstart (time limit: $(round(time_limit, digits=2))s)...")
     
     if time_limit <= 0
         println("    Warning: No time remaining for Gurobi!")
-        return heuristic_solution.Weight, heuristic_solution.Weight, 0.0, 0.0, "no_time"
+        return (heuristic_solution.Weight, heuristic_solution.Weight, 0.0, 0.0, "no_time", 
+                heuristic_solution.X, Y)
     end
     
     try
@@ -264,14 +265,19 @@ function solve_with_warmstart(instance, heuristic_solution, Y, time_limit, confi
         bound = objective_bound(model)
         gap = abs(obj - bound) / abs(obj) * 100.0
         
-        println("    Gurobi complete: obj = $(round(obj, digits=2)), gap = $(round(gap, digits=2))%, time = $(round(gurobi_time, digits=2))s")
+        # Extract solution
+        X_solution = value.(x)
+        Y_solution = value.(y)
         
-        return obj, bound, gap, gurobi_time, status
+        println("    Gurobi complete: obj = $(round(obj, digits=2)), bound = $(round(bound, digits=2)), gap = $(round(gap, digits=2))%, time = $(round(gurobi_time, digits=2))s")
+        
+        return obj, bound, gap, gurobi_time, status, X_solution, Y_solution
         
     catch e
         error_msg = sprint(showerror, e)
         println("    ERROR in Gurobi solve: $error_msg")
-        return heuristic_solution.Weight, heuristic_solution.Weight, 0.0, 0.0, "error"
+        return (heuristic_solution.Weight, heuristic_solution.Weight, 0.0, 0.0, "error",
+                heuristic_solution.X, Y)
     end
 end
 
@@ -329,15 +335,15 @@ function process_instance_warmstart(instance, instance_file, instance_number, co
     gurobi_time_limit = total_time_limit - heuristic_stats.total_heuristic_time
     
     # Solve with warmstart
-    gurobi_obj, gurobi_bound, gurobi_gap, gurobi_time, gurobi_status = solve_with_warmstart(
+    gurobi_obj, gurobi_bound, gurobi_gap, gurobi_time, gurobi_status, X_gurobi, Y_gurobi = solve_with_warmstart(
         instance, heuristic_solution, Y, gurobi_time_limit, config, 
         output_dirs["logs"], instance_name
     )
     
     total_time = time() - total_start_time
     
-    # Calculate improvements
-    warmstart_improvement = gurobi_obj - heuristic_stats.heuristic_obj
+    # Calculate improvements (positive = improvement for minimization)
+    warmstart_improvement = heuristic_stats.heuristic_obj - gurobi_obj
     warmstart_improvement_pct = (warmstart_improvement / heuristic_stats.heuristic_obj) * 100.0
     
     # Create result
@@ -376,11 +382,18 @@ function process_instance_warmstart(instance, instance_file, instance_number, co
     heuristic_sol_file = joinpath(sol_dir, "heuristic_$(instance_name).jld2")
     write_solution(heuristic_solution, heuristic_sol_file)
     
+    # Save Gurobi solution
+    gurobi_sol_dir = joinpath(output_dirs["solutions"], size_str, "gurobi")
+    mkpath(gurobi_sol_dir)
+    gurobi_sol_file = joinpath(gurobi_sol_dir, "gurobi_ws_$(instance_name).jld2")
+    gurobi_solution = Solution(instance, X_gurobi, Y_gurobi, gurobi_obj, 1)
+    write_solution(gurobi_solution, gurobi_sol_file)
+    
     # Log result
     log_message = """
     Completed instance #$instance_number ($instance_name):
       Heuristic obj: $(round(heuristic_stats.heuristic_obj, digits=2)) in $(round(heuristic_stats.total_heuristic_time, digits=2))s
-      Gurobi obj: $(round(gurobi_obj, digits=2)) in $(round(gurobi_time, digits=2))s (limit: $(round(gurobi_time_limit, digits=2))s)
+      Gurobi obj: $(round(gurobi_obj, digits=2)) (bound: $(round(gurobi_bound, digits=2)), gap: $(round(gurobi_gap, digits=2))%) in $(round(gurobi_time, digits=2))s (limit: $(round(gurobi_time_limit, digits=2))s)
       Improvement: $(round(warmstart_improvement, digits=2)) ($(round(warmstart_improvement_pct, digits=2))%)
       Total time: $(round(total_time, digits=2))s
     """
@@ -577,15 +590,16 @@ function generate_warmstart_summary(results::Vector{WarmstartResult}, results_di
     push!(summary_df, ("avg_heuristic_obj", mean([r.heuristic_obj for r in successful_results])))
     push!(summary_df, ("avg_gurobi_time", mean([r.gurobi_actual_time for r in successful_results])))
     push!(summary_df, ("avg_gurobi_obj", mean([r.gurobi_obj for r in successful_results])))
+    push!(summary_df, ("avg_gurobi_bound", mean([r.gurobi_bound for r in successful_results])))
     push!(summary_df, ("avg_total_time", mean([r.total_time for r in successful_results])))
     push!(summary_df, ("avg_warmstart_improvement", mean([r.warmstart_improvement for r in successful_results])))
     push!(summary_df, ("avg_warmstart_improvement_pct", mean([r.warmstart_improvement_pct for r in successful_results])))
     push!(summary_df, ("avg_final_gap", mean([r.gurobi_gap for r in successful_results])))
     
-    # Count improvements
-    num_improved = count(r -> r.warmstart_improvement < 0, successful_results)  # Negative = improvement (minimization)
-    num_same = count(r -> abs(r.warmstart_improvement) < 0.01, successful_results)
-    num_worse = count(r -> r.warmstart_improvement > 0.01, successful_results)
+    # Count improvements (positive improvement = Gurobi better than heuristic)
+    num_improved = count(r -> r.warmstart_improvement > 0.01, successful_results)
+    num_same = count(r -> abs(r.warmstart_improvement) <= 0.01, successful_results)
+    num_worse = count(r -> r.warmstart_improvement < -0.01, successful_results)
     
     push!(summary_df, ("num_improved", num_improved))
     push!(summary_df, ("num_same", num_same))
@@ -619,6 +633,7 @@ function generate_warmstart_summary(results::Vector{WarmstartResult}, results_di
     summary_text *= "Heuristic objective: $(round(mean([r.heuristic_obj for r in successful_results]), digits=2))\n"
     summary_text *= "Heuristic time: $(round(mean([r.total_heuristic_time for r in successful_results]), digits=2))s\n"
     summary_text *= "Gurobi objective: $(round(mean([r.gurobi_obj for r in successful_results]), digits=2))\n"
+    summary_text *= "Gurobi bound: $(round(mean([r.gurobi_bound for r in successful_results]), digits=2))\n"
     summary_text *= "Gurobi time: $(round(mean([r.gurobi_actual_time for r in successful_results]), digits=2))s\n"
     summary_text *= "Total time: $(round(mean([r.total_time for r in successful_results]), digits=2))s\n"
     summary_text *= "Warmstart improvement: $(round(mean([r.warmstart_improvement for r in successful_results]), digits=2))\n"
